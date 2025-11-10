@@ -1,4 +1,4 @@
-# irgen-gpui
+# irgen-gui
 
 irgen (IP-XACT Register Generator) is a tool that converts structured Excel documents into IP-XACT (.xml, IEEE-1685-2014) format. Additionally, it generates JSON configuration files required by [regvue](https://github.com/nasa-jpl/regvue), a modern hardware/software interface documentation tool provided by NASA.
 
