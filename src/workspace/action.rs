@@ -1,10 +1,9 @@
 use crate::error::Error;
 use crate::state::AppState;
 use gpui::*;
-use gpui_component::{ContextModal as _, notification::NotificationType};
+use gpui_component::{WindowExt as _, notification::NotificationType};
 use std::path::Path;
 use std::sync::Arc;
-use util::ResultExt;
 
 pub fn open<F>(state: Arc<AppState>, function: F, window: &mut Window, cx: &mut App)
 where
@@ -20,7 +19,7 @@ where
     let handle = window.window_handle();
 
     cx.spawn(
-        async move |cx| match path.await.anyhow().and_then(|res| res) {
+        async move |cx| match path.await.map_err(Into::into).and_then(|res| res) {
             Ok(Some(path)) => {
                 let path = &path[0];
                 *state.selected_file.lock().unwrap() = Some(path.to_path_buf());
@@ -83,7 +82,7 @@ where
     let handle = window.window_handle();
 
     cx.spawn(
-        async move |cx| match path.await.anyhow().and_then(|res| res) {
+        async move |cx| match path.await.map_err(Into::into).and_then(|res| res) {
             Ok(Some(path)) => {
                 let path = &path;
                 match function(path, state) {

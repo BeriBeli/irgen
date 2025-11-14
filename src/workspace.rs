@@ -1,5 +1,8 @@
-use super::action::{open, save};
-use super::title_bar::TitleBar;
+mod action;
+mod title_bar;
+
+use action::{open, save};
+use title_bar::AppTitleBar;
 
 use crate::services::{export_ipxact_xml, export_regvue_json, load_excel};
 use crate::state::AppState;
@@ -14,13 +17,13 @@ use gpui_component::{
 };
 
 pub struct Workspace {
-    title_bar: Entity<TitleBar>,
+    title_bar: Entity<AppTitleBar>,
     app_state: Arc<AppState>,
 }
 
 impl Workspace {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let title_bar = TitleBar::view(window, cx);
+        let title_bar = AppTitleBar::view(window, cx);
 
         Self {
             title_bar,
