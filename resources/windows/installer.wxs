@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Product
+    Id="*"
+    Name="$(var.ProductName)"
+    Language="1033"
+    Version="$(var.Version)"
+    Manufacturer="$(var.Manufacturer)"
+    UpgradeCode="{7D6661D8-9CC8-4E8B-92DF-62D1F5E0D8A9}">
+    <Package InstallerVersion="500" Compressed="yes" InstallScope="perMachine" />
+    <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed." />
+    <MediaTemplate />
+
+    <Property Id="ARPPRODUCTICON" Value="appicon.ico" />
+    <Icon Id="appicon.ico" SourceFile="resources\windows\app-icon.ico" />
+    <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />
+    <UIRef Id="WixUI_Minimal" />
+
+    <Feature Id="ProductFeature" Title="$(var.ProductName)" Level="1">
+      <ComponentGroupRef Id="ProductComponents" />
+      <ComponentRef Id="StartMenuShortcuts" />
+      <ComponentRef Id="DesktopShortcut" />
+    </Feature>
+  </Product>
+
+  <Fragment>
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="ProgramFiles64Folder">
+        <Directory Id="INSTALLFOLDER" Name="$(var.ProductName)" />
+      </Directory>
+      <Directory Id="ProgramMenuFolder">
+        <Directory Id="ApplicationProgramsFolder" Name="$(var.ProductName)" />
+      </Directory>
+      <Directory Id="DesktopFolder" />
+    </Directory>
+  </Fragment>
+
+  <Fragment>
+    <ComponentGroup Id="ProductComponents" Directory="INSTALLFOLDER">
+      <Component Id="MainExecutable" Guid="{A87907DA-5D33-4F46-84D0-6E641D0C3DBF}">
+        <File Id="IrgenExe" Source="dist\$(var.ExeName)" KeyPath="yes" />
+      </Component>
+    </ComponentGroup>
+
+    <Component Id="StartMenuShortcuts" Guid="{80E77AB6-4A7B-45E3-9E9C-3B8BAF32C3F9}" Directory="ApplicationProgramsFolder">
+      <Shortcut
+        Id="StartMenuShortcut"
+        Name="$(var.ProductName)"
+        Target="[INSTALLFOLDER]$(var.ExeName)"
+        WorkingDirectory="INSTALLFOLDER" />
+      <RemoveFolder Id="RemoveProgramsFolder" Directory="ApplicationProgramsFolder" On="uninstall" />
+      <RegistryValue Root="HKLM" Key="Software\$(var.Manufacturer)\$(var.ProductName)" Name="installed" Type="integer" Value="1" KeyPath="yes" />
+    </Component>
+
+    <Component Id="DesktopShortcut" Guid="{A3E4D1B1-34ED-432E-8B2D-ED5D65FE4A67}" Directory="DesktopFolder">
+      <Shortcut
+        Id="DesktopShortcut"
+        Name="$(var.ProductName)"
+        Target="[INSTALLFOLDER]$(var.ExeName)"
+        WorkingDirectory="INSTALLFOLDER" />
+      <RemoveFolder Id="RemoveDesktopShortcut" Directory="DesktopFolder" On="uninstall" />
+      <RegistryValue Root="HKLM" Key="Software\$(var.Manufacturer)\$(var.ProductName)" Name="desktop" Type="integer" Value="1" KeyPath="yes" />
+    </Component>
+  </Fragment>
+</Wix>

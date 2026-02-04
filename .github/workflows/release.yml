@@ -1,0 +1,227 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  verify-version:
+    name: Verify Tag Version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify tag matches Cargo.toml version
+        run: |
+          python - <<'PY'
+          import os
+          import tomllib
+          with open("Cargo.toml", "rb") as f:
+              data = tomllib.load(f)
+          version = data["package"]["version"]
+          tag = os.environ["GITHUB_REF_NAME"]
+          expected = f"v{version}"
+          if tag != expected:
+              raise SystemExit(f"Tag {tag} does not match Cargo.toml version {expected}")
+          print(f"Tag matches version: {tag}")
+          PY
+
+  build:
+    name: Build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    needs: verify-version
+    env:
+      MACOSX_DEPLOYMENT_TARGET: "10.15"
+      MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
+      MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+      MACOS_SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      WINDOWS_CERT_PFX: ${{ secrets.WINDOWS_CERT_PFX }}
+      WINDOWS_CERT_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - macos-latest
+          - windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build
+        run: cargo build --release --locked
+      - name: Install cargo-bundle (macOS)
+        if: runner.os == 'macOS'
+        run: cargo install cargo-bundle --locked
+      - name: Bundle app (macOS)
+        if: runner.os == 'macOS'
+        run: cargo bundle --release --locked
+      - name: Locate app bundle (macOS)
+        if: runner.os == 'macOS'
+        id: app
+        run: |
+          APP_PATH=$(find target -maxdepth 6 -path "*bundle/osx/*.app" -print -quit)
+          if [ -z "$APP_PATH" ]; then
+            echo "App bundle not found under target/*/bundle/osx" >&2
+            exit 1
+          fi
+          echo "app_path=$APP_PATH" >> "$GITHUB_OUTPUT"
+          echo "app_name=$(basename "$APP_PATH" .app)" >> "$GITHUB_OUTPUT"
+      - name: Import signing certificate (macOS)
+        if: runner.os == 'macOS' && env.MACOS_CERT_P12 != ''
+        env:
+          KEYCHAIN_PASSWORD: ${{ secrets.MACOS_KEYCHAIN_PASSWORD || 'build-pass' }}
+        run: |
+          echo "$MACOS_CERT_P12" | base64 -d > /tmp/cert.p12
+          security create-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+          security import /tmp/cert.p12 -k build.keychain -P "$MACOS_CERT_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" build.keychain
+      - name: Codesign app (macOS)
+        if: runner.os == 'macOS' && env.MACOS_CERT_P12 != ''
+        run: |
+          ENTITLEMENTS="resources/macos/entitlements.plist"
+          if [ -f "$ENTITLEMENTS" ]; then
+            codesign --force --deep --options runtime --timestamp \
+              --entitlements "$ENTITLEMENTS" \
+              --sign "$MACOS_SIGNING_IDENTITY" \
+              "${{ steps.app.outputs.app_path }}"
+          else
+            codesign --force --deep --options runtime --timestamp \
+              --sign "$MACOS_SIGNING_IDENTITY" \
+              "${{ steps.app.outputs.app_path }}"
+          fi
+          codesign --verify --deep --strict "${{ steps.app.outputs.app_path }}"
+      - name: Notarize app (macOS)
+        if: runner.os == 'macOS' && env.MACOS_CERT_P12 != '' && env.APPLE_ID != ''
+        run: |
+          mkdir -p dist
+          NOTARIZE_ZIP="dist/${{ steps.app.outputs.app_name }}-notarize.zip"
+          ditto -c -k --keepParent "${{ steps.app.outputs.app_path }}" "$NOTARIZE_ZIP"
+          xcrun notarytool submit "$NOTARIZE_ZIP" \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_APP_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --wait
+          xcrun stapler staple "${{ steps.app.outputs.app_path }}"
+      - name: Create DMG (macOS)
+        if: runner.os == 'macOS'
+        id: dmg
+        run: |
+          mkdir -p dist
+          DMG_PATH="dist/irgen-gui-macos.dmg"
+          hdiutil create -volname "${{ steps.app.outputs.app_name }}" \
+            -srcfolder "${{ steps.app.outputs.app_path }}" \
+            -ov -format UDZO "$DMG_PATH"
+          echo "dmg_path=$DMG_PATH" >> "$GITHUB_OUTPUT"
+      - name: Notarize DMG (macOS)
+        if: runner.os == 'macOS' && env.MACOS_CERT_P12 != '' && env.APPLE_ID != ''
+        run: |
+          xcrun notarytool submit "${{ steps.dmg.outputs.dmg_path }}" \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_APP_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --wait
+          xcrun stapler staple "${{ steps.dmg.outputs.dmg_path }}"
+      - name: Package (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          mkdir -p dist
+          ditto -c -k --keepParent "${{ steps.app.outputs.app_path }}" dist/irgen-gui-macos.zip
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Copy-Item target\release\irgen-gui.exe dist\irgen-gui.exe
+      - name: Read app version (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $version = python -c "import tomllib; print(tomllib.load(open('Cargo.toml','rb'))['package']['version'])"
+          $parts = $version.Split('.')
+          while ($parts.Count -lt 3) { $parts += '0' }
+          $msiVersion = \"$($parts[0]).$($parts[1]).$($parts[2])\"
+          Add-Content -Path $env:GITHUB_ENV -Value \"APP_VERSION=$version\"
+          Add-Content -Path $env:GITHUB_ENV -Value \"APP_VERSION_MSI=$msiVersion\"
+      - name: Install NSIS (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: choco install nsis -y
+      - name: Build installer (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          makensis /DVERSION=$env:APP_VERSION resources\windows\installer.nsi
+      - name: Install WiX Toolset (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: choco install wixtoolset -y
+      - name: Build MSI (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $productName = "irgen"
+          $manufacturer = "BeriBeli"
+          $exeName = "irgen-gui.exe"
+          candle.exe resources\windows\installer.wxs `
+            -dVersion=$env:APP_VERSION_MSI `
+            -dProductName=$productName `
+            -dManufacturer=$manufacturer `
+            -dExeName=$exeName `
+            -out dist\irgen-gui.wixobj
+          light.exe dist\irgen-gui.wixobj -ext WixUIExtension -out dist\irgen-gui-windows.msi
+      - name: Sign Windows artifacts
+        if: runner.os == 'Windows' && env.WINDOWS_CERT_PFX != ''
+        shell: pwsh
+        run: |
+          $pfxPath = Join-Path $env:RUNNER_TEMP "signing.pfx"
+          [IO.File]::WriteAllBytes($pfxPath, [Convert]::FromBase64String($env:WINDOWS_CERT_PFX))
+          $signtool = (Get-Command signtool.exe -ErrorAction SilentlyContinue).Source
+          if (-not $signtool) {
+            $signtool = Get-ChildItem "C:\\Program Files (x86)\\Windows Kits\\10\\bin" -Recurse -Filter signtool.exe |
+              Sort-Object FullName -Descending | Select-Object -First 1 -ExpandProperty FullName
+          }
+          if (-not $signtool) { throw "signtool.exe not found" }
+          $timestamp = "http://timestamp.digicert.com"
+          $files = @(\"dist\\irgen-gui.exe\", \"dist\\irgen-gui-windows-setup.exe\", \"dist\\irgen-gui-windows.msi\")
+          foreach ($file in $files) {
+            if (Test-Path $file) {
+              & $signtool sign /fd SHA256 /td SHA256 /tr $timestamp /f $pfxPath /p $env:WINDOWS_CERT_PASSWORD $file
+            }
+          }
+      - name: Zip (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Compress-Archive -Path dist\irgen-gui.exe -DestinationPath dist\irgen-gui-windows.zip -Force
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ runner.os }}
+          path: dist/*
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            dist/**/irgen-gui-*.zip
+            dist/**/irgen-gui-*.dmg
+            dist/**/irgen-gui-*.exe
+            dist/**/irgen-gui-*.msi

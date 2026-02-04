@@ -27,3 +27,8 @@ parking_lot = "0.12"
 
 [target.'cfg(target_os = "windows")'.build-dependencies]
 winresource = "0.1"
+
+[package.metadata.bundle]
+name = "irgen"
+identifier = "com.beribeli.irgen"
+icon = ["resources/app-icon.icns"]

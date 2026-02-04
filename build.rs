@@ -1,9 +1,23 @@
+use std::env;
+use std::fs;
+use std::path::Path;
 use std::process::Command;
 
 fn main() {
+    println!("cargo:rerun-if-env-changed=MACOSX_DEPLOYMENT_TARGET");
+    println!("cargo:rerun-if-env-changed=PROFILE");
+    println!("cargo:rerun-if-env-changed=TARGET");
+
+    let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
+
     // macOS-specific linker flags (optional, for compatibility or Swift/Objective-C support)
-    if cfg!(target_os = "macos") {
-        println!("cargo:rustc-env=MACOSX_DEPLOYMENT_TARGET=10.15");
+    if target_os == "macos" {
+        let deployment_target =
+            env::var("MACOSX_DEPLOYMENT_TARGET").unwrap_or_else(|_| "10.15".to_string());
+        println!(
+            "cargo:rustc-env=MACOSX_DEPLOYMENT_TARGET={}",
+            deployment_target
+        );
 
         // Enable Swift runtime (if you use Swift code or async)
         println!("cargo:rustc-link-arg=-Wl,-rpath,/usr/lib/swift");
@@ -18,7 +32,7 @@ fn main() {
 
     // Windows resource compilation (icon, metadata)
     #[cfg(target_os = "windows")]
-    {
+    if target_os == "windows" {
         #[cfg(target_env = "msvc")]
         {
             // Increase stack size to avoid stack overflow in some cases
@@ -26,7 +40,7 @@ fn main() {
         }
 
         let icon_path = "resources/windows/app-icon.ico";
-        let icon = std::path::Path::new(icon_path);
+        let icon = Path::new(icon_path);
 
         // Re-run build script if icon file changes
         println!("cargo:rerun-if-changed={}", icon.display());
@@ -56,7 +70,22 @@ fn main() {
     println!("cargo:rustc-env=RELEASE_CHANNEL=release");
 
     // Embed git commit SHA for build identification (optional)
-    println!("cargo:rerun-if-changed=../../.git/logs/HEAD");
+    if let Ok(manifest_dir) = env::var("CARGO_MANIFEST_DIR") {
+        let git_dir = Path::new(&manifest_dir).join(".git");
+        let head_path = git_dir.join("HEAD");
+
+        if head_path.exists() {
+            println!("cargo:rerun-if-changed={}", head_path.display());
+            if let Ok(head_contents) = fs::read_to_string(&head_path) {
+                if let Some(ref_path) = head_contents.strip_prefix("ref: ").map(str::trim) {
+                    let ref_file = git_dir.join(ref_path);
+                    if ref_file.exists() {
+                        println!("cargo:rerun-if-changed={}", ref_file.display());
+                    }
+                }
+            }
+        }
+    }
     if let Ok(output) = Command::new("git").args(["rev-parse", "HEAD"]).output()
         && output.status.success()
     {
