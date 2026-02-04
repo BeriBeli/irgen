@@ -40,20 +40,13 @@ impl Render for Workspace {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let notification_layer = Root::render_notification_layer(window, cx);
         let app_state = self.app_state.clone();
-        let is_selected = app_state
-            .is_selected
-            .lock()
-            .unwrap()
-            .as_ref()
-            .unwrap_or(&false)
-            .to_owned();
+
+        // 使用便捷的访问方法
+        let is_selected = app_state.is_file_selected();
         let selected_path = app_state
-            .selected_file
-            .lock()
-            .unwrap()
-            .as_deref()
+            .get_selected_file()
             .map(|p| p.to_string_lossy().into_owned())
-            .unwrap_or_else(|| String::new());
+            .unwrap_or_else(String::new);
         let main = div()
             .id("workspace-main")
             .bg(cx.theme().background)

@@ -17,9 +17,6 @@ pub enum Error {
     #[error("Json error: {0}")]
     Json(#[from] serde_json::Error),
 
-    #[error(transparent)]
-    Anyhow(#[from] anyhow::Error),
-
     #[error("IO error: {0}")]
     IO(#[from] std::io::Error),
 

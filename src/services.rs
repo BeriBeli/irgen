@@ -17,8 +17,9 @@ use parser::parse_register;
 use schema::base::{df_to_blks, df_to_compo, df_to_regs};
 pub use schema::{base, ipxact, regvue};
 
-pub fn load_excel(input: &Path, state: Arc<AppState>) -> anyhow::Result<(), Error> {
+pub fn load_excel(input: &Path, state: Arc<AppState>) -> Result<(), Error> {
     let directory = input.parent().unwrap().to_path_buf();
+    let file = input.to_path_buf();
     let mut wb: Xlsx<_> = open_workbook(input)?;
 
     let sheets = wb.worksheets();
@@ -48,14 +49,15 @@ pub fn load_excel(input: &Path, state: Arc<AppState>) -> anyhow::Result<(), Erro
             })
         })?
     };
-    *state.component.lock().unwrap() = Some(compo);
-    *state.directory.lock().unwrap() = Some(directory);
+
+    // 使用原子性更新方法
+    state.load_component(compo, directory, file);
     Ok(())
 }
 
-pub fn export_ipxact_xml(output: &Path, state: Arc<AppState>) -> anyhow::Result<(), Error> {
+pub fn export_ipxact_xml(output: &Path, state: Arc<AppState>) -> Result<(), Error> {
     let xml_str = {
-        let guard = state.component.lock().unwrap();
+        let guard = state.component.read();
         let compo = guard
             .as_ref()
             .ok_or_else(|| Error::NotLoaded("Component not loaded".into()))?;
@@ -70,9 +72,9 @@ pub fn export_ipxact_xml(output: &Path, state: Arc<AppState>) -> anyhow::Result<
     Ok(())
 }
 
-pub fn export_regvue_json(output: &Path, state: Arc<AppState>) -> anyhow::Result<(), Error> {
+pub fn export_regvue_json(output: &Path, state: Arc<AppState>) -> Result<(), Error> {
     let json_str = {
-        let guard = state.component.lock().unwrap();
+        let guard = state.component.read();
         let compo = guard
             .as_ref()
             .ok_or_else(|| Error::NotLoaded("Component not loaded".into()))?;

@@ -14,7 +14,7 @@ use crate::error::Error;
 
 impl TryFrom<&base::Component> for ipxact::Component {
     type Error = Error;
-    fn try_from(base: &base::Component) -> anyhow::Result<Self, Error> {
+    fn try_from(base: &base::Component) -> Result<Self, Error> {
         // not considering removing reserved registers (some reserved's access is rw)
         // let re = Regex::new(r"^(rsvd|reserved)\d*$")?;
 
@@ -22,14 +22,14 @@ impl TryFrom<&base::Component> for ipxact::Component {
             .memory_map(vec![
                 ipxact::MemoryMapBuilder::default()
                     .name(base.name())
-                    .address_block(base.blks().iter().map(|blk| -> anyhow::Result<ipxact::Block, Error> {
+                    .address_block(base.blks().iter().map(|blk| -> Result<ipxact::Block, Error> {
                         Ok(ipxact::BlockBuilder::default()
                             .name(blk.name())
                             .base_address(blk.offset())
                             .range(blk.range())
                             .width(blk.size())
                             // use iterator to get the array of registers
-                            .register(blk.regs().iter().map(|reg| -> anyhow::Result<ipxact::Register, Error> {
+                            .register(blk.regs().iter().map(|reg| -> Result<ipxact::Register, Error> {
                                     Ok(ipxact::RegisterBuilder::default()
                                         .name(reg.name())
                                         .address_offset(reg.offset())
@@ -39,7 +39,7 @@ impl TryFrom<&base::Component> for ipxact::Component {
                                             // .filter(|field| {
                                             //     !re.is_match(field.name())
                                             // })
-                                            .map(|field| -> anyhow::Result<ipxact::Field, Error> {
+                                            .map(|field| -> Result<ipxact::Field, Error> {
                                                 Ok(ipxact::FieldBuilder::default()
                                                     .name(field.name())
                                                     .bit_offset(field.offset())
@@ -88,7 +88,7 @@ impl TryFrom<&base::Component> for ipxact::Component {
 
 impl TryFrom<&base::Component> for regvue::Document {
     type Error = Error;
-    fn try_from(base: &base::Component) -> anyhow::Result<Self, Error> {
+    fn try_from(base: &base::Component) -> Result<Self, Error> {
         Ok(regvue::DocumentBuilder::default()
             .schema(
                 regvue::SchemaBuilder::default()

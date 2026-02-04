@@ -22,7 +22,7 @@ fn main() {
         cx.open_window(window_options, |win, cx| {
             gpui_component::init(cx);
             let workspace_view = Workspace::view(win, cx);
-            cx.new(|cx| gpui_component::Root::new(workspace_view.into(), win, cx))
+            cx.new(|cx| gpui_component::Root::new(workspace_view, win, cx))
         })
         .unwrap();
     });

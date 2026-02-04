@@ -1,9 +1,21 @@
 use crate::error::Error;
 use crate::state::AppState;
 use gpui::*;
-use gpui_component::{WindowExt as _, notification::NotificationType};
+use gpui_component::{notification::NotificationType, WindowExt as _};
 use std::path::Path;
 use std::sync::Arc;
+
+/// 发送通知的辅助函数
+fn send_notification(
+    handle: AnyWindowHandle,
+    cx: &mut AsyncApp,
+    notification_type: NotificationType,
+    message: impl Into<SharedString>,
+) {
+    let _ = cx.update_window(handle, |_, window, cx| {
+        window.push_notification((notification_type, message.into()), cx);
+    });
+}
 
 pub fn open<F>(state: Arc<AppState>, function: F, window: &mut Window, cx: &mut App)
 where
@@ -18,52 +30,47 @@ where
 
     let handle = window.window_handle();
 
-    cx.spawn(
-        async move |cx| match path.await.map_err(Into::into).and_then(|res| res) {
-            Ok(Some(path)) => {
-                let path = &path[0];
-                *state.selected_file.lock().unwrap() = Some(path.to_path_buf());
-                *state.is_selected.lock().unwrap() = Some(true);
-                match function(path, state.clone()) {
+    cx.spawn(async move |mut cx| {
+        match path.await.map_err(Into::into).and_then(|res| res) {
+            Ok(Some(paths)) => {
+                let selected_path = &paths[0];
+                match function(selected_path, state) {
                     Ok(_) => {
-                        let _ = cx.update_window(handle, |_, window, cx| {
-                            window.push_notification(
-                                (
-                                    NotificationType::Success,
-                                    "File loaded successfully! Ready to export.",
-                                ),
-                                cx,
-                            );
-                        });
+                        send_notification(
+                            handle,
+                            &mut cx,
+                            NotificationType::Success,
+                            "File loaded successfully! Ready to export.",
+                        );
                     }
                     Err(err) => {
-                        let _ = cx.update_window(handle, |_, window, cx| {
-                            window.push_notification(
-                                (NotificationType::Error, SharedString::from(err.to_string())),
-                                cx,
-                            );
-                        });
+                        send_notification(
+                            handle,
+                            &mut cx,
+                            NotificationType::Error,
+                            err.to_string(),
+                        );
                     }
                 }
             }
             Ok(None) => {
-                let _ = cx.update_window(handle, |_, window, cx| {
-                    window.push_notification(
-                        (NotificationType::Warning, "File selection canceled."),
-                        cx,
-                    );
-                });
+                send_notification(
+                    handle,
+                    &mut cx,
+                    NotificationType::Warning,
+                    "File selection canceled.",
+                );
             }
             Err(err) => {
-                let _ = cx.update_window(handle, |_, window, cx| {
-                    window.push_notification(
-                        (NotificationType::Error, SharedString::from(err.to_string())),
-                        cx,
-                    );
-                });
+                send_notification(
+                    handle,
+                    &mut cx,
+                    NotificationType::Error,
+                    err.to_string(),
+                );
             }
-        },
-    )
+        }
+    })
     .detach();
 }
 
@@ -71,59 +78,52 @@ pub fn save<F>(state: Arc<AppState>, function: F, window: &mut Window, cx: &mut 
 where
     F: Fn(&Path, Arc<AppState>) -> anyhow::Result<(), Error> + 'static,
 {
-    let guard = state.directory.lock().unwrap();
-    let directory = guard
-        .as_ref()
-        .map(|p| p.as_path())
-        .unwrap_or(Path::new("."));
-    let path = cx.prompt_for_new_path(directory, None);
+    let directory = state
+        .get_directory()
+        .unwrap_or_else(|| Path::new(".").to_path_buf());
+    let path = cx.prompt_for_new_path(&directory, None);
 
-    let state = state.clone();
     let handle = window.window_handle();
 
-    cx.spawn(
-        async move |cx| match path.await.map_err(Into::into).and_then(|res| res) {
-            Ok(Some(path)) => {
-                let path = &path;
-                match function(path, state) {
-                    Ok(()) => {
-                        let _ = cx.update_window(handle, |_, window, cx| {
-                            window.push_notification(
-                                (
-                                    NotificationType::Success,
-                                    SharedString::from("File exported successfully."),
-                                ),
-                                cx,
-                            );
-                        });
+    cx.spawn(async move |mut cx| {
+        match path.await.map_err(Into::into).and_then(|res| res) {
+            Ok(Some(selected_path)) => {
+                match function(&selected_path, state) {
+                    Ok(_) => {
+                        send_notification(
+                            handle,
+                            &mut cx,
+                            NotificationType::Success,
+                            "File exported successfully.",
+                        );
                     }
                     Err(err) => {
-                        let _ = cx.update_window(handle, |_, window, cx| {
-                            window.push_notification(
-                                (NotificationType::Error, SharedString::from(err.to_string())),
-                                cx,
-                            );
-                        });
+                        send_notification(
+                            handle,
+                            &mut cx,
+                            NotificationType::Error,
+                            err.to_string(),
+                        );
                     }
                 }
             }
             Ok(None) => {
-                let _ = cx.update_window(handle, |_, window, cx| {
-                    window.push_notification(
-                        (NotificationType::Warning, "File export canceled."),
-                        cx,
-                    );
-                });
+                send_notification(
+                    handle,
+                    &mut cx,
+                    NotificationType::Warning,
+                    "File export canceled.",
+                );
             }
             Err(err) => {
-                let _ = cx.update_window(handle, |_, window, cx| {
-                    window.push_notification(
-                        (NotificationType::Error, SharedString::from(err.to_string())),
-                        cx,
-                    );
-                });
+                send_notification(
+                    handle,
+                    &mut cx,
+                    NotificationType::Error,
+                    err.to_string(),
+                );
             }
-        },
-    )
+        }
+    })
     .detach();
 }

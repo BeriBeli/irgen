@@ -1,7 +1,7 @@
 use crate::error::Error;
 use polars::prelude::*;
 
-pub fn parse_register(df: DataFrame) -> anyhow::Result<DataFrame, Error> {
+pub fn parse_register(df: DataFrame) -> Result<DataFrame, Error> {
     let parsed_df = df
         .lazy()
         // fullfill empty description

@@ -2515,9 +2515,9 @@ dependencies = [
 
 [[package]]
 name = "gpui-component"
-version = "0.4.0-preview2"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "54ca6397f1dae49d9fce9cb254aa9e99443d54264f4adc456303871d160a8adf"
+checksum = "2dda822a7bab4e0a08a4276ba68e2f82cc5855bf0b377d7b195c58c8061dc7d1"
 dependencies = [
  "aho-corasick",
  "anyhow",
@@ -2554,9 +2554,9 @@ dependencies = [
 
 [[package]]
 name = "gpui-component-macros"
-version = "0.4.0-preview2"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b62bf31416493266c9b3009b02233098c42ac2c995e371e22fc7c816baf74a9f"
+checksum = "581a8cd1e38b2fd86d1029dd56a3296ffd1388fda295054104d89923755de902"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3289,6 +3289,7 @@ dependencies = [
  "derive_builder",
  "gpui",
  "gpui-component",
+ "parking_lot",
  "polars",
  "quick-xml 0.38.3",
  "rust-embed",

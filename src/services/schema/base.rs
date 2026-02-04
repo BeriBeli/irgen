@@ -112,10 +112,10 @@ impl Field {
     }
 }
 
-pub fn df_to_regs(df: DataFrame) -> anyhow::Result<Vec<Register>, Error> {
+pub fn df_to_regs(df: DataFrame) -> Result<Vec<Register>, Error> {
     (0..df.height())
         .map(|i| {
-            let extract_str = |col_name: &str| -> anyhow::Result<String, Error> {
+            let extract_str = |col_name: &str| -> Result<String, Error> {
                 Ok(df
                     .column(col_name)?
                     .str()?
@@ -133,7 +133,7 @@ pub fn df_to_regs(df: DataFrame) -> anyhow::Result<Vec<Register>, Error> {
             // not consume df
             let extract_list = |col_name: &str,
                                 idx: usize|
-             -> anyhow::Result<Vec<String>, PolarsError> {
+             -> Result<Vec<String>, PolarsError> {
                 df.column(col_name)?
                     .list()?
                     .get_as_series(idx)
@@ -185,9 +185,9 @@ pub fn df_to_regs(df: DataFrame) -> anyhow::Result<Vec<Register>, Error> {
         .collect()
 }
 
-pub fn df_to_blks<F>(df: DataFrame, mut registers_extractor: F) -> anyhow::Result<Vec<Block>, Error>
+pub fn df_to_blks<F>(df: DataFrame, mut registers_extractor: F) -> Result<Vec<Block>, Error>
 where
-    F: FnMut(&str) -> anyhow::Result<Vec<Register>, Error>,
+    F: FnMut(&str) -> Result<Vec<Register>, Error>,
 {
     (0..df.height())
         .map(|i| {
@@ -223,11 +223,11 @@ where
         .collect()
 }
 
-pub fn df_to_compo<F>(df: DataFrame, mut blocks_extractor: F) -> anyhow::Result<Component, Error>
+pub fn df_to_compo<F>(df: DataFrame, mut blocks_extractor: F) -> Result<Component, Error>
 where
-    F: FnMut() -> anyhow::Result<Vec<Block>, Error>,
+    F: FnMut() -> Result<Vec<Block>, Error>,
 {
-    let extract_str = |tag: &str| -> anyhow::Result<String, Error> {
+    let extract_str = |tag: &str| -> Result<String, Error> {
         Ok(df
             .column(tag)?
             .str()?

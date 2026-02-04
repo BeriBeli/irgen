@@ -1,6 +1,6 @@
 use crate::error::Error;
 
-pub fn extract_access_value(attr: &str) -> anyhow::Result<String, Error> {
+pub fn extract_access_value(attr: &str) -> Result<String, Error> {
     match attr.to_ascii_uppercase().as_str() {
         "RO" => Ok("read-only".into()),
         "RW" | "RC" | "RS" | "WRC" | "WRS" | "WSRC" | "WCRS" | "W1C" | "W1S" | "W1T" | "W0C"
