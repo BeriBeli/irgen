@@ -18,7 +18,7 @@ use schema::base::{df_to_blks, df_to_compo, df_to_regs};
 pub use schema::{base, ipxact, regvue};
 
 pub fn load_excel(input: &Path, state: Arc<AppState>) -> Result<(), Error> {
-    let directory = input.parent().unwrap().to_path_buf();
+    let directory = input.parent().unwrap_or_else(|| Path::new("")).to_path_buf();
     let file = input.to_path_buf();
     let mut wb: Xlsx<_> = open_workbook(input)?;
 

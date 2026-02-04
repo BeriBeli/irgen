@@ -53,7 +53,7 @@ impl Component {
     pub fn version(&self) -> &str {
         &self.version
     }
-    pub fn blks(&self) -> &Vec<Block> {
+    pub fn blks(&self) -> &[Block] {
         &self.blks
     }
 }
@@ -71,7 +71,7 @@ impl Block {
     pub fn size(&self) -> &str {
         &self.size
     }
-    pub fn regs(&self) -> &Vec<Register> {
+    pub fn regs(&self) -> &[Register] {
         &self.regs
     }
 }
@@ -86,7 +86,7 @@ impl Register {
     pub fn size(&self) -> &str {
         &self.size
     }
-    pub fn fields(&self) -> &Vec<Field> {
+    pub fn fields(&self) -> &[Field] {
         &self.fields
     }
 }

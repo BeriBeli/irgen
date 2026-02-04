@@ -14,7 +14,7 @@ pub fn parse_register(df: DataFrame) -> Result<DataFrame, Error> {
         // Unmerge cells and distribute content to each cell
         .select([col("*").fill_null_with_strategy(FillNullStrategy::Forward(None))])
         .with_columns(&[
-            // caculate reg width by sum field width
+            // calculate reg width by sum field width
             // "32"
             col("WIDTH")
                 .cast(DataType::UInt32)
