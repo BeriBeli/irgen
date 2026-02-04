@@ -1,5 +1,6 @@
 use super::services::{ipxact, regvue};
 
+/// Unified error type for irgen application
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("Calamine error: {0}")]
@@ -18,16 +19,16 @@ pub enum Error {
     Json(#[from] serde_json::Error),
 
     #[error("IO error: {0}")]
-    IO(#[from] std::io::Error),
+    Io(#[from] std::io::Error),
 
-    #[error("Key Error: Not found for key {0}")]
-    NotFound(String),
+    #[error("key not found: {key}")]
+    KeyNotFound { key: String },
 
-    #[error("Empty Error: {0}")]
-    Empty(String),
+    #[error("empty data: {context}")]
+    Empty { context: String },
 
-    #[error("NotLoaded Error: {0}")]
-    NotLoaded(String),
+    #[error("component not loaded: {context}")]
+    NotLoaded { context: String },
 
     #[error("IP-XACT Component Error: {0}")]
     IpXactComponent(#[from] ipxact::ComponentBuilderError),
@@ -77,8 +78,9 @@ pub enum Error {
     #[error("Regvue Document error: {0}")]
     RegvueDocument(#[from] regvue::DocumentBuilderError),
 
-    // #[error("Regex error: {0}")]
-    // Regex(#[from] regex::Error),
-    #[error("ParserInt error: {0}")]
+    #[error("Parse int error: {0}")]
     ParseInt(#[from] std::num::ParseIntError),
+
+    #[error("invalid attribute: {attribute}")]
+    InvalidAttribute { attribute: String },
 }

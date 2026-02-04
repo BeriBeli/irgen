@@ -5,21 +5,27 @@ use gpui_component::{notification::NotificationType, WindowExt as _};
 use std::path::Path;
 use std::sync::Arc;
 
-/// 发送通知的辅助函数
+/// Unified result type for irgen operations
+pub type Result<T> = std::result::Result<T, Error>;
+
+/// Helper function to send notifications with error logging
 fn send_notification(
     handle: AnyWindowHandle,
     cx: &mut AsyncApp,
     notification_type: NotificationType,
     message: impl Into<SharedString>,
 ) {
-    let _ = cx.update_window(handle, |_, window, cx| {
+    if let Err(e) = cx.update_window(handle, |_, window, cx| {
         window.push_notification((notification_type, message.into()), cx);
-    });
+    }) {
+        // Log error silently - notification failures are non-critical
+        let _ = e;
+    }
 }
 
 pub fn open<F>(state: Arc<AppState>, function: F, window: &mut Window, cx: &mut App)
 where
-    F: Fn(&Path, Arc<AppState>) -> anyhow::Result<(), Error> + 'static,
+    F: Fn(&Path, Arc<AppState>) -> Result<()> + 'static,
 {
     let path = cx.prompt_for_paths(PathPromptOptions {
         files: true,
@@ -30,7 +36,7 @@ where
 
     let handle = window.window_handle();
 
-    cx.spawn(async move |mut cx| {
+    cx.spawn(async move |cx| {
         match path.await.map_err(Into::into).and_then(|res| res) {
             Ok(Some(paths)) => {
                 let selected_path = &paths[0];
@@ -38,7 +44,7 @@ where
                     Ok(_) => {
                         send_notification(
                             handle,
-                            &mut cx,
+                            cx,
                             NotificationType::Success,
                             "File loaded successfully! Ready to export.",
                         );
@@ -46,7 +52,7 @@ where
                     Err(err) => {
                         send_notification(
                             handle,
-                            &mut cx,
+                            cx,
                             NotificationType::Error,
                             err.to_string(),
                         );
@@ -56,7 +62,7 @@ where
             Ok(None) => {
                 send_notification(
                     handle,
-                    &mut cx,
+                    cx,
                     NotificationType::Warning,
                     "File selection canceled.",
                 );
@@ -64,7 +70,7 @@ where
             Err(err) => {
                 send_notification(
                     handle,
-                    &mut cx,
+                    cx,
                     NotificationType::Error,
                     err.to_string(),
                 );
@@ -76,7 +82,7 @@ where
 
 pub fn save<F>(state: Arc<AppState>, function: F, window: &mut Window, cx: &mut App)
 where
-    F: Fn(&Path, Arc<AppState>) -> anyhow::Result<(), Error> + 'static,
+    F: Fn(&Path, Arc<AppState>) -> Result<()> + 'static,
 {
     let directory = state
         .get_directory()
@@ -85,14 +91,14 @@ where
 
     let handle = window.window_handle();
 
-    cx.spawn(async move |mut cx| {
+    cx.spawn(async move |cx| {
         match path.await.map_err(Into::into).and_then(|res| res) {
             Ok(Some(selected_path)) => {
                 match function(&selected_path, state) {
                     Ok(_) => {
                         send_notification(
                             handle,
-                            &mut cx,
+                            cx,
                             NotificationType::Success,
                             "File exported successfully.",
                         );
@@ -100,7 +106,7 @@ where
                     Err(err) => {
                         send_notification(
                             handle,
-                            &mut cx,
+                            cx,
                             NotificationType::Error,
                             err.to_string(),
                         );
@@ -110,7 +116,7 @@ where
             Ok(None) => {
                 send_notification(
                     handle,
-                    &mut cx,
+                    cx,
                     NotificationType::Warning,
                     "File export canceled.",
                 );
@@ -118,7 +124,7 @@ where
             Err(err) => {
                 send_notification(
                     handle,
-                    &mut cx,
+                    cx,
                     NotificationType::Error,
                     err.to_string(),
                 );

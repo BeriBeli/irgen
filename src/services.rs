@@ -20,9 +20,11 @@ pub use schema::{base, ipxact, regvue};
 pub fn load_excel(input: &Path, state: Arc<AppState>) -> Result<(), Error> {
     let directory = input.parent().unwrap_or_else(|| Path::new("")).to_path_buf();
     let file = input.to_path_buf();
+    let file_size = fs::metadata(input).map(|m| m.len()).ok();
     let mut wb: Xlsx<_> = open_workbook(input)?;
 
     let sheets = wb.worksheets();
+    let sheet_count = Some(sheets.len());
 
     let mut df_map: HashMap<String, DataFrame> = sheets
         .iter()
@@ -34,15 +36,15 @@ pub fn load_excel(input: &Path, state: Arc<AppState>) -> Result<(), Error> {
     let compo = {
         let compo_df = df_map
             .remove("version")
-            .ok_or_else(|| Error::NotFound("version".into()))?;
+            .ok_or_else(|| Error::KeyNotFound { key: "version".into() })?;
 
         df_to_compo(compo_df, || {
             let blks_df = df_map
                 .remove("address_map")
-                .ok_or_else(|| Error::NotFound("address_map".into()))?;
+                .ok_or_else(|| Error::KeyNotFound { key: "address_map".into() })?;
 
             df_to_blks(blks_df, |s| {
-                let regs_df = df_map.remove(s).ok_or_else(|| Error::NotFound(s.into()))?;
+                let regs_df = df_map.remove(s).ok_or_else(|| Error::KeyNotFound { key: s.into() })?;
                 let parsered_df = parse_register(regs_df)?;
 
                 df_to_regs(parsered_df)
@@ -50,17 +52,17 @@ pub fn load_excel(input: &Path, state: Arc<AppState>) -> Result<(), Error> {
         })?
     };
 
-    // 使用原子性更新方法
+    state.set_file_metadata(file_size, sheet_count);
     state.load_component(compo, directory, file);
     Ok(())
 }
 
 pub fn export_ipxact_xml(output: &Path, state: Arc<AppState>) -> Result<(), Error> {
     let xml_str = {
-        let guard = state.component.read();
+        let guard = state.component_guard();
         let compo = guard
             .as_ref()
-            .ok_or_else(|| Error::NotLoaded("Component not loaded".into()))?;
+            .ok_or_else(|| Error::NotLoaded { context: "Component not loaded".into() })?;
 
         let ipxact_component = ipxact::Component::try_from(compo)?;
         quick_xml::se::to_string(&ipxact_component)?
@@ -74,10 +76,10 @@ pub fn export_ipxact_xml(output: &Path, state: Arc<AppState>) -> Result<(), Erro
 
 pub fn export_regvue_json(output: &Path, state: Arc<AppState>) -> Result<(), Error> {
     let json_str = {
-        let guard = state.component.read();
+        let guard = state.component_guard();
         let compo = guard
             .as_ref()
-            .ok_or_else(|| Error::NotLoaded("Component not loaded".into()))?;
+            .ok_or_else(|| Error::NotLoaded { context: "Component not loaded".into() })?;
 
         let regvue_doc = regvue::Document::try_from(compo)?;
         serde_json::to_string_pretty(&regvue_doc)?

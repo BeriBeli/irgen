@@ -11,6 +11,7 @@ pub fn get_window_options(cx: &mut App) -> WindowOptions {
     let bounds = Bounds::centered(None, window_size, cx);
     WindowOptions {
         window_bounds: Some(WindowBounds::Windowed(bounds)),
+        window_min_size: Some(window_size),
         titlebar: Some(TitleBar::title_bar_options()),
         ..Default::default()
     }

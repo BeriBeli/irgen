@@ -1,9 +1,11 @@
 use gpui::*;
+use gpui::prelude::*;
 use gpui_component::{
+    ActiveTheme as _,
     IconName, Sizable as _, TitleBar, WindowExt as _,
-    badge::Badge,
     button::{Button, ButtonVariants as _},
     menu::AppMenuBar,
+    white,
 };
 
 pub struct AppTitleBar {}
@@ -26,13 +28,40 @@ impl Render for AppTitleBar {
             .ghost()
             .on_click(|_, _, cx| cx.open_url("https://github.com/BeriBeli/irgen-gpui"));
 
-        let bell = Badge::new().count(notifications_count).max(99).child(
-            Button::new("bell")
+        let bell = {
+            let bell_button = Button::new("bell")
                 .small()
                 .ghost()
                 .compact()
-                .icon(IconName::Bell),
-        );
+                .icon(IconName::Bell);
+            let count_label = if notifications_count > 99 {
+                "99+".to_string()
+            } else {
+                notifications_count.to_string()
+            };
+
+            div()
+                .relative()
+                .child(bell_button)
+                .when(notifications_count > 0, |this| {
+                    this.child(
+                        div()
+                            .absolute()
+                            .top_0()
+                            .right_0()
+                            .rounded_full()
+                            .bg(cx.theme().red)
+                            .text_color(white())
+                            .border_1()
+                            .border_color(white())
+                            .px_1p5()
+                            .min_w_3p5()
+                            .text_xs()
+                            .line_height(relative(1.))
+                            .child(count_label),
+                    )
+                })
+        };
 
         TitleBar::new()
             .child(
@@ -46,7 +75,8 @@ impl Render for AppTitleBar {
                     .flex()
                     .items_center()
                     .justify_end()
-                    .gap_2()
+                    .gap_3()
+                    .pr_5()
                     .child(github)
                     .child(bell),
             )
