@@ -3,16 +3,15 @@
 
 mod assets;
 mod error;
-mod services;
+mod processing;
 mod state;
-mod window;
-mod workspace;
+mod ui;
 
 use assets::Assets;
-use window::*;
+use ui::window::*;
 
 use gpui::*;
-use workspace::Workspace;
+use ui::workspace::Workspace;
 
 fn main() {
     let application = Application::new().with_assets(Assets);

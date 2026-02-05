@@ -1,4 +1,4 @@
-use super::services::{ipxact, regvue};
+use super::processing::{ipxact, regvue};
 
 /// Unified error type for irgen application
 #[derive(Debug, thiserror::Error)]

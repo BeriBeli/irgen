@@ -8,9 +8,9 @@ use gpui_component::{
     white,
 };
 
-pub struct AppTitleBar {}
+pub struct WorkspaceTitleBar {}
 
-impl AppTitleBar {
+impl WorkspaceTitleBar {
     pub fn new(_window: &mut Window, _cx: &mut Context<Self>) -> Self {
         Self {}
     }
@@ -19,7 +19,7 @@ impl AppTitleBar {
     }
 }
 
-impl Render for AppTitleBar {
+impl Render for WorkspaceTitleBar {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let notifications_count = window.notifications(cx).len();
         let github = Button::new("github")

@@ -1,4 +1,4 @@
-use crate::services::base;
+use crate::processing::base;
 use parking_lot::RwLock;
 use std::path::PathBuf;
 
@@ -83,7 +83,7 @@ impl AppState {
         self.directory.read().clone()
     }
 
-    /// Get component for internal use (services module)
+    /// Get component for internal use (processing module)
     /// Returns a cloned Option to avoid exposing the internal guard type
     #[doc(hidden)]
     pub fn component(&self) -> Option<base::Component> {
