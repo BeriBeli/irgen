@@ -30,7 +30,10 @@ Unicode True
 !endif
 
 Name "${APP_NAME}"
-OutFile "dist\\irgen-gui-windows-setup.exe"
+!ifndef OUTFILE_PATH
+  !define OUTFILE_PATH "dist\\irgen-gui-windows-setup.exe"
+!endif
+OutFile "${OUTFILE_PATH}"
 InstallDir "$PROGRAMFILES64\\${APP_NAME}"
 InstallDirRegKey HKLM "Software\\${APP_NAME}" "InstallDir"
 RequestExecutionLevel admin

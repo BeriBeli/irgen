@@ -94,21 +94,26 @@ try {
   if (-not $SkipNsis) {
     Require-Command makensis "Install NSIS (e.g. choco install nsis -y) and ensure makensis is on PATH."
     $iconPath = Join-Path $PWD "resources\windows\app-icon.ico"
+    $outFilePath = Join-Path $PWD "dist\irgen-gui-windows-setup.exe"
     Write-Host "==> Building NSIS installer"
-    & makensis /DVERSION=$appVersion /DICON_PATH="$iconPath" /DAPP_EXE_PATH="$exePath" resources\windows\installer.nsi
+    & makensis /DVERSION=$appVersion /DICON_PATH="$iconPath" /DAPP_EXE_PATH="$exePath" /DOUTFILE_PATH="$outFilePath" resources\windows\installer.nsi
   }
 
   if (-not $SkipMsi) {
     Require-Command candle.exe "Install WiX Toolset (e.g. choco install wixtoolset -y) and ensure candle.exe is on PATH."
     Require-Command light.exe "Install WiX Toolset (e.g. choco install wixtoolset -y) and ensure light.exe is on PATH."
     Write-Host "==> Building MSI"
-    & candle.exe resources\windows\installer.wxs `
-      -dVersion=$msiVersion `
-      -dProductName=$ProductName `
-      -dManufacturer=$Manufacturer `
-      -dExeName=$ExeName `
-      -out dist\irgen-gui.wixobj
-    & light.exe dist\irgen-gui.wixobj -ext WixUIExtension -out dist\irgen-gui-windows.msi
+    $candleArgs = @(
+      "resources\windows\installer.wxs",
+      "-dVersion=$msiVersion",
+      "-dProductName=$ProductName",
+      "-dManufacturer=$Manufacturer",
+      "-dExeName=$ExeName",
+      "-out", "dist\irgen-gui.wixobj"
+    )
+    & candle.exe @candleArgs
+    $lightArgs = @("dist\irgen-gui.wixobj", "-ext", "WixUIExtension", "-out", "dist\irgen-gui-windows.msi")
+    & light.exe @lightArgs
   }
 
   if (-not $SkipSign) {
