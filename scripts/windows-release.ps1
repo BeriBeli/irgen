@@ -1,5 +1,3 @@
-$ErrorActionPreference = "Stop"
-
 param(
   [switch]$SkipTests,
   [switch]$SkipNsis,
@@ -11,6 +9,8 @@ param(
   [string]$Manufacturer = "BeriBeli",
   [string]$ExeName = "irgen-gui.exe"
 )
+
+$ErrorActionPreference = "Stop"
 
 function Require-Command {
   param([string]$Name, [string]$InstallHint)
@@ -30,10 +30,7 @@ function Get-CargoTargetDir {
 
 function Get-AppVersion {
   try {
-    $version = & python - <<'PY'
-import tomllib
-print(tomllib.load(open("Cargo.toml","rb"))["package"]["version"])
-PY
+    $version = & python -c "import tomllib; print(tomllib.load(open('Cargo.toml','rb'))['package']['version'])"
     if ($LASTEXITCODE -eq 0 -and $version) { return $version.Trim() }
   } catch {}
 
@@ -59,7 +56,13 @@ if (-not $SkipTests) {
 }
 
 Write-Host "==> Building $ExeName ($Configuration)"
-& cargo build --locked --$Configuration --bin irgen-gui
+$buildArgs = @("build", "--locked", "--bin", "irgen-gui")
+if ($Configuration -eq "release") {
+  $buildArgs += "--release"
+} else {
+  $buildArgs += @("--profile", $Configuration)
+}
+& cargo @buildArgs
 
 $targetDir = Get-CargoTargetDir
 $exePath = Join-Path $targetDir "$Configuration\$ExeName"
