@@ -5,33 +5,34 @@ use gpui::*;
 use gpui_component::{
     ActiveTheme as _, Disableable as _,
     button::{Button, ButtonCustomVariant, ButtonVariants as _, DropdownButton},
+    green_500,
     menu::PopupMenuItem,
-    green_500, white,
+    white,
 };
 
 use crate::processing::{export_ipxact_xml, export_regvue_json};
 use crate::state::{AppState, ExportFormat};
 use crate::ui::workspace::actions::save;
 
-#[derive(IntoElement)]
 pub struct WorkspaceFooter {
     app_state: Arc<AppState>,
-    workspace_id: EntityId,
 }
 
 impl WorkspaceFooter {
-    pub fn new(app_state: Arc<AppState>, workspace_id: EntityId) -> Self {
+    pub fn new(_window: &mut Window, _cx: &mut Context<Self>) -> Self {
         Self {
-            app_state,
-            workspace_id,
+            app_state: Arc::new(AppState::new()),
         }
+    }
+    pub fn view(window: &mut Window, cx: &mut App) -> Entity<Self> {
+        cx.new(|cx| Self::new(window, cx))
     }
 }
 
-impl RenderOnce for WorkspaceFooter {
-    fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
+impl Render for WorkspaceFooter {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let app_state = self.app_state.clone();
-        let workspace_id = self.workspace_id;
+        // let workspace_id = self.workspace_id;
 
         let is_selected = app_state.is_file_selected();
         let export_format = app_state.get_export_format();
@@ -72,33 +73,25 @@ impl RenderOnce for WorkspaceFooter {
                                 move |menu, _, _cx| {
                                     let app_state_ipxact = app_state.clone();
                                     let app_state_regvue = app_state.clone();
-                                    let workspace_id = workspace_id;
+                                    // let workspace_id = workspace_id;
                                     menu.item(PopupMenuItem::label("Format"))
                                         .item(PopupMenuItem::separator())
                                         .item(
                                             PopupMenuItem::new("IP-XACT")
-                                                .checked(
-                                                    export_format == ExportFormat::Ipxact,
-                                                )
-                                                .on_click(move |_, _, cx| {
+                                                .checked(export_format == ExportFormat::Ipxact)
+                                                .on_click(move |_, _, _cx| {
                                                     app_state_ipxact
-                                                        .set_export_format(
-                                                            ExportFormat::Ipxact,
-                                                        );
-                                                    cx.notify(workspace_id);
+                                                        .set_export_format(ExportFormat::Ipxact);
+                                                    // cx.notify(workspace_id);
                                                 }),
                                         )
                                         .item(
                                             PopupMenuItem::new("RegVue")
-                                                .checked(
-                                                    export_format == ExportFormat::Regvue,
-                                                )
-                                                .on_click(move |_, _, cx| {
+                                                .checked(export_format == ExportFormat::Regvue)
+                                                .on_click(move |_, _, _cx| {
                                                     app_state_regvue
-                                                        .set_export_format(
-                                                            ExportFormat::Regvue,
-                                                        );
-                                                    cx.notify(workspace_id);
+                                                        .set_export_format(ExportFormat::Regvue);
+                                                    // cx.notify(workspace_id);
                                                 }),
                                         )
                                 }

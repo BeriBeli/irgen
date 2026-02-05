@@ -2,17 +2,19 @@ use gpui::prelude::*;
 use gpui::*;
 use gpui_component::ActiveTheme as _;
 
-#[derive(IntoElement)]
-pub struct WorkspaceHeader;
+pub struct WorkspaceHeader {}
 
 impl WorkspaceHeader {
-    pub fn new() -> Self {
-        Self
+    pub fn new(_window: &mut Window, _cx: &mut Context<Self>) -> Self {
+        Self {}
+    }
+    pub fn view(window: &mut Window, cx: &mut App) -> Entity<Self> {
+        cx.new(|cx| Self::new(window, cx))
     }
 }
 
-impl RenderOnce for WorkspaceHeader {
-    fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
+impl Render for WorkspaceHeader {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         div()
             .id("workspace-header")
             .flex()
@@ -40,7 +42,12 @@ impl RenderOnce for WorkspaceHeader {
                     .flex()
                     .flex_col()
                     .gap(px(2.0))
-                    .child(div().text_2xl().font_weight(FontWeight::SEMIBOLD).child("irgen"))
+                    .child(
+                        div()
+                            .text_2xl()
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .child("irgen"),
+                    )
                     .child(
                         div()
                             .text_sm()

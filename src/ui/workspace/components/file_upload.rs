@@ -106,8 +106,8 @@ impl Render for WorkspaceFileUpload {
             .cursor_pointer()
             .when_else(
                 is_selected,
-                |this| this.child(&self.file_upload_selected),
-                |this| this.child(&self.file_upload_empty),
+                |this| this.child(self.file_upload_selected.clone()),
+                |this| this.child(self.file_upload_empty.clone()),
             )
             .on_click({
                 let app_state = app_state.clone();

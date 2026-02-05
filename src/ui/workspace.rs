@@ -1,26 +1,22 @@
 mod actions;
 mod components;
 
-use components::{WorkspaceTitleBar, WorkspaceLayout};
+use components::{WorkspaceLayout, WorkspaceTitleBar};
 
-use crate::state::AppState;
 use gpui::prelude::*;
 use gpui::*;
 use gpui_component::{ActiveTheme as _, Root};
-use std::sync::Arc;
 
 pub struct Workspace {
     title_bar: Entity<WorkspaceTitleBar>,
-    app_state: Arc<AppState>,
+    layout: Entity<WorkspaceLayout>,
 }
 
 impl Workspace {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let title_bar = WorkspaceTitleBar::view(window, cx);
-
         Self {
-            title_bar,
-            app_state: Arc::new(AppState::new()),
+            title_bar: WorkspaceTitleBar::view(window, cx),
+            layout: WorkspaceLayout::view(window, cx),
         }
     }
 
@@ -41,15 +37,13 @@ impl Render for Workspace {
                 .opacity(0.95)
                 .child(layer)
         });
-        let workspace_id = cx.entity_id();
-        let main = WorkspaceLayout::new(self.app_state.clone(), workspace_id);
 
         let content = div()
             .id("workspace-content")
             .flex()
             .flex_grow()
             .bg(cx.theme().background)
-            .child(main);
+            .child(self.layout.clone());
 
         div()
             .flex()

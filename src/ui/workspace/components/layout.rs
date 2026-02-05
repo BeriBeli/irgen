@@ -1,30 +1,30 @@
-use std::sync::Arc;
-
 use gpui::prelude::*;
 use gpui::*;
 use gpui_component::ActiveTheme as _;
 
-use crate::state::AppState;
-
 use super::{WorkspaceFileUpload, WorkspaceFooter, WorkspaceHeader};
 
-#[derive(IntoElement)]
 pub struct WorkspaceLayout {
-    app_state: Arc<AppState>,
-    workspace_id: EntityId,
+    footer: Entity<WorkspaceFooter>,
+    header: Entity<WorkspaceHeader>,
+    file_upload: Entity<WorkspaceFileUpload>,
 }
 
 impl WorkspaceLayout {
-    pub fn new(app_state: Arc<AppState>, workspace_id: EntityId) -> Self {
+    pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         Self {
-            app_state,
-            workspace_id,
+            footer: WorkspaceFooter::view(window, cx),
+            header: WorkspaceHeader::view(window, cx),
+            file_upload: WorkspaceFileUpload::view(window, cx),
         }
+    }
+    pub fn view(window: &mut Window, cx: &mut App) -> Entity<Self> {
+        cx.new(|cx| Self::new(window, cx))
     }
 }
 
-impl RenderOnce for WorkspaceLayout {
-    fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
+impl Render for WorkspaceLayout {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         div()
             .id("workspace-main")
             .bg(cx.theme().muted)
@@ -35,7 +35,7 @@ impl RenderOnce for WorkspaceLayout {
             .w_full()
             .px_8()
             .py_6()
-            .child(WorkspaceHeader::new())
+            .child(self.header.clone())
             .child(
                 div()
                     .id("workspace-body")
@@ -44,8 +44,8 @@ impl RenderOnce for WorkspaceLayout {
                     .items_center()
                     .justify_center()
                     .flex_grow()
-                    .child(WorkspaceFileUpload::view()),
+                    .child(self.file_upload.clone()),
             )
-            .child(WorkspaceFooter::new(self.app_state, self.workspace_id))
+            .child(self.footer.clone())
     }
 }

@@ -1,5 +1,4 @@
 use crate::processing::base;
-use gpui::EntityId;
 use parking_lot::RwLock;
 use std::path::PathBuf;
 
@@ -24,7 +23,6 @@ impl AppState {
         Self {
             component: RwLock::new(None),
             directory: RwLock::new(None),
-            workspace_id: RwLock::new(None),
             selected_file: RwLock::new(None),
             selected_file_size: RwLock::new(None),
             sheet_count: RwLock::new(None),

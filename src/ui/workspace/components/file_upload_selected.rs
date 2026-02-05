@@ -30,7 +30,6 @@ impl WorkspaceFileUploadSelected {
 impl Render for WorkspaceFileUploadSelected {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let app_state = self.app_state.clone();
-        let is_selected = app_state.is_file_selected();
         let selected_file = app_state.get_selected_file();
         let selected_name = selected_file
             .as_ref()
