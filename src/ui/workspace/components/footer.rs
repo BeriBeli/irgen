@@ -4,8 +4,9 @@ use gpui::prelude::*;
 use gpui::*;
 use gpui_component::{
     ActiveTheme as _, Disableable as _,
-    button::{Button, ButtonVariants as _, DropdownButton},
+    button::{Button, ButtonCustomVariant, ButtonVariants as _, DropdownButton},
     menu::PopupMenuItem,
+    green_500, white,
 };
 
 use crate::processing::{export_ipxact_xml, export_regvue_json};
@@ -43,104 +44,97 @@ impl RenderOnce for WorkspaceFooter {
             .id("workspace-footer")
             .flex()
             .items_center()
-            .justify_center()
-            .pt_4()
+            .justify_between()
+            .pt(px(24.0))
+            .w_full()
             .child(
                 div()
                     .flex()
                     .items_center()
-                    .justify_between()
-                    .gap_3()
-                    .w_full()
-                    .max_w(px(560.0))
-                    .px_4()
-                    .py_2()
-                    .rounded(cx.theme().radius)
+                    .px_2()
+                    .py_1()
+                    .rounded(px(6.0))
                     .border_1()
                     .border_color(cx.theme().border)
-                    .bg(cx.theme().background)
+                    .bg(cx.theme().muted)
                     .child(
-                        div()
-                            .flex()
-                            .items_center()
-                            .px_2()
-                            .py_1()
-                            .rounded(px(6.0))
-                            .border_1()
-                            .border_color(cx.theme().border)
-                            .bg(cx.theme().muted)
-                            .child(
-                                DropdownButton::new("export-format")
-                                    .button(
-                                        Button::new("export-format-label")
-                                            .label(export_label)
-                                            .items_center(),
-                                    )
-                                    .ghost()
-                                    .compact()
-                                    .disabled(!is_selected)
-                                    .dropdown_menu({
-                                        let app_state = app_state.clone();
-                                        move |menu, _, _cx| {
-                                            let app_state_ipxact = app_state.clone();
-                                            let app_state_regvue = app_state.clone();
-                                            let workspace_id = workspace_id;
-                                            menu.item(PopupMenuItem::label("Format"))
-                                                .item(PopupMenuItem::separator())
-                                                .item(
-                                                    PopupMenuItem::new("IP-XACT")
-                                                        .checked(
-                                                            export_format
-                                                                == ExportFormat::Ipxact,
-                                                        )
-                                                        .on_click(move |_, _, cx| {
-                                                            app_state_ipxact
-                                                                .set_export_format(
-                                                                    ExportFormat::Ipxact,
-                                                                );
-                                                            cx.notify(workspace_id);
-                                                        }),
-                                                )
-                                                .item(
-                                                    PopupMenuItem::new("RegVue")
-                                                        .checked(
-                                                            export_format
-                                                                == ExportFormat::Regvue,
-                                                        )
-                                                        .on_click(move |_, _, cx| {
-                                                            app_state_regvue
-                                                                .set_export_format(
-                                                                    ExportFormat::Regvue,
-                                                                );
-                                                            cx.notify(workspace_id);
-                                                        }),
-                                                )
-                                        }
-                                    }),
-                            ),
-                    )
-                    .child({
-                        let button = Button::new("export-button")
-                            .items_center()
-                            .label("Export")
+                        DropdownButton::new("export-format")
+                            .button(
+                                Button::new("export-format-label")
+                                    .label(export_label)
+                                    .items_center(),
+                            )
+                            .ghost()
                             .compact()
                             .disabled(!is_selected)
-                            .on_click({
+                            .dropdown_menu({
                                 let app_state = app_state.clone();
-                                move |_, window, cx| {
-                                    let export_fn = match app_state.get_export_format() {
-                                        ExportFormat::Ipxact => export_ipxact_xml,
-                                        ExportFormat::Regvue => export_regvue_json,
-                                    };
-                                    save(app_state.clone(), export_fn, window, cx)
+                                move |menu, _, _cx| {
+                                    let app_state_ipxact = app_state.clone();
+                                    let app_state_regvue = app_state.clone();
+                                    let workspace_id = workspace_id;
+                                    menu.item(PopupMenuItem::label("Format"))
+                                        .item(PopupMenuItem::separator())
+                                        .item(
+                                            PopupMenuItem::new("IP-XACT")
+                                                .checked(
+                                                    export_format == ExportFormat::Ipxact,
+                                                )
+                                                .on_click(move |_, _, cx| {
+                                                    app_state_ipxact
+                                                        .set_export_format(
+                                                            ExportFormat::Ipxact,
+                                                        );
+                                                    cx.notify(workspace_id);
+                                                }),
+                                        )
+                                        .item(
+                                            PopupMenuItem::new("RegVue")
+                                                .checked(
+                                                    export_format == ExportFormat::Regvue,
+                                                )
+                                                .on_click(move |_, _, cx| {
+                                                    app_state_regvue
+                                                        .set_export_format(
+                                                            ExportFormat::Regvue,
+                                                        );
+                                                    cx.notify(workspace_id);
+                                                }),
+                                        )
                                 }
-                            });
-                        if is_selected {
-                            button.primary().shadow_md().cursor_pointer()
-                        } else {
-                            button.outline()
-                        }
-                    }),
+                            }),
+                    ),
             )
+            .child({
+                let button = Button::new("export-button")
+                    .items_center()
+                    .label("Export")
+                    .compact()
+                    .disabled(!is_selected)
+                    .on_click({
+                        let app_state = app_state.clone();
+                        move |_, window, cx| {
+                            let export_fn = match app_state.get_export_format() {
+                                ExportFormat::Ipxact => export_ipxact_xml,
+                                ExportFormat::Regvue => export_regvue_json,
+                            };
+                            save(app_state.clone(), export_fn, window, cx)
+                        }
+                    });
+                if is_selected {
+                    button
+                        .custom(
+                            ButtonCustomVariant::new(cx)
+                                .color(green_500())
+                                .foreground(white())
+                                .hover(green_500().opacity(0.9))
+                                .active(green_500().opacity(0.8)),
+                        )
+                        .shadow_md()
+                        .cursor_pointer()
+                } else {
+                    button.outline()
+                }
+            })
     }
 }
