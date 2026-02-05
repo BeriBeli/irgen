@@ -127,12 +127,56 @@ jobs:
         id: dmg
         run: |
           mkdir -p dist
-          chmod +x scripts/macos-dmg.sh
           DMG_PATH="dist/Irgen-${APP_ARCH}.dmg"
-          scripts/macos-dmg.sh \
-            --app "${{ steps.app.outputs.app_path }}" \
-            --dmg "$DMG_PATH" \
-            --volname "${{ steps.app.outputs.app_name }}"
+          APP_PATH="${{ steps.app.outputs.app_path }}"
+          VOL_NAME="${{ steps.app.outputs.app_name }}"
+
+          workdir="$(mktemp -d)"
+          stage="$workdir/stage"
+          mkdir -p "$stage"
+          cp -R "$APP_PATH" "$stage/"
+          ln -s /Applications "$stage/Applications"
+
+          temp_dmg="$workdir/temp.dmg"
+          rm -f "$DMG_PATH"
+
+          hdiutil create -volname "$VOL_NAME" -fs HFS+ -srcfolder "$stage" -format UDRW "$temp_dmg" >/dev/null
+          attach_out="$(hdiutil attach -readwrite -noverify -noautoopen "$temp_dmg")"
+          device="$(echo "$attach_out" | grep -m 1 '^/dev/' | awk '{print $1}')"
+          mount_point="$(echo "$attach_out" | grep -m 1 '/Volumes/' | awk '{print $3}')"
+
+          if [ -z "$device" ] || [ -z "$mount_point" ]; then
+            echo "Failed to mount DMG" >&2
+            hdiutil detach "$device" >/dev/null 2>&1 || true
+            exit 1
+          fi
+
+          app_name="$(basename "$APP_PATH")"
+          osascript <<EOF
+          tell application "Finder"
+            tell disk "$VOL_NAME"
+              open
+              set current view of container window to icon view
+              set toolbar visible of container window to false
+              set statusbar visible of container window to false
+              set the bounds of container window to {200, 200, 720, 520}
+              set viewOptions to the icon view options of container window
+              set arrangement of viewOptions to not arranged
+              set icon size of viewOptions to 128
+              set position of item "$app_name" of container window to {160, 200}
+              set position of item "Applications" of container window to {460, 200}
+              close
+              open
+              update without registering applications
+              delay 1
+            end tell
+          end tell
+          EOF
+
+          sync
+          hdiutil detach "$device" >/dev/null
+          hdiutil convert "$temp_dmg" -format UDZO -o "$DMG_PATH" >/dev/null
+          rm -rf "$workdir"
           echo "dmg_path=$DMG_PATH" >> "$GITHUB_OUTPUT"
       - name: Notarize DMG (macOS)
         if: runner.os == 'macOS' && env.MACOS_CERT_P12 != '' && env.APPLE_ID != ''
