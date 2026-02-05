@@ -136,19 +136,30 @@ jobs:
         run: |
           mkdir -p dist
           ditto -c -k --keepParent "${{ steps.app.outputs.app_path }}" dist/irgen-gui-macos.zip
-      - name: Package (Windows)
+      - name: Stage Windows exe
         if: runner.os == 'Windows'
         shell: pwsh
+        id: winpaths
         run: |
           New-Item -ItemType Directory -Force -Path dist | Out-Null
-          Copy-Item target\release\irgen-gui.exe dist\irgen-gui.exe
-          if (-not (Test-Path "dist\irgen-gui.exe")) {
+          $targetDir = python -c "import json,subprocess; print(json.loads(subprocess.check_output(['cargo','metadata','--format-version','1','--no-deps']))['target_directory'])"
+          $exePath = Join-Path $targetDir "release\irgen-gui.exe"
+          if (-not (Test-Path $exePath)) {
+            Write-Host "irgen-gui.exe not found at $exePath. Searching under $targetDir..."
+            $found = Get-ChildItem $targetDir -Recurse -Filter "irgen-gui.exe" -File -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($found) { $exePath = $found.FullName }
+          }
+          if (-not (Test-Path $exePath)) {
             Write-Host "dist contents:"
             Get-ChildItem dist -Force
-            Write-Host "target\\release exe list:"
-            Get-ChildItem target\release -Filter *.exe -Force
-            throw "dist\\irgen-gui.exe not found"
+            Write-Host "target release exe list:"
+            Get-ChildItem (Join-Path $targetDir "release") -Filter *.exe -Force -ErrorAction SilentlyContinue
+            throw "irgen-gui.exe not found under $targetDir"
           }
+          Copy-Item $exePath dist\irgen-gui.exe -Force
+          $nsisOut = Join-Path $PWD "dist\irgen-gui-windows-setup.exe"
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "exe_path=$exePath"
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "nsis_out=$nsisOut"
       - name: Read app version (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
@@ -174,7 +185,7 @@ jobs:
         shell: pwsh
         run: |
           $iconPath = Join-Path $PWD "resources\windows\app-icon.ico"
-          makensis /DVERSION=$env:APP_VERSION /DICON_PATH="$iconPath" resources\windows\installer.nsi
+          makensis /DVERSION=$env:APP_VERSION /DICON_PATH="$iconPath" /DAPP_EXE_PATH="${{ steps.winpaths.outputs.exe_path }}" /DOUTFILE_PATH="${{ steps.winpaths.outputs.nsis_out }}" resources\windows\installer.nsi
       - name: Install WiX Toolset (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
@@ -186,13 +197,17 @@ jobs:
           $productName = "irgen"
           $manufacturer = "BeriBeli"
           $exeName = "irgen-gui.exe"
-          candle.exe resources\windows\installer.wxs `
-            -dVersion=$env:APP_VERSION_MSI `
-            -dProductName=$productName `
-            -dManufacturer=$manufacturer `
-            -dExeName=$exeName `
-            -out dist\irgen-gui.wixobj
-          light.exe dist\irgen-gui.wixobj -ext WixUIExtension -out dist\irgen-gui-windows.msi
+          $candleArgs = @(
+            "resources\windows\installer.wxs",
+            "-dVersion=$env:APP_VERSION_MSI",
+            "-dProductName=$productName",
+            "-dManufacturer=$manufacturer",
+            "-dExeName=$exeName",
+            "-out", "dist\irgen-gui.wixobj"
+          )
+          candle.exe @candleArgs
+          $lightArgs = @("dist\irgen-gui.wixobj", "-ext", "WixUIExtension", "-out", "dist\irgen-gui-windows.msi")
+          light.exe @lightArgs
       - name: Sign Windows artifacts
         if: runner.os == 'Windows' && env.WINDOWS_CERT_PFX != ''
         shell: pwsh
