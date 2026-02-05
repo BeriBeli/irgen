@@ -155,7 +155,13 @@ jobs:
       - name: Install NSIS (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
-        run: choco install nsis -y
+        run: |
+          choco install nsis -y
+          $nsisPath = "${env:ProgramFiles(x86)}\NSIS"
+          if (-not (Test-Path $nsisPath)) {
+            $nsisPath = "${env:ProgramFiles}\NSIS"
+          }
+          echo "$nsisPath\Bin" | Out-File -FilePath $env:GITHUB_PATH -Append
       - name: Build installer (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
