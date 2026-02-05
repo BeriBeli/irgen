@@ -95,7 +95,7 @@ try {
     Require-Command makensis "Install NSIS (e.g. choco install nsis -y) and ensure makensis is on PATH."
     $iconPath = Join-Path $PWD "resources\windows\app-icon.ico"
     Write-Host "==> Building NSIS installer"
-    & makensis /DVERSION=$appVersion /DICON_PATH="$iconPath" resources\windows\installer.nsi
+    & makensis /DVERSION=$appVersion /DICON_PATH="$iconPath" /DAPP_EXE_PATH="$exePath" resources\windows\installer.nsi
   }
 
   if (-not $SkipMsi) {

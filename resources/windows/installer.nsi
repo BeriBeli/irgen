@@ -22,6 +22,13 @@ Unicode True
 !define MUI_FINISHPAGE_RUN "$INSTDIR\\${APP_EXE}"
 !define MUI_FINISHPAGE_RUN_TEXT "Launch ${APP_NAME}"
 
+; Allow overriding the source exe path (useful for scripted builds).
+!ifdef APP_EXE_PATH
+  !define APP_EXE_SOURCE "${APP_EXE_PATH}"
+!else
+  !define APP_EXE_SOURCE "dist\\${APP_EXE}"
+!endif
+
 Name "${APP_NAME}"
 OutFile "dist\\irgen-gui-windows-setup.exe"
 InstallDir "$PROGRAMFILES64\\${APP_NAME}"
@@ -48,7 +55,7 @@ VIAddVersionKey "LegalCopyright" "Copyright 2025 BeriBeli"
 
 Section "Install"
   SetOutPath "$INSTDIR"
-  File "dist\\${APP_EXE}"
+  File "${APP_EXE_SOURCE}"
   WriteRegStr HKLM "Software\\${APP_NAME}" "InstallDir" "$INSTDIR"
   WriteUninstaller "$INSTDIR\\Uninstall.exe"
   CreateDirectory "$SMPROGRAMS\\${APP_NAME}"
