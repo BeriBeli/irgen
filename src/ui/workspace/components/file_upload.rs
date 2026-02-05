@@ -1,8 +1,8 @@
-use std::path::Path;
-use std::sync::Arc;
 use super::file_upload_empty::WorkspaceFileUploadEmpty;
 use super::file_upload_selected::WorkspaceFileUploadSelected;
 use super::style::file_upload_container_base;
+use std::path::Path;
+use std::sync::Arc;
 
 use gpui::prelude::*;
 use gpui::*;
@@ -12,41 +12,32 @@ use crate::processing::load_excel;
 use crate::state::AppState;
 use crate::ui::workspace::actions::open;
 
-#[derive(IntoElement)]
 pub struct WorkspaceFileUpload {
+    file_upload_empty: Entity<WorkspaceFileUploadEmpty>,
+    file_upload_selected: Entity<WorkspaceFileUploadSelected>,
     app_state: Arc<AppState>,
-    workspace_id: EntityId,
 }
 
 impl WorkspaceFileUpload {
-    pub fn new(app_state: Arc<AppState>, workspace_id: EntityId) -> Self {
+    pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+        let file_upload_empty = WorkspaceFileUploadEmpty::view(window, cx);
+        let file_upload_selected = WorkspaceFileUploadSelected::view(window, cx);
         Self {
-            app_state,
-            workspace_id,
+            file_upload_empty,
+            file_upload_selected,
+            app_state: Arc::new(AppState::new()),
         }
+    }
+    pub fn view(window: &mut Window, cx: &mut App) -> Entity<Self> {
+        cx.new(|cx| Self::new(window, cx))
     }
 }
 
-impl RenderOnce for WorkspaceFileUpload {
-    fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
+impl Render for WorkspaceFileUpload {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let app_state = self.app_state.clone();
-        let workspace_id = self.workspace_id;
 
         let is_selected = app_state.is_file_selected();
-        let selected_file = app_state.get_selected_file();
-        let selected_name = selected_file
-            .as_ref()
-            .and_then(|p| p.file_name())
-            .map(|p| p.to_string_lossy().into_owned())
-            .unwrap_or_default();
-        let file_size = app_state
-            .get_selected_file_size()
-            .map(format_bytes)
-            .unwrap_or_default();
-        let sheet_count = app_state.get_sheet_count();
-        let register_count = app_state
-            .component()
-            .map(|compo| compo.blks().iter().map(|blk| blk.regs().len()).sum::<usize>());
 
         file_upload_container_base(cx, is_selected)
             .drag_over::<ExternalPaths>(|style, _, _, cx| {
@@ -80,7 +71,7 @@ impl RenderOnce for WorkspaceFileUpload {
                     }
                     let handle = window.window_handle();
                     let app_state = app_state.clone();
-                    let workspace_id = workspace_id;
+                    // let workspace_id = workspace_id;
                     cx.spawn(async move |cx| {
                         let result = load_excel(&path, app_state);
                         let _ = cx.update_window(handle, |_, window, cx| {
@@ -106,47 +97,22 @@ impl RenderOnce for WorkspaceFileUpload {
                                     );
                                 }
                             }
-                            cx.notify(workspace_id);
+                            // cx.notify(workspace_id);
                         });
                     })
                     .detach();
                 }
             })
             .cursor_pointer()
-            .child(if is_selected {
-                WorkspaceFileUploadSelected::new(
-                    app_state.clone(),
-                    workspace_id,
-                    selected_name,
-                    file_size,
-                    sheet_count,
-                    register_count,
-                )
-                .into_any_element()
-            } else {
-                WorkspaceFileUploadEmpty::new().into_any_element()
-            })
+            .when_else(
+                is_selected,
+                |this| this.child(&self.file_upload_selected),
+                |this| this.child(&self.file_upload_empty),
+            )
             .on_click({
                 let app_state = app_state.clone();
                 move |_, window, cx| open(app_state.clone(), load_excel, window, cx)
             })
-    }
-}
-
-fn format_bytes(bytes: u64) -> String {
-    const KB: f64 = 1024.0;
-    const MB: f64 = 1024.0 * 1024.0;
-    const GB: f64 = 1024.0 * 1024.0 * 1024.0;
-
-    let bytes_f = bytes as f64;
-    if bytes_f >= GB {
-        format!("{:.1} GB", bytes_f / GB)
-    } else if bytes_f >= MB {
-        format!("{:.1} MB", bytes_f / MB)
-    } else if bytes_f >= KB {
-        format!("{:.1} KB", bytes_f / KB)
-    } else {
-        format!("{} B", bytes)
     }
 }
 

@@ -166,7 +166,8 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          makensis /DVERSION=$env:APP_VERSION resources\windows\installer.nsi
+          $iconPath = Join-Path $PWD "resources\windows\app-icon.ico"
+          makensis /DVERSION=$env:APP_VERSION /DICON_PATH="$iconPath" resources\windows\installer.nsi
       - name: Install WiX Toolset (Windows)
         if: runner.os == 'Windows'
         shell: pwsh

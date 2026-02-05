@@ -12,44 +12,43 @@ use crate::state::AppState;
 
 use super::style::{file_info_card, info_pill};
 
-#[derive(IntoElement)]
 pub struct WorkspaceFileUploadSelected {
     app_state: Arc<AppState>,
-    workspace_id: EntityId,
-    selected_name: String,
-    file_size: String,
-    sheet_count: Option<usize>,
-    register_count: Option<usize>,
 }
 
 impl WorkspaceFileUploadSelected {
-    pub fn new(
-        app_state: Arc<AppState>,
-        workspace_id: EntityId,
-        selected_name: String,
-        file_size: String,
-        sheet_count: Option<usize>,
-        register_count: Option<usize>,
-    ) -> Self {
+    pub fn new(_window: &mut Window, _cx: &mut Context<Self>) -> Self {
         Self {
-            app_state,
-            workspace_id,
-            selected_name,
-            file_size,
-            sheet_count,
-            register_count,
+            app_state: Arc::new(AppState::new()),
         }
+    }
+    pub fn view(window: &mut Window, cx: &mut App) -> Entity<Self> {
+        cx.new(|cx| Self::new(window, cx))
     }
 }
 
-impl RenderOnce for WorkspaceFileUploadSelected {
-    fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
+impl Render for WorkspaceFileUploadSelected {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let app_state = self.app_state.clone();
-        let workspace_id = self.workspace_id;
-        let selected_name = self.selected_name;
-        let file_size = self.file_size;
-        let sheet_count = self.sheet_count;
-        let register_count = self.register_count;
+        let is_selected = app_state.is_file_selected();
+        let selected_file = app_state.get_selected_file();
+        let selected_name = selected_file
+            .as_ref()
+            .and_then(|p| p.file_name())
+            .map(|p| p.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        let file_size = app_state
+            .get_selected_file_size()
+            .map(format_bytes)
+            .unwrap_or_default();
+        let sheet_count = app_state.get_sheet_count();
+        let register_count = app_state.component().map(|compo| {
+            compo
+                .blks()
+                .iter()
+                .map(|blk| blk.regs().len())
+                .sum::<usize>()
+        });
 
         let delete_button = Button::new("clear-selection")
             .custom(
@@ -65,7 +64,7 @@ impl RenderOnce for WorkspaceFileUploadSelected {
                 move |_, _, cx| {
                     cx.stop_propagation();
                     app_state.clear_selection();
-                    cx.notify(workspace_id);
+                    // cx.notify(workspace_id);
                 }
             });
 
@@ -140,17 +139,31 @@ impl RenderOnce for WorkspaceFileUploadSelected {
                     }),
             );
 
-        file_info_card(cx)
-            .relative()
-            .child(content)
-            .child(
-                div()
-                    .absolute()
-                    .top_0()
-                    .right_0()
-                    .mt(px(10.0))
-                    .mr(px(10.0))
-                    .child(delete_button),
-            )
+        file_info_card(cx).relative().child(content).child(
+            div()
+                .absolute()
+                .top_0()
+                .right_0()
+                .mt(px(10.0))
+                .mr(px(10.0))
+                .child(delete_button),
+        )
+    }
+}
+
+fn format_bytes(bytes: u64) -> String {
+    const KB: f64 = 1024.0;
+    const MB: f64 = 1024.0 * 1024.0;
+    const GB: f64 = 1024.0 * 1024.0 * 1024.0;
+
+    let bytes_f = bytes as f64;
+    if bytes_f >= GB {
+        format!("{:.1} GB", bytes_f / GB)
+    } else if bytes_f >= MB {
+        format!("{:.1} MB", bytes_f / MB)
+    } else if bytes_f >= KB {
+        format!("{:.1} KB", bytes_f / KB)
+    } else {
+        format!("{} B", bytes)
     }
 }

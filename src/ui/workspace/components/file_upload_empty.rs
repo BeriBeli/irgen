@@ -4,17 +4,19 @@ use gpui::prelude::*;
 use gpui::*;
 use gpui_component::{ActiveTheme as _, green_500};
 
-#[derive(IntoElement)]
-pub struct WorkspaceFileUploadEmpty;
+pub struct WorkspaceFileUploadEmpty {}
 
 impl WorkspaceFileUploadEmpty {
-    pub fn new() -> Self {
-        Self
+    pub fn new(_window: &mut Window, _cx: &mut Context<Self>) -> Self {
+        Self {}
+    }
+    pub fn view(window: &mut Window, cx: &mut App) -> Entity<Self> {
+        cx.new(|cx| Self::new(window, cx))
     }
 }
 
-impl RenderOnce for WorkspaceFileUploadEmpty {
-    fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
+impl Render for WorkspaceFileUploadEmpty {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let upload_icon = svg()
             .path("icons/excel.svg")
             .w_12()

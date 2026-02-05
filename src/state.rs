@@ -1,4 +1,5 @@
 use crate::processing::base;
+use gpui::EntityId;
 use parking_lot::RwLock;
 use std::path::PathBuf;
 
@@ -23,6 +24,7 @@ impl AppState {
         Self {
             component: RwLock::new(None),
             directory: RwLock::new(None),
+            workspace_id: RwLock::new(None),
             selected_file: RwLock::new(None),
             selected_file_size: RwLock::new(None),
             sheet_count: RwLock::new(None),
@@ -31,12 +33,7 @@ impl AppState {
     }
 
     /// Load component and related info atomically
-    pub fn load_component(
-        &self,
-        compo: base::Component,
-        dir: PathBuf,
-        file: PathBuf,
-    ) {
+    pub fn load_component(&self, compo: base::Component, dir: PathBuf, file: PathBuf) {
         *self.component.write() = Some(compo);
         *self.directory.write() = Some(dir);
         *self.selected_file.write() = Some(file);

@@ -11,8 +11,11 @@ Unicode True
 !define VERSION4 "${VERSION}.0"
 
 !define MUI_ABORTWARNING
-!define MUI_ICON "resources\\windows\\app-icon.ico"
-!define MUI_UNICON "resources\\windows\\app-icon.ico"
+!ifndef ICON_PATH
+  !define ICON_PATH "resources\\windows\\app-icon.ico"
+!endif
+!define MUI_ICON "${ICON_PATH}"
+!define MUI_UNICON "${ICON_PATH}"
 !define MUI_FINISHPAGE_RUN "$INSTDIR\\${APP_EXE}"
 !define MUI_FINISHPAGE_RUN_TEXT "Launch ${APP_NAME}"
 

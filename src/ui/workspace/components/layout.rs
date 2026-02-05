@@ -44,10 +44,7 @@ impl RenderOnce for WorkspaceLayout {
                     .items_center()
                     .justify_center()
                     .flex_grow()
-                    .child(WorkspaceFileUpload::new(
-                        self.app_state.clone(),
-                        self.workspace_id,
-                    )),
+                    .child(WorkspaceFileUpload::view()),
             )
             .child(WorkspaceFooter::new(self.app_state, self.workspace_id))
     }
