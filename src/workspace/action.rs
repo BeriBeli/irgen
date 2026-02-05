@@ -18,8 +18,8 @@ fn send_notification(
     if let Err(e) = cx.update_window(handle, |_, window, cx| {
         window.push_notification((notification_type, message.into()), cx);
     }) {
-        // Log error silently - notification failures are non-critical
-        let _ = e;
+        // Log error - notification failures are non-critical but useful for debugging
+        eprintln!("[DEBUG] Failed to show notification: {}", e);
     }
 }
 

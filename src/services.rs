@@ -5,7 +5,7 @@ mod schema;
 use crate::error::Error;
 use std::collections::HashMap;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use calamine::{Reader, Xlsx, open_workbook};
@@ -18,7 +18,9 @@ use schema::base::{df_to_blks, df_to_compo, df_to_regs};
 pub use schema::{base, ipxact, regvue};
 
 pub fn load_excel(input: &Path, state: Arc<AppState>) -> Result<(), Error> {
-    let directory = input.parent().unwrap_or_else(|| Path::new("")).to_path_buf();
+    let directory = input.parent()
+        .map(|p| p.to_path_buf())
+        .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
     let file = input.to_path_buf();
     let file_size = fs::metadata(input).map(|m| m.len()).ok();
     let mut wb: Xlsx<_> = open_workbook(input)?;
@@ -59,12 +61,11 @@ pub fn load_excel(input: &Path, state: Arc<AppState>) -> Result<(), Error> {
 
 pub fn export_ipxact_xml(output: &Path, state: Arc<AppState>) -> Result<(), Error> {
     let xml_str = {
-        let guard = state.component_guard();
-        let compo = guard
-            .as_ref()
+        let compo = state
+            .component()
             .ok_or_else(|| Error::NotLoaded { context: "Component not loaded".into() })?;
 
-        let ipxact_component = ipxact::Component::try_from(compo)?;
+        let ipxact_component = ipxact::Component::try_from(&compo)?;
         quick_xml::se::to_string(&ipxact_component)?
     };
 
@@ -76,12 +77,11 @@ pub fn export_ipxact_xml(output: &Path, state: Arc<AppState>) -> Result<(), Erro
 
 pub fn export_regvue_json(output: &Path, state: Arc<AppState>) -> Result<(), Error> {
     let json_str = {
-        let guard = state.component_guard();
-        let compo = guard
-            .as_ref()
+        let compo = state
+            .component()
             .ok_or_else(|| Error::NotLoaded { context: "Component not loaded".into() })?;
 
-        let regvue_doc = regvue::Document::try_from(compo)?;
+        let regvue_doc = regvue::Document::try_from(&compo)?;
         serde_json::to_string_pretty(&regvue_doc)?
     };
 

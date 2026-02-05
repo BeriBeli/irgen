@@ -62,7 +62,7 @@ jobs:
         run: cargo install cargo-bundle --locked
       - name: Bundle app (macOS)
         if: runner.os == 'macOS'
-        run: cargo bundle --release --locked
+        run: cargo bundle --release
       - name: Locate app bundle (macOS)
         if: runner.os == 'macOS'
         id: app
@@ -149,9 +149,9 @@ jobs:
           $version = python -c "import tomllib; print(tomllib.load(open('Cargo.toml','rb'))['package']['version'])"
           $parts = $version.Split('.')
           while ($parts.Count -lt 3) { $parts += '0' }
-          $msiVersion = \"$($parts[0]).$($parts[1]).$($parts[2])\"
-          Add-Content -Path $env:GITHUB_ENV -Value \"APP_VERSION=$version\"
-          Add-Content -Path $env:GITHUB_ENV -Value \"APP_VERSION_MSI=$msiVersion\"
+          $msiVersion = "$($parts[0]).$($parts[1]).$($parts[2])"
+          Add-Content -Path $env:GITHUB_ENV -Value "APP_VERSION=$version"
+          Add-Content -Path $env:GITHUB_ENV -Value "APP_VERSION_MSI=$msiVersion"
       - name: Install NSIS (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
@@ -192,7 +192,7 @@ jobs:
           }
           if (-not $signtool) { throw "signtool.exe not found" }
           $timestamp = "http://timestamp.digicert.com"
-          $files = @(\"dist\\irgen-gui.exe\", \"dist\\irgen-gui-windows-setup.exe\", \"dist\\irgen-gui-windows.msi\")
+          $files = @("dist\irgen-gui.exe", "dist\irgen-gui-windows-setup.exe", "dist\irgen-gui-windows.msi")
           foreach ($file in $files) {
             if (Test-Path $file) {
               & $signtool sign /fd SHA256 /td SHA256 /tr $timestamp /f $pfxPath /p $env:WINDOWS_CERT_PASSWORD $file

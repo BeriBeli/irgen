@@ -32,7 +32,7 @@ fn main() {
 
     // Windows resource compilation (icon, metadata)
     #[cfg(target_os = "windows")]
-    if target_os == "windows" {
+    {
         #[cfg(target_env = "msvc")]
         {
             // Increase stack size to avoid stack overflow in some cases
@@ -46,7 +46,11 @@ fn main() {
         println!("cargo:rerun-if-changed={}", icon.display());
 
         let mut res = winresource::WindowsResource::new();
-        res.set_icon(icon.to_str().unwrap());
+        if let Some(icon_str) = icon.to_str() {
+            res.set_icon(icon_str);
+        } else {
+            eprintln!("Warning: Icon path contains invalid Unicode, skipping icon");
+        }
         res.set("FileDescription", "irgen");
         res.set("ProductName", "irgen");
 

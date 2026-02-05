@@ -2,12 +2,20 @@ use crate::services::base;
 use parking_lot::RwLock;
 use std::path::PathBuf;
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Default)]
+pub enum ExportFormat {
+    #[default]
+    Ipxact,
+    Regvue,
+}
+
 pub struct AppState {
     component: RwLock<Option<base::Component>>,
     directory: RwLock<Option<PathBuf>>,
     selected_file: RwLock<Option<PathBuf>>,
     selected_file_size: RwLock<Option<u64>>,
     sheet_count: RwLock<Option<usize>>,
+    export_format: RwLock<ExportFormat>,
 }
 
 impl AppState {
@@ -18,6 +26,7 @@ impl AppState {
             selected_file: RwLock::new(None),
             selected_file_size: RwLock::new(None),
             sheet_count: RwLock::new(None),
+            export_format: RwLock::new(ExportFormat::default()),
         }
     }
 
@@ -59,15 +68,26 @@ impl AppState {
         *self.sheet_count.read()
     }
 
+    /// Get the selected export format.
+    pub fn get_export_format(&self) -> ExportFormat {
+        *self.export_format.read()
+    }
+
+    /// Set the export format.
+    pub fn set_export_format(&self, format: ExportFormat) {
+        *self.export_format.write() = format;
+    }
+
     /// Get the directory path
     pub fn get_directory(&self) -> Option<PathBuf> {
         self.directory.read().clone()
     }
 
-    /// Get component guard for internal use (services module)
+    /// Get component for internal use (services module)
+    /// Returns a cloned Option to avoid exposing the internal guard type
     #[doc(hidden)]
-    pub fn component_guard(&self) -> parking_lot::RwLockReadGuard<'_, Option<base::Component>> {
-        self.component.read()
+    pub fn component(&self) -> Option<base::Component> {
+        self.component.read().clone()
     }
 
     /// Clear loaded data and selected file.

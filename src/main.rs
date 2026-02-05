@@ -24,6 +24,6 @@ fn main() {
             let workspace_view = Workspace::view(win, cx);
             cx.new(|cx| gpui_component::Root::new(workspace_view, win, cx))
         })
-        .unwrap();
+        .expect("Failed to open main window");
     });
 }
