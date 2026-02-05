@@ -5,6 +5,9 @@ Unicode True
 !define APP_EXE "irgen-gui.exe"
 !define COMPANY "BeriBeli"
 
+; Resolve relative paths from repo root instead of script directory.
+!cd "${__FILEDIR__}\..\.."
+
 !ifndef VERSION
   !define VERSION "0.1.1"
 !endif
