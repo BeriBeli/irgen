@@ -56,7 +56,7 @@ jobs:
       - name: Test
         run: cargo test --locked
       - name: Build
-        run: cargo build --release --locked
+        run: cargo build --release --locked --bin irgen-gui
       - name: Install cargo-bundle (macOS)
         if: runner.os == 'macOS'
         run: cargo install cargo-bundle --locked
@@ -142,6 +142,13 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force -Path dist | Out-Null
           Copy-Item target\release\irgen-gui.exe dist\irgen-gui.exe
+          if (-not (Test-Path "dist\irgen-gui.exe")) {
+            Write-Host "dist contents:"
+            Get-ChildItem dist -Force
+            Write-Host "target\\release exe list:"
+            Get-ChildItem target\release -Filter *.exe -Force
+            throw "dist\\irgen-gui.exe not found"
+          }
       - name: Read app version (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
