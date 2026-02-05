@@ -2,20 +2,18 @@ use super::file_upload_empty::WorkspaceFileUploadEmpty;
 use super::file_upload_selected::WorkspaceFileUploadSelected;
 use super::style::file_upload_container_base;
 use std::path::Path;
-use std::sync::Arc;
 
 use gpui::prelude::*;
 use gpui::*;
 use gpui_component::{ActiveTheme as _, WindowExt as _, green_500, notification::NotificationType};
 
 use crate::processing::load_excel;
-use crate::state::AppState;
+use crate::global::GlobalState;
 use crate::ui::workspace::actions::open;
 
 pub struct WorkspaceFileUpload {
     file_upload_empty: Entity<WorkspaceFileUploadEmpty>,
     file_upload_selected: Entity<WorkspaceFileUploadSelected>,
-    app_state: Arc<AppState>,
 }
 
 impl WorkspaceFileUpload {
@@ -25,7 +23,6 @@ impl WorkspaceFileUpload {
         Self {
             file_upload_empty,
             file_upload_selected,
-            app_state: Arc::new(AppState::new()),
         }
     }
     pub fn view(window: &mut Window, cx: &mut App) -> Entity<Self> {
@@ -35,9 +32,10 @@ impl WorkspaceFileUpload {
 
 impl Render for WorkspaceFileUpload {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let app_state = self.app_state.clone();
+        let state = GlobalState::global(cx);
+        let workspace_id = state.workspace_id();
 
-        let is_selected = app_state.is_file_selected();
+        let is_selected = state.is_file_selected();
 
         file_upload_container_base(cx, is_selected)
             .drag_over::<ExternalPaths>(|style, _, _, cx| {
@@ -54,7 +52,7 @@ impl Render for WorkspaceFileUpload {
                     .unwrap_or(false)
             })
             .on_drop({
-                let app_state = app_state.clone();
+                let workspace_id = workspace_id;
                 move |paths: &ExternalPaths, window, cx| {
                     let Some(path) = paths.paths().first().cloned() else {
                         return;
@@ -70,13 +68,12 @@ impl Render for WorkspaceFileUpload {
                         return;
                     }
                     let handle = window.window_handle();
-                    let app_state = app_state.clone();
-                    // let workspace_id = workspace_id;
                     cx.spawn(async move |cx| {
-                        let result = load_excel(&path, app_state);
+                        let result = cx.background_spawn(async move { load_excel(&path) }).await;
                         let _ = cx.update_window(handle, |_, window, cx| {
                             match result {
-                                Ok(_) => {
+                                Ok(load) => {
+                                    GlobalState::global(cx).apply_load_result(load);
                                     window.push_notification(
                                         (
                                             NotificationType::Success,
@@ -97,7 +94,7 @@ impl Render for WorkspaceFileUpload {
                                     );
                                 }
                             }
-                            // cx.notify(workspace_id);
+                            cx.notify(workspace_id);
                         });
                     })
                     .detach();
@@ -110,8 +107,7 @@ impl Render for WorkspaceFileUpload {
                 |this| this.child(self.file_upload_empty.clone()),
             )
             .on_click({
-                let app_state = app_state.clone();
-                move |_, window, cx| open(app_state.clone(), load_excel, window, cx)
+                move |_, window, cx| open(load_excel, window, cx)
             })
     }
 }

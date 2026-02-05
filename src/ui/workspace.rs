@@ -7,6 +7,7 @@ use gpui::prelude::*;
 use gpui::*;
 use gpui_component::{ActiveTheme as _, Root};
 
+use crate::global::GlobalState;
 pub struct Workspace {
     title_bar: Entity<WorkspaceTitleBar>,
     layout: Entity<WorkspaceLayout>,
@@ -14,6 +15,13 @@ pub struct Workspace {
 
 impl Workspace {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+        let workspace_id = cx.entity_id();
+        if cx.has_global::<GlobalState>() {
+            GlobalState::global(cx).set_workspace_id(workspace_id);
+        } else {
+            cx.set_global(GlobalState::with_workspace_id(workspace_id));
+        }
+
         Self {
             title_bar: WorkspaceTitleBar::view(window, cx),
             layout: WorkspaceLayout::view(window, cx),

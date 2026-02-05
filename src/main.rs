@@ -4,7 +4,7 @@
 mod assets;
 mod error;
 mod processing;
-mod state;
+mod global;
 mod ui;
 
 use assets::Assets;

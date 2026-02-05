@@ -1,9 +1,10 @@
 use crate::error::Error;
-use crate::state::AppState;
+use crate::processing::LoadResult;
+use crate::processing::base;
+use crate::global::GlobalState;
 use gpui::*;
 use gpui_component::{notification::NotificationType, WindowExt as _};
 use std::path::Path;
-use std::sync::Arc;
 
 /// Unified result type for irgen operations
 pub type Result<T> = std::result::Result<T, Error>;
@@ -23,9 +24,9 @@ fn send_notification(
     }
 }
 
-pub fn open<F>(state: Arc<AppState>, function: F, window: &mut Window, cx: &mut App)
+pub fn open<F>(function: F, window: &mut Window, cx: &mut App)
 where
-    F: Fn(&Path, Arc<AppState>) -> Result<()> + 'static,
+    F: Fn(&Path) -> Result<LoadResult> + Send + 'static,
 {
     let path = cx.prompt_for_paths(PathPromptOptions {
         files: true,
@@ -39,25 +40,33 @@ where
     cx.spawn(async move |cx| {
         match path.await.map_err(Into::into).and_then(|res| res) {
             Ok(Some(paths)) => {
-                let selected_path = &paths[0];
-                match function(selected_path, state) {
-                    Ok(_) => {
-                        send_notification(
-                            handle,
-                            cx,
-                            NotificationType::Success,
-                            "File loaded successfully! Ready to export.",
-                        );
+                let selected_path = paths[0].clone();
+                let task = cx.background_spawn(async move { function(&selected_path) });
+                let result = task.await;
+                let _ = cx.update_window(handle, |_, window, cx| {
+                    match result {
+                        Ok(load) => {
+                            GlobalState::global(cx).apply_load_result(load);
+                            window.push_notification(
+                                (
+                                    NotificationType::Success,
+                                    SharedString::from("File loaded successfully! Ready to export."),
+                                ),
+                                cx,
+                            );
+                        }
+                        Err(err) => {
+                            window.push_notification(
+                                (
+                                    NotificationType::Error,
+                                    SharedString::from(err.to_string()),
+                                ),
+                                cx,
+                            );
+                        }
                     }
-                    Err(err) => {
-                        send_notification(
-                            handle,
-                            cx,
-                            NotificationType::Error,
-                            err.to_string(),
-                        );
-                    }
-                }
+                    cx.notify(GlobalState::global(cx).workspace_id());
+                });
             }
             Ok(None) => {
                 send_notification(
@@ -80,13 +89,23 @@ where
     .detach();
 }
 
-pub fn save<F>(state: Arc<AppState>, function: F, window: &mut Window, cx: &mut App)
+pub fn save<F>(function: F, window: &mut Window, cx: &mut App)
 where
-    F: Fn(&Path, Arc<AppState>) -> Result<()> + 'static,
+    F: Fn(&Path, base::Component) -> Result<()> + Send + 'static,
 {
-    let directory = state
+    let directory = GlobalState::global(cx)
         .get_directory()
         .unwrap_or_else(|| Path::new(".").to_path_buf());
+    let Some(component) = GlobalState::global(cx).component() else {
+        window.push_notification(
+            (
+                NotificationType::Error,
+                SharedString::from("Component not loaded."),
+            ),
+            cx,
+        );
+        return;
+    };
     let path = cx.prompt_for_new_path(&directory, None);
 
     let handle = window.window_handle();
@@ -94,24 +113,31 @@ where
     cx.spawn(async move |cx| {
         match path.await.map_err(Into::into).and_then(|res| res) {
             Ok(Some(selected_path)) => {
-                match function(&selected_path, state) {
-                    Ok(_) => {
-                        send_notification(
-                            handle,
-                            cx,
-                            NotificationType::Success,
-                            "File exported successfully.",
-                        );
+                let task = cx.background_spawn(async move { function(&selected_path, component) });
+                let result = task.await;
+                let _ = cx.update_window(handle, |_, window, cx| {
+                    match result {
+                        Ok(_) => {
+                            window.push_notification(
+                                (
+                                    NotificationType::Success,
+                                    SharedString::from("File exported successfully."),
+                                ),
+                                cx,
+                            );
+                        }
+                        Err(err) => {
+                            window.push_notification(
+                                (
+                                    NotificationType::Error,
+                                    SharedString::from(err.to_string()),
+                                ),
+                                cx,
+                            );
+                        }
                     }
-                    Err(err) => {
-                        send_notification(
-                            handle,
-                            cx,
-                            NotificationType::Error,
-                            err.to_string(),
-                        );
-                    }
-                }
+                    cx.notify(GlobalState::global(cx).workspace_id());
+                });
             }
             Ok(None) => {
                 send_notification(

@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use gpui::prelude::*;
 use gpui::*;
 use gpui_component::{
@@ -11,18 +9,16 @@ use gpui_component::{
 };
 
 use crate::processing::{export_ipxact_xml, export_regvue_json};
-use crate::state::{AppState, ExportFormat};
+use crate::global::{ExportFormat, GlobalState};
 use crate::ui::workspace::actions::save;
 
 pub struct WorkspaceFooter {
-    app_state: Arc<AppState>,
 }
 
 impl WorkspaceFooter {
-    pub fn new(_window: &mut Window, _cx: &mut Context<Self>) -> Self {
-        Self {
-            app_state: Arc::new(AppState::new()),
-        }
+    pub fn new(_window: &mut Window, cx: &mut Context<Self>) -> Self {
+        let _ = cx;
+        Self {}
     }
     pub fn view(window: &mut Window, cx: &mut App) -> Entity<Self> {
         cx.new(|cx| Self::new(window, cx))
@@ -31,11 +27,11 @@ impl WorkspaceFooter {
 
 impl Render for WorkspaceFooter {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let app_state = self.app_state.clone();
-        // let workspace_id = self.workspace_id;
+        let state = GlobalState::global(cx);
+        let workspace_id = state.workspace_id();
 
-        let is_selected = app_state.is_file_selected();
-        let export_format = app_state.get_export_format();
+        let is_selected = state.is_file_selected();
+        let export_format = state.get_export_format();
         let export_label = match export_format {
             ExportFormat::Ipxact => "IP-XACT",
             ExportFormat::Regvue => "RegVue",
@@ -69,29 +65,26 @@ impl Render for WorkspaceFooter {
                             .compact()
                             .disabled(!is_selected)
                             .dropdown_menu({
-                                let app_state = app_state.clone();
+                                let workspace_id = workspace_id;
                                 move |menu, _, _cx| {
-                                    let app_state_ipxact = app_state.clone();
-                                    let app_state_regvue = app_state.clone();
-                                    // let workspace_id = workspace_id;
                                     menu.item(PopupMenuItem::label("Format"))
                                         .item(PopupMenuItem::separator())
                                         .item(
                                             PopupMenuItem::new("IP-XACT")
                                                 .checked(export_format == ExportFormat::Ipxact)
-                                                .on_click(move |_, _, _cx| {
-                                                    app_state_ipxact
+                                                .on_click(move |_, _, cx| {
+                                                    GlobalState::global(cx)
                                                         .set_export_format(ExportFormat::Ipxact);
-                                                    // cx.notify(workspace_id);
+                                                    cx.notify(workspace_id);
                                                 }),
                                         )
                                         .item(
                                             PopupMenuItem::new("RegVue")
                                                 .checked(export_format == ExportFormat::Regvue)
-                                                .on_click(move |_, _, _cx| {
-                                                    app_state_regvue
+                                                .on_click(move |_, _, cx| {
+                                                    GlobalState::global(cx)
                                                         .set_export_format(ExportFormat::Regvue);
-                                                    // cx.notify(workspace_id);
+                                                    cx.notify(workspace_id);
                                                 }),
                                         )
                                 }
@@ -105,13 +98,12 @@ impl Render for WorkspaceFooter {
                     .compact()
                     .disabled(!is_selected)
                     .on_click({
-                        let app_state = app_state.clone();
                         move |_, window, cx| {
-                            let export_fn = match app_state.get_export_format() {
+                            let export_fn = match GlobalState::global(cx).get_export_format() {
                                 ExportFormat::Ipxact => export_ipxact_xml,
                                 ExportFormat::Regvue => export_regvue_json,
                             };
-                            save(app_state.clone(), export_fn, window, cx)
+                            save(export_fn, window, cx)
                         }
                     });
                 if is_selected {

@@ -27,9 +27,6 @@ pub enum Error {
     #[error("empty data: {context}")]
     Empty { context: String },
 
-    #[error("component not loaded: {context}")]
-    NotLoaded { context: String },
-
     #[error("IP-XACT Component Error: {0}")]
     IpXactComponent(#[from] ipxact::ComponentBuilderError),
 

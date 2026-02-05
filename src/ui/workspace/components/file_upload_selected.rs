@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use gpui::prelude::*;
 use gpui::*;
 use gpui_component::{
@@ -8,19 +6,17 @@ use gpui_component::{
     green_500,
 };
 
-use crate::state::AppState;
+use crate::global::GlobalState;
 
 use super::style::{file_info_card, info_pill};
 
 pub struct WorkspaceFileUploadSelected {
-    app_state: Arc<AppState>,
 }
 
 impl WorkspaceFileUploadSelected {
-    pub fn new(_window: &mut Window, _cx: &mut Context<Self>) -> Self {
-        Self {
-            app_state: Arc::new(AppState::new()),
-        }
+    pub fn new(_window: &mut Window, cx: &mut Context<Self>) -> Self {
+        let _ = cx;
+        Self {}
     }
     pub fn view(window: &mut Window, cx: &mut App) -> Entity<Self> {
         cx.new(|cx| Self::new(window, cx))
@@ -29,19 +25,20 @@ impl WorkspaceFileUploadSelected {
 
 impl Render for WorkspaceFileUploadSelected {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let app_state = self.app_state.clone();
-        let selected_file = app_state.get_selected_file();
+        let state = GlobalState::global(cx);
+        let workspace_id = state.workspace_id();
+        let selected_file = state.get_selected_file();
         let selected_name = selected_file
             .as_ref()
             .and_then(|p| p.file_name())
             .map(|p| p.to_string_lossy().into_owned())
             .unwrap_or_default();
-        let file_size = app_state
+        let file_size = state
             .get_selected_file_size()
             .map(format_bytes)
             .unwrap_or_default();
-        let sheet_count = app_state.get_sheet_count();
-        let register_count = app_state.component().map(|compo| {
+        let sheet_count = state.get_sheet_count();
+        let register_count = state.component().map(|compo| {
             compo
                 .blks()
                 .iter()
@@ -59,11 +56,11 @@ impl Render for WorkspaceFileUploadSelected {
             .compact()
             .icon(IconName::Close)
             .on_click({
-                let app_state = app_state.clone();
+                let workspace_id = workspace_id;
                 move |_, _, cx| {
                     cx.stop_propagation();
-                    app_state.clear_selection();
-                    // cx.notify(workspace_id);
+                    GlobalState::global(cx).clear_selection();
+                    cx.notify(workspace_id);
                 }
             });
 
