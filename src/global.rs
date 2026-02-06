@@ -9,6 +9,10 @@ pub enum ExportFormat {
     #[default]
     Ipxact,
     Regvue,
+    CHeader,
+    UvmRal,
+    Rtl,
+    Html,
 }
 
 pub struct GlobalState {

@@ -24,7 +24,8 @@ pub struct LoadResult {
 }
 
 pub fn load_excel(input: &Path) -> Result<LoadResult, Error> {
-    let directory = input.parent()
+    let directory = input
+        .parent()
         .map(|p| p.to_path_buf())
         .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
     let file = input.to_path_buf();
@@ -42,17 +43,21 @@ pub fn load_excel(input: &Path) -> Result<LoadResult, Error> {
         .collect::<Result<HashMap<_, _>, _>>()?;
 
     let compo = {
-        let compo_df = df_map
-            .remove("version")
-            .ok_or_else(|| Error::KeyNotFound { key: "version".into() })?;
+        let compo_df = df_map.remove("version").ok_or_else(|| Error::KeyNotFound {
+            key: "version".into(),
+        })?;
 
         df_to_compo(compo_df, || {
             let blks_df = df_map
                 .remove("address_map")
-                .ok_or_else(|| Error::KeyNotFound { key: "address_map".into() })?;
+                .ok_or_else(|| Error::KeyNotFound {
+                    key: "address_map".into(),
+                })?;
 
             df_to_blks(blks_df, |s| {
-                let regs_df = df_map.remove(s).ok_or_else(|| Error::KeyNotFound { key: s.into() })?;
+                let regs_df = df_map
+                    .remove(s)
+                    .ok_or_else(|| Error::KeyNotFound { key: s.into() })?;
                 let parsered_df = parse_register(regs_df)?;
 
                 df_to_regs(parsered_df)
@@ -91,4 +96,20 @@ pub fn export_regvue_json(output: &Path, compo: &base::Component) -> Result<(), 
 
     fs::write(json_file, json_str)?;
     Ok(())
+}
+
+pub fn export_c_header(_output: &Path, _compo: &base::Component) -> Result<(), Error> {
+    todo!()
+}
+
+pub fn export_uvm_ral(_output: &Path, _compo: &base::Component) -> Result<(), Error> {
+    todo!()
+}
+
+pub fn export_sv_rtl(_output: &Path, _compo: &base::Component) -> Result<(), Error> {
+    todo!()
+}
+
+pub fn export_html(_output: &Path, _compo: &base::Component) -> Result<(), Error> {
+    todo!()
 }

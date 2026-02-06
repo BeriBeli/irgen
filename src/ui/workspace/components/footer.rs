@@ -8,12 +8,14 @@ use gpui_component::{
     white,
 };
 
-use crate::processing::{export_ipxact_xml, export_regvue_json};
 use crate::global::{ExportFormat, GlobalState};
+use crate::processing::{
+    export_c_header, export_html, export_ipxact_xml, export_regvue_json, export_sv_rtl,
+    export_uvm_ral,
+};
 use crate::ui::workspace::actions::save;
 
-pub struct WorkspaceFooter {
-}
+pub struct WorkspaceFooter {}
 
 impl WorkspaceFooter {
     pub fn new(_window: &mut Window, cx: &mut Context<Self>) -> Self {
@@ -35,6 +37,10 @@ impl Render for WorkspaceFooter {
         let export_label = match export_format {
             ExportFormat::Ipxact => "IP-XACT",
             ExportFormat::Regvue => "RegVue",
+            ExportFormat::CHeader => "C Header",
+            ExportFormat::UvmRal => "UVM RAL",
+            ExportFormat::Rtl => "Verilog RTL",
+            ExportFormat::Html => "HTML",
         };
 
         div()
@@ -61,7 +67,7 @@ impl Render for WorkspaceFooter {
                                     .label(export_label)
                                     .items_center(),
                             )
-                            .ghost()
+                            // .ghost()
                             .compact()
                             .disabled(!is_selected)
                             .dropdown_menu({
@@ -91,13 +97,31 @@ impl Render for WorkspaceFooter {
                                                     }
                                                 }),
                                         )
+                                        .item(
+                                            PopupMenuItem::new("C Header")
+                                                .checked(export_format == ExportFormat::CHeader),
+                                        )
+                                        .item(
+                                            PopupMenuItem::new("UVM RAL")
+                                                .checked(export_format == ExportFormat::UvmRal),
+                                        )
+                                        .item(
+                                            PopupMenuItem::new("Verilog RTL")
+                                                .checked(export_format == ExportFormat::Rtl),
+                                        )
+                                        .item(
+                                            PopupMenuItem::new("HTML")
+                                                .checked(export_format == ExportFormat::Html),
+                                        )
                                 }
-                            }),
+                            })
+                            .text_xs(),
                     ),
             )
             .child({
                 let button = Button::new("export-button")
                     .items_center()
+                    .w_24()
                     .label("Export")
                     .compact()
                     .disabled(!is_selected)
@@ -106,6 +130,10 @@ impl Render for WorkspaceFooter {
                             let export_fn = match GlobalState::global(cx).get_export_format() {
                                 ExportFormat::Ipxact => export_ipxact_xml,
                                 ExportFormat::Regvue => export_regvue_json,
+                                ExportFormat::CHeader => export_c_header,
+                                ExportFormat::UvmRal => export_uvm_ral,
+                                ExportFormat::Rtl => export_sv_rtl,
+                                ExportFormat::Html => export_html,
                             };
                             save(export_fn, window, cx)
                         }

@@ -3,8 +3,8 @@
 
 mod assets;
 mod error;
-mod processing;
 mod global;
+mod processing;
 mod ui;
 
 use assets::Assets;

@@ -10,8 +10,7 @@ use crate::global::GlobalState;
 
 use super::style::{file_info_card, info_pill};
 
-pub struct WorkspaceFileUploadSelected {
-}
+pub struct WorkspaceFileUploadSelected {}
 
 impl WorkspaceFileUploadSelected {
     pub fn new(_window: &mut Window, cx: &mut Context<Self>) -> Self {
@@ -78,10 +77,10 @@ impl Render for WorkspaceFileUploadSelected {
                     .items_start()
                     .gap_3()
                     .child(
-                        svg()
+                        Icon::new(Icon::empty())
                             .path("icons/excel.svg")
-                            .w_10()
-                            .h_10()
+                            .w_12()
+                            .h_12()
                             .text_color(green_500()),
                     )
                     .child(
@@ -91,7 +90,7 @@ impl Render for WorkspaceFileUploadSelected {
                             .gap_1()
                             .child(
                                 div()
-                                    .text_sm()
+                                    .text_base()
                                     .font_family("monospace")
                                     .text_color(cx.theme().foreground)
                                     .truncate()
@@ -128,7 +127,8 @@ impl Render for WorkspaceFileUploadSelected {
                         this.child(
                             info_pill(cx)
                                 .child(
-                                    Icon::new(IconName::SquareTerminal)
+                                    Icon::new(Icon::empty())
+                                        .path("icons/cpu.svg")
                                         .with_size(px(12.0))
                                         .text_color(green_500()),
                                 )
@@ -137,15 +137,19 @@ impl Render for WorkspaceFileUploadSelected {
                     }),
             );
 
-        file_info_card(cx).relative().child(content).child(
-            div()
-                .absolute()
-                .top_0()
-                .right_0()
-                .mt(px(10.0))
-                .mr(px(10.0))
-                .child(delete_button),
-        )
+        file_info_card(cx)
+            .items_center()
+            .justify_center()
+            .child(content)
+            .child(
+                div()
+                    .absolute()
+                    .top_0()
+                    .right_0()
+                    .mt(px(10.0))
+                    .mr(px(10.0))
+                    .child(delete_button),
+            )
     }
 }
 

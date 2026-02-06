@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use gpui::prelude::*;
 use gpui::*;
-use gpui_component::{ActiveTheme as _, green_500};
+use gpui_component::{ActiveTheme as _, Icon, green_500};
 
 pub struct WorkspaceFileUploadEmpty {}
 
@@ -17,7 +17,7 @@ impl WorkspaceFileUploadEmpty {
 
 impl Render for WorkspaceFileUploadEmpty {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let upload_icon = svg()
+        let upload_icon = Icon::new(Icon::empty())
             .path("icons/excel.svg")
             .w_12()
             .h_12()
