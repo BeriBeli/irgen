@@ -78,6 +78,9 @@ pub enum Error {
     #[error("Parse int error: {0}")]
     ParseInt(#[from] std::num::ParseIntError),
 
+    #[error("Template error: {0}")]
+    Template(#[from] tera::Error),
+
     #[error("invalid attribute: {attribute}")]
     InvalidAttribute { attribute: String },
 }

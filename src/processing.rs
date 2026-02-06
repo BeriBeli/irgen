@@ -2,18 +2,30 @@ mod excel;
 mod parser;
 mod schema;
 
-use crate::error::Error;
-use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use calamine::{Reader, Xlsx, open_workbook};
 use polars::prelude::DataFrame;
+use tera::{Context, Tera};
+
+use crate::error::Error;
+use std::collections::HashMap;
 
 use excel::ToDataFrame as _;
 use parser::parse_register;
 use schema::base::{df_to_blks, df_to_compo, df_to_regs};
 pub use schema::{base, ipxact, regvue};
+
+// Initialize Tera templates
+lazy_static::lazy_static! {
+    static ref TERA: Tera = {
+        let mut tera = Tera::new("resources/templates/*.tera")
+            .expect("Failed to initialize Tera templates");
+        tera.autoescape_on(vec![]);
+        tera
+    };
+}
 
 pub struct LoadResult {
     pub compo: base::Component,
@@ -98,18 +110,34 @@ pub fn export_regvue_json(output: &Path, compo: &base::Component) -> Result<(), 
     Ok(())
 }
 
-pub fn export_c_header(_output: &Path, _compo: &base::Component) -> Result<(), Error> {
-    todo!()
+pub fn export_c_header(output: &Path, compo: &base::Component) -> Result<(), Error> {
+    let context = Context::from_serialize(compo)?;
+    let content = TERA.render("c_header.tera", &context)?;
+    let output_file = output.with_extension("h");
+    fs::write(output_file, content)?;
+    Ok(())
 }
 
-pub fn export_uvm_ral(_output: &Path, _compo: &base::Component) -> Result<(), Error> {
-    todo!()
+pub fn export_uvm_ral(output: &Path, compo: &base::Component) -> Result<(), Error> {
+    let context = Context::from_serialize(compo)?;
+    let content = TERA.render("uvm_ral.tera", &context)?;
+    let output_file = output.with_extension("sv");
+    fs::write(output_file, content)?;
+    Ok(())
 }
 
-pub fn export_sv_rtl(_output: &Path, _compo: &base::Component) -> Result<(), Error> {
-    todo!()
+pub fn export_sv_rtl(output: &Path, compo: &base::Component) -> Result<(), Error> {
+    let context = Context::from_serialize(compo)?;
+    let content = TERA.render("sv_rtl.tera", &context)?;
+    let output_file = output.with_extension("sv");
+    fs::write(output_file, content)?;
+    Ok(())
 }
 
-pub fn export_html(_output: &Path, _compo: &base::Component) -> Result<(), Error> {
-    todo!()
+pub fn export_html(output: &Path, compo: &base::Component) -> Result<(), Error> {
+    let context = Context::from_serialize(compo)?;
+    let content = TERA.render("html.tera", &context)?;
+    let output_file = output.with_extension("html");
+    fs::write(output_file, content)?;
+    Ok(())
 }

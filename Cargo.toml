@@ -38,6 +38,12 @@ rust-embed = "8.11"
 # Concurrency - use minor version
 parking_lot = "0.12"
 
+# Templating - for code generation
+tera = "1"
+
+# Lazy static for template initialization
+lazy_static = "1"
+
 [target.'cfg(target_os = "windows")'.build-dependencies]
 winresource = "0.1"
 
