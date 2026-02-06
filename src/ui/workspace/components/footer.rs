@@ -71,7 +71,6 @@ impl Render for WorkspaceFooter {
                             .compact()
                             .disabled(!is_selected)
                             .dropdown_menu({
-                                let workspace_id = workspace_id;
                                 move |menu, _, _cx| {
                                     menu.item(PopupMenuItem::label("Format"))
                                         .item(PopupMenuItem::separator())
@@ -99,19 +98,47 @@ impl Render for WorkspaceFooter {
                                         )
                                         .item(
                                             PopupMenuItem::new("C Header")
-                                                .checked(export_format == ExportFormat::CHeader),
+                                                .checked(export_format == ExportFormat::CHeader)
+                                                .on_click(move |_, _, cx| {
+                                                    GlobalState::global(cx)
+                                                        .set_export_format(ExportFormat::CHeader);
+                                                    if let Some(workspace_id) = workspace_id {
+                                                        cx.notify(workspace_id);
+                                                    }
+                                                }),
                                         )
                                         .item(
                                             PopupMenuItem::new("UVM RAL")
-                                                .checked(export_format == ExportFormat::UvmRal),
+                                                .checked(export_format == ExportFormat::UvmRal)
+                                                .on_click(move |_, _, cx| {
+                                                    GlobalState::global(cx)
+                                                        .set_export_format(ExportFormat::UvmRal);
+                                                    if let Some(workspace_id) = workspace_id {
+                                                        cx.notify(workspace_id);
+                                                    }
+                                                }),
                                         )
                                         .item(
                                             PopupMenuItem::new("Verilog RTL")
-                                                .checked(export_format == ExportFormat::Rtl),
+                                                .checked(export_format == ExportFormat::Rtl)
+                                                .on_click(move |_, _, cx| {
+                                                    GlobalState::global(cx)
+                                                        .set_export_format(ExportFormat::Rtl);
+                                                    if let Some(workspace_id) = workspace_id {
+                                                        cx.notify(workspace_id);
+                                                    }
+                                                }),
                                         )
                                         .item(
                                             PopupMenuItem::new("HTML")
-                                                .checked(export_format == ExportFormat::Html),
+                                                .checked(export_format == ExportFormat::Html)
+                                                .on_click(move |_, _, cx| {
+                                                    GlobalState::global(cx)
+                                                        .set_export_format(ExportFormat::Html);
+                                                    if let Some(workspace_id) = workspace_id {
+                                                        cx.notify(workspace_id);
+                                                    }
+                                                }),
                                         )
                                 }
                             })

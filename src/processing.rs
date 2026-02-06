@@ -9,6 +9,7 @@ use calamine::{Reader, Xlsx, open_workbook};
 use polars::prelude::DataFrame;
 use tera::{Context, Tera};
 
+use crate::assets::TemplateAssets;
 use crate::error::Error;
 use std::collections::HashMap;
 
@@ -19,12 +20,51 @@ pub use schema::{base, ipxact, regvue};
 
 // Initialize Tera templates
 lazy_static::lazy_static! {
-    static ref TERA: Tera = {
-        let mut tera = Tera::new("resources/templates/*.tera")
-            .expect("Failed to initialize Tera templates");
-        tera.autoescape_on(vec![]);
-        tera
-    };
+    static ref TERA: Result<Tera, Error> = build_tera();
+}
+
+fn build_tera() -> Result<Tera, Error> {
+    let mut tera = Tera::default();
+
+    for template_name in TemplateAssets::iter() {
+        let template_name = template_name.as_ref();
+        let template_file = TemplateAssets::get(template_name).ok_or_else(|| {
+            Error::TemplateInitialization {
+                message: format!("Embedded template not found: {template_name}"),
+            }
+        })?;
+        let template_str = std::str::from_utf8(template_file.data.as_ref()).map_err(|err| {
+            Error::TemplateInitialization {
+                message: format!("Template is not valid UTF-8 ({template_name}): {err}"),
+            }
+        })?;
+
+        tera.add_raw_template(template_name, template_str)?;
+
+        if let Some(alias_name) = Path::new(template_name).file_name().and_then(|s| s.to_str())
+            && alias_name != template_name
+            && tera.get_template(alias_name).is_err()
+        {
+            tera.add_raw_template(alias_name, template_str)?;
+        }
+    }
+
+    tera.autoescape_on(vec![]);
+    Ok(tera)
+}
+
+fn tera_engine() -> Result<&'static Tera, Error> {
+    TERA.as_ref().map_err(|err| Error::TemplateInitialization {
+        message: err.to_string(),
+    })
+}
+
+fn build_template_context(compo: &base::Component) -> Result<Context, Error> {
+    // Keep root fields for backward compatibility, and expose both aliases.
+    let mut context = Context::from_serialize(compo)?;
+    context.insert("compo", compo);
+    context.insert("component", compo);
+    Ok(context)
 }
 
 pub struct LoadResult {
@@ -111,32 +151,32 @@ pub fn export_regvue_json(output: &Path, compo: &base::Component) -> Result<(), 
 }
 
 pub fn export_c_header(output: &Path, compo: &base::Component) -> Result<(), Error> {
-    let context = Context::from_serialize(compo)?;
-    let content = TERA.render("c_header.tera", &context)?;
+    let context = build_template_context(compo)?;
+    let content = tera_engine()?.render("c_header.tera", &context)?;
     let output_file = output.with_extension("h");
     fs::write(output_file, content)?;
     Ok(())
 }
 
 pub fn export_uvm_ral(output: &Path, compo: &base::Component) -> Result<(), Error> {
-    let context = Context::from_serialize(compo)?;
-    let content = TERA.render("uvm_ral.tera", &context)?;
+    let context = build_template_context(compo)?;
+    let content = tera_engine()?.render("uvm_ral.tera", &context)?;
     let output_file = output.with_extension("sv");
     fs::write(output_file, content)?;
     Ok(())
 }
 
 pub fn export_sv_rtl(output: &Path, compo: &base::Component) -> Result<(), Error> {
-    let context = Context::from_serialize(compo)?;
-    let content = TERA.render("sv_rtl.tera", &context)?;
+    let context = build_template_context(compo)?;
+    let content = tera_engine()?.render("sv_rtl.tera", &context)?;
     let output_file = output.with_extension("sv");
     fs::write(output_file, content)?;
     Ok(())
 }
 
 pub fn export_html(output: &Path, compo: &base::Component) -> Result<(), Error> {
-    let context = Context::from_serialize(compo)?;
-    let content = TERA.render("html.tera", &context)?;
+    let context = build_template_context(compo)?;
+    let content = tera_engine()?.render("html.tera", &context)?;
     let output_file = output.with_extension("html");
     fs::write(output_file, content)?;
     Ok(())

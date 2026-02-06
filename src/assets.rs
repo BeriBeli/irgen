@@ -7,6 +7,11 @@ use rust_embed::RustEmbed;
 #[exclude = "*.DS_Store"]
 pub struct Assets;
 
+#[derive(RustEmbed)]
+#[folder = "./assets"]
+#[include = "templates/**/*"]
+pub struct TemplateAssets;
+
 impl AssetSource for Assets {
     fn load(&self, path: &str) -> gpui::Result<Option<std::borrow::Cow<'static, [u8]>>> {
         if path.is_empty() {

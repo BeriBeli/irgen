@@ -1,5 +1,12 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+#![deny(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::todo,
+    clippy::unimplemented
+)]
 
 mod assets;
 mod error;
@@ -24,7 +31,6 @@ fn main() {
             cx.new(|cx| gpui_component::Root::new(workspace_view, win, cx))
         }) {
             eprintln!("Failed to open main window: {}", err);
-            return;
         }
     });
 }

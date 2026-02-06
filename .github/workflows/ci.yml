@@ -5,8 +5,18 @@ on:
   pull_request:
 
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Clippy
+        run: cargo clippy --all-targets --all-features --locked -- -D warnings
+
   build-macos:
     runs-on: macos-latest
+    needs: lint
     env:
       MACOSX_DEPLOYMENT_TARGET: "10.15"
     steps:
@@ -25,6 +35,7 @@ jobs:
 
   build-windows:
     runs-on: windows-latest
+    needs: lint
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable

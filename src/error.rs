@@ -81,6 +81,9 @@ pub enum Error {
     #[error("Template error: {0}")]
     Template(#[from] tera::Error),
 
+    #[error("Template initialization error: {message}")]
+    TemplateInitialization { message: String },
+
     #[error("invalid attribute: {attribute}")]
     InvalidAttribute { attribute: String },
 }

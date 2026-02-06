@@ -52,7 +52,6 @@ impl Render for WorkspaceFileUpload {
                     .unwrap_or(false)
             })
             .on_drop({
-                let workspace_id = workspace_id;
                 move |paths: &ExternalPaths, window, cx| {
                     let Some(path) = paths.paths().first().cloned() else {
                         return;

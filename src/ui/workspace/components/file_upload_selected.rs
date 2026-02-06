@@ -55,7 +55,6 @@ impl Render for WorkspaceFileUploadSelected {
             .compact()
             .icon(IconName::Close)
             .on_click({
-                let workspace_id = workspace_id;
                 move |_, _, cx| {
                     cx.stop_propagation();
                     GlobalState::global(cx).clear_selection();
