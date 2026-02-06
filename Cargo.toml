@@ -13,11 +13,11 @@ panic = "abort"
 [dependencies]
 # GUI framework - keep minor version for bug fixes
 gpui = "0.2.2"
-gpui-component = "0.5.0"
+gpui-component = "0.5.1"
 
 # Data processing - keep minor version for bug fixes
-calamine = { version = "0.30", features = ["dates"] }
-polars = { version = "0.50", features = ["lazy", "strings", "regex", "string_to_integer", "dtype-array", "range", "serde", "dtype-i128", "timezones", "rank"] }
+calamine = { version = "0.33", features = ["dates"] }
+polars = { version = "0.52", default-features = false, features = ["lazy", "strings", "regex", "string_to_integer", "range", "rank", "dtype-u128", "dtype-i128", "dtype-array", "temporal", "moment", "timezones"] }
 
 # Serialization - use compatible versions with gpui
 serde = { version = "1.0", features = ["derive"] }
@@ -28,11 +28,11 @@ anyhow = "1.0"
 thiserror = "2.0"
 
 # XML/JSON - use compatible versions
-quick-xml = { version = "0.38", features = ["serialize"] }
+quick-xml = { version = "0.39", features = ["serialize"] }
 derive_builder = "0.20"
 
 # Assets - pinned for stability
-rust-embed = "8.7"
+rust-embed = "8.11"
 
 # Concurrency - use minor version
 parking_lot = "0.12"
