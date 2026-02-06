@@ -1,10 +1,11 @@
 use crate::error::Error;
+use crate::global::GlobalState;
 use crate::processing::LoadResult;
 use crate::processing::base;
-use crate::global::GlobalState;
 use gpui::*;
 use gpui_component::{notification::NotificationType, WindowExt as _};
 use std::path::Path;
+use std::sync::Arc;
 
 /// Unified result type for irgen operations
 pub type Result<T> = std::result::Result<T, Error>;
@@ -40,7 +41,15 @@ where
     cx.spawn(async move |cx| {
         match path.await.map_err(Into::into).and_then(|res| res) {
             Ok(Some(paths)) => {
-                let selected_path = paths[0].clone();
+                let Some(selected_path) = paths.into_iter().next() else {
+                    send_notification(
+                        handle,
+                        cx,
+                        NotificationType::Warning,
+                        "File selection canceled.",
+                    );
+                    return;
+                };
                 let task = cx.background_spawn(async move { function(&selected_path) });
                 let result = task.await;
                 let _ = cx.update_window(handle, |_, window, cx| {
@@ -65,7 +74,9 @@ where
                             );
                         }
                     }
-                    cx.notify(GlobalState::global(cx).workspace_id());
+                    if let Some(workspace_id) = GlobalState::global(cx).workspace_id() {
+                        cx.notify(workspace_id);
+                    }
                 });
             }
             Ok(None) => {
@@ -91,11 +102,11 @@ where
 
 pub fn save<F>(function: F, window: &mut Window, cx: &mut App)
 where
-    F: Fn(&Path, base::Component) -> Result<()> + Send + 'static,
+    F: Fn(&Path, &base::Component) -> Result<()> + Send + 'static,
 {
     let directory = GlobalState::global(cx)
         .get_directory()
-        .unwrap_or_else(|| Path::new(".").to_path_buf());
+        .unwrap_or_else(|| Arc::new(Path::new(".").to_path_buf()));
     let Some(component) = GlobalState::global(cx).component() else {
         window.push_notification(
             (
@@ -106,14 +117,15 @@ where
         );
         return;
     };
-    let path = cx.prompt_for_new_path(&directory, None);
+    let path = cx.prompt_for_new_path(directory.as_ref(), None);
 
     let handle = window.window_handle();
 
     cx.spawn(async move |cx| {
         match path.await.map_err(Into::into).and_then(|res| res) {
             Ok(Some(selected_path)) => {
-                let task = cx.background_spawn(async move { function(&selected_path, component) });
+                let task =
+                    cx.background_spawn(async move { function(&selected_path, component.as_ref()) });
                 let result = task.await;
                 let _ = cx.update_window(handle, |_, window, cx| {
                     match result {
@@ -136,7 +148,9 @@ where
                             );
                         }
                     }
-                    cx.notify(GlobalState::global(cx).workspace_id());
+                    if let Some(workspace_id) = GlobalState::global(cx).workspace_id() {
+                        cx.notify(workspace_id);
+                    }
                 });
             }
             Ok(None) => {

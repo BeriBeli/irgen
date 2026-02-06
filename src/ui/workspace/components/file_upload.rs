@@ -94,7 +94,9 @@ impl Render for WorkspaceFileUpload {
                                     );
                                 }
                             }
-                            cx.notify(workspace_id);
+                            if let Some(workspace_id) = workspace_id {
+                                cx.notify(workspace_id);
+                            }
                         });
                     })
                     .detach();

@@ -120,9 +120,9 @@ pub fn parse_register(df: DataFrame) -> Result<DataFrame, Error> {
                                 .into_iter()
                                 .map(|opt_x| opt_x.map(|x| format!("0x{:X}", x)))
                                 .collect();
-                            Ok(Some(new_ca.into_column()))
+                            Ok(new_ca.into_column())
                         },
-                        GetOutput::from_type(DataType::String),
+                        |_, field| Ok(Field::new(field.name().clone(), DataType::String)),
                     ),
                 )
                 .otherwise(col("ADDR"))

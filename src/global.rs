@@ -2,6 +2,7 @@ use crate::processing::{LoadResult, base};
 use gpui::{EntityId, Global};
 use parking_lot::RwLock;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Default)]
 pub enum ExportFormat {
@@ -12,9 +13,9 @@ pub enum ExportFormat {
 
 pub struct GlobalState {
     workspace_id: RwLock<Option<EntityId>>,
-    component: RwLock<Option<base::Component>>,
-    directory: RwLock<Option<PathBuf>>,
-    selected_file: RwLock<Option<PathBuf>>,
+    component: RwLock<Option<Arc<base::Component>>>,
+    directory: RwLock<Option<Arc<PathBuf>>>,
+    selected_file: RwLock<Option<Arc<PathBuf>>>,
     selected_file_size: RwLock<Option<u64>>,
     sheet_count: RwLock<Option<usize>>,
     export_format: RwLock<ExportFormat>,
@@ -45,12 +46,8 @@ impl GlobalState {
         *self.workspace_id.write() = Some(workspace_id);
     }
 
-    pub fn workspace_id(&self) -> EntityId {
-        self.workspace_id
-            .read()
-            .as_ref()
-            .copied()
-            .expect("GlobalState.workspace_id not set")
+    pub fn workspace_id(&self) -> Option<EntityId> {
+        self.workspace_id.read().as_ref().copied()
     }
 
     pub fn apply_load_result(&self, result: LoadResult) {
@@ -60,9 +57,9 @@ impl GlobalState {
 
     /// Load component and related info atomically
     pub fn load_component(&self, compo: base::Component, dir: PathBuf, file: PathBuf) {
-        *self.component.write() = Some(compo);
-        *self.directory.write() = Some(dir);
-        *self.selected_file.write() = Some(file);
+        *self.component.write() = Some(Arc::new(compo));
+        *self.directory.write() = Some(Arc::new(dir));
+        *self.selected_file.write() = Some(Arc::new(file));
     }
 
     /// Store metadata for the selected file.
@@ -77,7 +74,7 @@ impl GlobalState {
     }
 
     /// Get the selected file path
-    pub fn get_selected_file(&self) -> Option<PathBuf> {
+    pub fn get_selected_file(&self) -> Option<Arc<PathBuf>> {
         self.selected_file.read().clone()
     }
 
@@ -102,14 +99,12 @@ impl GlobalState {
     }
 
     /// Get the directory path
-    pub fn get_directory(&self) -> Option<PathBuf> {
+    pub fn get_directory(&self) -> Option<Arc<PathBuf>> {
         self.directory.read().clone()
     }
 
     /// Get component for internal use (processing module)
-    /// Returns a cloned Option to avoid exposing the internal guard type
-    #[doc(hidden)]
-    pub fn component(&self) -> Option<base::Component> {
+    pub fn component(&self) -> Option<Arc<base::Component>> {
         self.component.read().clone()
     }
 

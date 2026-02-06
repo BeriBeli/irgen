@@ -69,9 +69,9 @@ pub fn load_excel(input: &Path) -> Result<LoadResult, Error> {
     })
 }
 
-pub fn export_ipxact_xml(output: &Path, compo: base::Component) -> Result<(), Error> {
+pub fn export_ipxact_xml(output: &Path, compo: &base::Component) -> Result<(), Error> {
     let xml_str = {
-        let ipxact_component = ipxact::Component::try_from(&compo)?;
+        let ipxact_component = ipxact::Component::try_from(compo)?;
         quick_xml::se::to_string(&ipxact_component)?
     };
 
@@ -81,9 +81,9 @@ pub fn export_ipxact_xml(output: &Path, compo: base::Component) -> Result<(), Er
     Ok(())
 }
 
-pub fn export_regvue_json(output: &Path, compo: base::Component) -> Result<(), Error> {
+pub fn export_regvue_json(output: &Path, compo: &base::Component) -> Result<(), Error> {
     let json_str = {
-        let regvue_doc = regvue::Document::try_from(&compo)?;
+        let regvue_doc = regvue::Document::try_from(compo)?;
         serde_json::to_string_pretty(&regvue_doc)?
     };
 

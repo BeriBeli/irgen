@@ -60,7 +60,9 @@ impl Render for WorkspaceFileUploadSelected {
                 move |_, _, cx| {
                     cx.stop_propagation();
                     GlobalState::global(cx).clear_selection();
-                    cx.notify(workspace_id);
+                    if let Some(workspace_id) = workspace_id {
+                        cx.notify(workspace_id);
+                    }
                 }
             });
 

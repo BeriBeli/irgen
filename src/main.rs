@@ -18,11 +18,13 @@ fn main() {
 
     application.run(|cx: &mut App| {
         let window_options = get_window_options(cx);
-        cx.open_window(window_options, |win, cx| {
+        if let Err(err) = cx.open_window(window_options, |win, cx| {
             gpui_component::init(cx);
             let workspace_view = Workspace::view(win, cx);
             cx.new(|cx| gpui_component::Root::new(workspace_view, win, cx))
-        })
-        .expect("Failed to open main window");
+        }) {
+            eprintln!("Failed to open main window: {}", err);
+            return;
+        }
     });
 }

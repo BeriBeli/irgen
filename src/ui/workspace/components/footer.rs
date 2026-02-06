@@ -75,7 +75,9 @@ impl Render for WorkspaceFooter {
                                                 .on_click(move |_, _, cx| {
                                                     GlobalState::global(cx)
                                                         .set_export_format(ExportFormat::Ipxact);
-                                                    cx.notify(workspace_id);
+                                                    if let Some(workspace_id) = workspace_id {
+                                                        cx.notify(workspace_id);
+                                                    }
                                                 }),
                                         )
                                         .item(
@@ -84,7 +86,9 @@ impl Render for WorkspaceFooter {
                                                 .on_click(move |_, _, cx| {
                                                     GlobalState::global(cx)
                                                         .set_export_format(ExportFormat::Regvue);
-                                                    cx.notify(workspace_id);
+                                                    if let Some(workspace_id) = workspace_id {
+                                                        cx.notify(workspace_id);
+                                                    }
                                                 }),
                                         )
                                 }
