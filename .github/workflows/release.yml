@@ -320,7 +320,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: verify-version
     container:
-      image: rust:1.85-alpine3.21
+      image: rust:1.88-alpine3.21
     steps:
       - uses: actions/checkout@v4
       - name: Install Alpine dependencies
