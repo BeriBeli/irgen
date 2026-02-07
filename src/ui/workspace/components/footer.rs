@@ -1,10 +1,10 @@
 use gpui::prelude::*;
 use gpui::*;
 use gpui_component::{
-    ActiveTheme as _, Disableable as _,
-    button::{Button, ButtonCustomVariant, ButtonVariants as _, DropdownButton},
+    Disableable as _,
+    button::{Button, ButtonCustomVariant, ButtonVariants as _},
     green_500,
-    menu::PopupMenuItem,
+    menu::{DropdownMenu as _, PopupMenuItem},
     white,
 };
 
@@ -30,7 +30,6 @@ impl WorkspaceFooter {
 impl Render for WorkspaceFooter {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let state = GlobalState::global(cx);
-        let workspace_id = state.workspace_id();
 
         let is_selected = state.is_file_selected();
         let export_format = state.get_export_format();
@@ -50,101 +49,78 @@ impl Render for WorkspaceFooter {
             .justify_between()
             .pt(px(24.0))
             .w_full()
-            .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .px_2()
-                    .py_1()
-                    .rounded(px(6.0))
-                    .border_1()
-                    .border_color(cx.theme().border)
-                    .bg(cx.theme().muted)
-                    .child(
-                        DropdownButton::new("export-format")
-                            .button(
-                                Button::new("export-format-label")
-                                    .label(export_label)
-                                    .items_center(),
-                            )
-                            // .ghost()
-                            .compact()
-                            .disabled(!is_selected)
-                            .dropdown_menu({
-                                move |menu, _, _cx| {
-                                    menu.item(PopupMenuItem::label("Format"))
-                                        .item(PopupMenuItem::separator())
-                                        .item(
-                                            PopupMenuItem::new("IP-XACT")
-                                                .checked(export_format == ExportFormat::Ipxact)
-                                                .on_click(move |_, _, cx| {
-                                                    GlobalState::global(cx)
-                                                        .set_export_format(ExportFormat::Ipxact);
-                                                    if let Some(workspace_id) = workspace_id {
-                                                        cx.notify(workspace_id);
-                                                    }
-                                                }),
-                                        )
-                                        .item(
-                                            PopupMenuItem::new("RegVue")
-                                                .checked(export_format == ExportFormat::Regvue)
-                                                .on_click(move |_, _, cx| {
-                                                    GlobalState::global(cx)
-                                                        .set_export_format(ExportFormat::Regvue);
-                                                    if let Some(workspace_id) = workspace_id {
-                                                        cx.notify(workspace_id);
-                                                    }
-                                                }),
-                                        )
-                                        .item(
-                                            PopupMenuItem::new("C Header")
-                                                .checked(export_format == ExportFormat::CHeader)
-                                                .on_click(move |_, _, cx| {
-                                                    GlobalState::global(cx)
-                                                        .set_export_format(ExportFormat::CHeader);
-                                                    if let Some(workspace_id) = workspace_id {
-                                                        cx.notify(workspace_id);
-                                                    }
-                                                }),
-                                        )
-                                        .item(
-                                            PopupMenuItem::new("UVM RAL")
-                                                .checked(export_format == ExportFormat::UvmRal)
-                                                .on_click(move |_, _, cx| {
-                                                    GlobalState::global(cx)
-                                                        .set_export_format(ExportFormat::UvmRal);
-                                                    if let Some(workspace_id) = workspace_id {
-                                                        cx.notify(workspace_id);
-                                                    }
-                                                }),
-                                        )
-                                        .item(
-                                            PopupMenuItem::new("Verilog RTL")
-                                                .checked(export_format == ExportFormat::Rtl)
-                                                .on_click(move |_, _, cx| {
-                                                    GlobalState::global(cx)
-                                                        .set_export_format(ExportFormat::Rtl);
-                                                    if let Some(workspace_id) = workspace_id {
-                                                        cx.notify(workspace_id);
-                                                    }
-                                                }),
-                                        )
-                                        .item(
-                                            PopupMenuItem::new("HTML")
-                                                .checked(export_format == ExportFormat::Html)
-                                                .on_click(move |_, _, cx| {
-                                                    GlobalState::global(cx)
-                                                        .set_export_format(ExportFormat::Html);
-                                                    if let Some(workspace_id) = workspace_id {
-                                                        cx.notify(workspace_id);
-                                                    }
-                                                }),
-                                        )
-                                }
-                            })
-                            .text_xs(),
-                    ),
-            )
+            .child({
+                div().flex().items_center().gap_2().child(
+                    Button::new("export-format")
+                        .label(export_label)
+                        .items_center()
+                        .dropdown_caret(true)
+                        .compact()
+                        .outline()
+                        .disabled(!is_selected)
+                        .text_xs()
+                        .dropdown_menu({
+                            move |menu, _, _cx| {
+                                menu.item(PopupMenuItem::label("Format"))
+                                    .item(PopupMenuItem::separator())
+                                    .item(
+                                        PopupMenuItem::new("IP-XACT")
+                                            .checked(export_format == ExportFormat::Ipxact)
+                                            .on_click(move |_, _, cx| {
+                                                GlobalState::global(cx)
+                                                    .set_export_format(ExportFormat::Ipxact);
+                                                GlobalState::notify_workspaces(cx);
+                                            }),
+                                    )
+                                    .item(
+                                        PopupMenuItem::new("RegVue")
+                                            .checked(export_format == ExportFormat::Regvue)
+                                            .on_click(move |_, _, cx| {
+                                                GlobalState::global(cx)
+                                                    .set_export_format(ExportFormat::Regvue);
+                                                GlobalState::notify_workspaces(cx);
+                                            }),
+                                    )
+                                    .item(
+                                        PopupMenuItem::new("C Header")
+                                            .checked(export_format == ExportFormat::CHeader)
+                                            .on_click(move |_, _, cx| {
+                                                GlobalState::global(cx)
+                                                    .set_export_format(ExportFormat::CHeader);
+                                                GlobalState::notify_workspaces(cx);
+                                            }),
+                                    )
+                                    .item(
+                                        PopupMenuItem::new("UVM RAL")
+                                            .checked(export_format == ExportFormat::UvmRal)
+                                            .on_click(move |_, _, cx| {
+                                                GlobalState::global(cx)
+                                                    .set_export_format(ExportFormat::UvmRal);
+                                                GlobalState::notify_workspaces(cx);
+                                            }),
+                                    )
+                                    .item(
+                                        PopupMenuItem::new("Verilog RTL")
+                                            .checked(export_format == ExportFormat::Rtl)
+                                            .on_click(move |_, _, cx| {
+                                                GlobalState::global(cx)
+                                                    .set_export_format(ExportFormat::Rtl);
+                                                GlobalState::notify_workspaces(cx);
+                                            }),
+                                    )
+                                    .item(
+                                        PopupMenuItem::new("HTML")
+                                            .checked(export_format == ExportFormat::Html)
+                                            .on_click(move |_, _, cx| {
+                                                GlobalState::global(cx)
+                                                    .set_export_format(ExportFormat::Html);
+                                                GlobalState::notify_workspaces(cx);
+                                            }),
+                                    )
+                            }
+                        }),
+                )
+            })
             .child({
                 let button = Button::new("export-button")
                     .items_center()
@@ -175,7 +151,6 @@ impl Render for WorkspaceFooter {
                                 .active(green_500().opacity(0.8)),
                         )
                         .shadow_md()
-                        .cursor_pointer()
                 } else {
                     button.outline()
                 }

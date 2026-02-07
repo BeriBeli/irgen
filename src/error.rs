@@ -84,6 +84,9 @@ pub enum Error {
     #[error("Template initialization error: {message}")]
     TemplateInitialization { message: String },
 
+    #[error("Configuration initialization error: {message}")]
+    ConfigInitialization { message: String },
+
     #[error("invalid attribute: {attribute}")]
     InvalidAttribute { attribute: String },
 }

@@ -7,7 +7,9 @@ pub fn extract_access_value(attr: &str) -> Result<String, Error> {
         | "W0S" | "W0T" | "W1SRC" | "W1CRS" | "W0SRC" | "W0CRS" => Ok("read-write".into()),
         "WO" | "WC" | "WS" | "WOC" | "WOS" => Ok("write-only".into()),
         "W1" | "WO1" => Ok("writeOnce".into()),
-        _ => Err(Error::InvalidAttribute { attribute: attr.into() }),
+        _ => Err(Error::InvalidAttribute {
+            attribute: attr.into(),
+        }),
     }
 }
 
@@ -22,7 +24,9 @@ pub fn extract_modified_write_value(attr: &str) -> Result<Option<String>, Error>
         "W0T" => Ok(Some("zeroToToggle".into())),
         "WC" | "WOC" => Ok(Some("clear".into())),
         "WS" | "WOS" => Ok(Some("set".into())),
-        _ => Err(Error::InvalidAttribute { attribute: attr.into() }),
+        _ => Err(Error::InvalidAttribute {
+            attribute: attr.into(),
+        }),
     }
 }
 
@@ -32,6 +36,8 @@ pub fn extract_read_action_value(attr: &str) -> Result<Option<String>, Error> {
         | "WOC" | "WOS" | "W1" | "WO1" => Ok(None),
         "RC" | "WRC" | "WSRC" | "W1SRC" | "W0SRC" => Ok(Some("clear".into())),
         "RS" | "WRS" | "WCRS" | "W1CRS" | "W0CRS" => Ok(Some("set".into())),
-        _ => Err(Error::InvalidAttribute { attribute: attr.into() }),
+        _ => Err(Error::InvalidAttribute {
+            attribute: attr.into(),
+        }),
     }
 }

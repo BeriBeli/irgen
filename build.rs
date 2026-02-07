@@ -81,13 +81,13 @@ fn main() {
         if head_path.exists() {
             println!("cargo:rerun-if-changed={}", head_path.display());
             if let Ok(head_contents) = fs::read_to_string(&head_path)
-        && let Some(ref_path) = head_contents.strip_prefix("ref: ").map(str::trim)
-    {
-        let ref_file = git_dir.join(ref_path);
-        if ref_file.exists() {
-            println!("cargo:rerun-if-changed={}", ref_file.display());
-        }
-    }
+                && let Some(ref_path) = head_contents.strip_prefix("ref: ").map(str::trim)
+            {
+                let ref_file = git_dir.join(ref_path);
+                if ref_file.exists() {
+                    println!("cargo:rerun-if-changed={}", ref_file.display());
+                }
+            }
         }
     }
     if let Ok(output) = Command::new("git").args(["rev-parse", "HEAD"]).output()

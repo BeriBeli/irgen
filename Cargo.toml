@@ -1,6 +1,6 @@
 [package]
 name = "irgen-gui"
-version = "0.1.1"
+version = "0.2.0"
 edition = "2024"
 
 [profile.release]
@@ -46,6 +46,9 @@ tera = "1"
 
 # Lazy static for template initialization
 lazy_static = "1"
+
+# Platform config directory resolution
+dirs = "6"
 
 [target.'cfg(target_os = "windows")'.build-dependencies]
 winresource = "0.1"

@@ -3,7 +3,7 @@ use crate::global::GlobalState;
 use crate::processing::LoadResult;
 use crate::processing::base;
 use gpui::*;
-use gpui_component::{notification::NotificationType, WindowExt as _};
+use gpui_component::{WindowExt as _, notification::NotificationType};
 use std::path::Path;
 use std::sync::Arc;
 
@@ -38,8 +38,8 @@ where
 
     let handle = window.window_handle();
 
-    cx.spawn(async move |cx| {
-        match path.await.map_err(Into::into).and_then(|res| res) {
+    cx.spawn(
+        async move |cx| match path.await.map_err(Into::into).and_then(|res| res) {
             Ok(Some(paths)) => {
                 let Some(selected_path) = paths.into_iter().next() else {
                     send_notification(
@@ -59,24 +59,21 @@ where
                             window.push_notification(
                                 (
                                     NotificationType::Success,
-                                    SharedString::from("File loaded successfully! Ready to export."),
+                                    SharedString::from(
+                                        "File loaded successfully! Ready to export.",
+                                    ),
                                 ),
                                 cx,
                             );
                         }
                         Err(err) => {
                             window.push_notification(
-                                (
-                                    NotificationType::Error,
-                                    SharedString::from(err.to_string()),
-                                ),
+                                (NotificationType::Error, SharedString::from(err.to_string())),
                                 cx,
                             );
                         }
                     }
-                    if let Some(workspace_id) = GlobalState::global(cx).workspace_id() {
-                        cx.notify(workspace_id);
-                    }
+                    GlobalState::notify_workspaces(cx);
                 });
             }
             Ok(None) => {
@@ -88,15 +85,10 @@ where
                 );
             }
             Err(err) => {
-                send_notification(
-                    handle,
-                    cx,
-                    NotificationType::Error,
-                    err.to_string(),
-                );
+                send_notification(handle, cx, NotificationType::Error, err.to_string());
             }
-        }
-    })
+        },
+    )
     .detach();
 }
 
@@ -121,11 +113,11 @@ where
 
     let handle = window.window_handle();
 
-    cx.spawn(async move |cx| {
-        match path.await.map_err(Into::into).and_then(|res| res) {
+    cx.spawn(
+        async move |cx| match path.await.map_err(Into::into).and_then(|res| res) {
             Ok(Some(selected_path)) => {
-                let task =
-                    cx.background_spawn(async move { function(&selected_path, component.as_ref()) });
+                let task = cx
+                    .background_spawn(async move { function(&selected_path, component.as_ref()) });
                 let result = task.await;
                 let _ = cx.update_window(handle, |_, window, cx| {
                     match result {
@@ -140,17 +132,12 @@ where
                         }
                         Err(err) => {
                             window.push_notification(
-                                (
-                                    NotificationType::Error,
-                                    SharedString::from(err.to_string()),
-                                ),
+                                (NotificationType::Error, SharedString::from(err.to_string())),
                                 cx,
                             );
                         }
                     }
-                    if let Some(workspace_id) = GlobalState::global(cx).workspace_id() {
-                        cx.notify(workspace_id);
-                    }
+                    GlobalState::notify_workspaces(cx);
                 });
             }
             Ok(None) => {
@@ -162,14 +149,9 @@ where
                 );
             }
             Err(err) => {
-                send_notification(
-                    handle,
-                    cx,
-                    NotificationType::Error,
-                    err.to_string(),
-                );
+                send_notification(handle, cx, NotificationType::Error, err.to_string());
             }
-        }
-    })
+        },
+    )
     .detach();
 }

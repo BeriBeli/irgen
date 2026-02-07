@@ -25,7 +25,6 @@ impl WorkspaceFileUploadSelected {
 impl Render for WorkspaceFileUploadSelected {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let state = GlobalState::global(cx);
-        let workspace_id = state.workspace_id();
         let selected_file = state.get_selected_file();
         let selected_name = selected_file
             .as_ref()
@@ -58,9 +57,7 @@ impl Render for WorkspaceFileUploadSelected {
                 move |_, _, cx| {
                     cx.stop_propagation();
                     GlobalState::global(cx).clear_selection();
-                    if let Some(workspace_id) = workspace_id {
-                        cx.notify(workspace_id);
-                    }
+                    GlobalState::notify_workspaces(cx);
                 }
             });
 

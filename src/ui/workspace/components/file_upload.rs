@@ -7,8 +7,8 @@ use gpui::prelude::*;
 use gpui::*;
 use gpui_component::{ActiveTheme as _, WindowExt as _, green_500, notification::NotificationType};
 
-use crate::processing::load_excel;
 use crate::global::GlobalState;
+use crate::processing::load_excel;
 use crate::ui::workspace::actions::open;
 
 pub struct WorkspaceFileUpload {
@@ -33,7 +33,6 @@ impl WorkspaceFileUpload {
 impl Render for WorkspaceFileUpload {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let state = GlobalState::global(cx);
-        let workspace_id = state.workspace_id();
 
         let is_selected = state.is_file_selected();
 
@@ -93,23 +92,18 @@ impl Render for WorkspaceFileUpload {
                                     );
                                 }
                             }
-                            if let Some(workspace_id) = workspace_id {
-                                cx.notify(workspace_id);
-                            }
+                            GlobalState::notify_workspaces(cx);
                         });
                     })
                     .detach();
                 }
             })
-            .cursor_pointer()
             .when_else(
                 is_selected,
                 |this| this.child(self.file_upload_selected.clone()),
                 |this| this.child(self.file_upload_empty.clone()),
             )
-            .on_click({
-                move |_, window, cx| open(load_excel, window, cx)
-            })
+            .on_click(move |_, window, cx| open(load_excel, window, cx))
     }
 }
 

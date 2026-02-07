@@ -20,7 +20,9 @@ where
         let mut header_counts = HashMap::<String, usize>::new();
         let headers: Vec<String> = all_rows
             .first()
-            .ok_or_else(|| Error::Empty { context: "No data".into() })?
+            .ok_or_else(|| Error::Empty {
+                context: "No data".into(),
+            })?
             .iter()
             .map(|cell| {
                 let count = header_counts.entry(cell.to_string()).or_insert(0);

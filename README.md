@@ -1,8 +1,42 @@
 # irgen-gui
 
-irgen (IP-XACT Register Generator) is a tool that converts structured Excel documents into IP-XACT (.xml, IEEE-1685-2014) format. Additionally, it generates JSON configuration files required by [regvue](https://github.com/nasa-jpl/regvue), a modern hardware/software interface documentation tool provided by NASA.
+irgen (IP-XACT Register Generator) is a tool that converts structured Snapsheets into IP-XACT (.xml, IEEE-1685-2014) format. Additionally, it generates JSON configuration files required by [regvue](https://github.com/nasa-jpl/regvue), a modern hardware/software interface documentation tool provided by NASA.
 
-## Document Format
+## User Configuration
+
+irgen reads user configuration from a project-local dot-config directory under the user's home:
+
+- Linux/macOS: `$HOME/.config/irgen`
+- Windows: `%USERPROFILE%\\.config\\irgen`
+
+Subdirectories:
+
+- `themes/`: custom gpui-component theme JSON files
+- `templates/`: custom `.tera` templates
+  - `templates/c_header.tera`: custom C header template file
+  - `templates/uvm_ral.tera`: custom C source template file
+  - `templates/sv_rtl.tera`: custom SystemVerilog RTL template file
+  - `templates/html.tera`: custom HTML template file
+
+Configuration file:
+
+- `config.json`: application settings persisted across restarts (including theme mode and last selected light/dark theme names)
+
+Template loading priority:
+
+1. User templates under `templates/`
+2. Built-in templates from application assets
+
+This means user templates override built-in templates with the same template name.
+
+Theme loading behavior:
+
+1. Built-in themes from `assets/themes/` are available in irgen.
+2. User themes are loaded from `themes/`.
+3. If a user theme has the same `name` and `mode`, user theme takes precedence (same priority model as templates).
+4. `gpui-component` built-in themes remain available as additional fallback themes.
+
+## Snapsheet Format
 
 > [!important]
 >

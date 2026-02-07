@@ -131,9 +131,7 @@ pub fn df_to_regs(df: DataFrame) -> Result<Vec<Register>, Error> {
             let size = extract_str("REG_WIDTH")?;
 
             // not consume df
-            let extract_list = |col_name: &str,
-                                idx: usize|
-             -> Result<Vec<String>, PolarsError> {
+            let extract_list = |col_name: &str, idx: usize| -> Result<Vec<String>, PolarsError> {
                 df.column(col_name)?
                     .list()?
                     .get_as_series(idx)

@@ -5,9 +5,9 @@ use components::{WorkspaceLayout, WorkspaceTitleBar};
 
 use gpui::prelude::*;
 use gpui::*;
-use gpui_component::{ActiveTheme as _, Root};
+use gpui_component::{ActiveTheme as _, Root, Theme};
 
-use crate::global::GlobalState;
+use crate::global::{GlobalState, ThemeModeSetting};
 pub struct Workspace {
     title_bar: Entity<WorkspaceTitleBar>,
     layout: Entity<WorkspaceLayout>,
@@ -17,15 +17,33 @@ impl Workspace {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let workspace_id = cx.entity_id();
         if cx.has_global::<GlobalState>() {
-            GlobalState::global(cx).set_workspace_id(workspace_id);
+            GlobalState::global(cx).register_workspace(workspace_id);
         } else {
             cx.set_global(GlobalState::with_workspace_id(workspace_id));
         }
 
-        Self {
+        cx.observe_window_appearance(window, |_, window, cx| {
+            if GlobalState::global(cx).get_theme_mode() == ThemeModeSetting::System {
+                Theme::sync_system_appearance(Some(window), cx);
+                cx.notify();
+            }
+        })
+        .detach();
+
+        let this = Self {
             title_bar: WorkspaceTitleBar::view(window, cx),
             layout: WorkspaceLayout::view(window, cx),
-        }
+        };
+
+        let entity = cx.entity();
+        cx.observe_release(&entity, move |_, _, cx| {
+            if cx.has_global::<GlobalState>() {
+                GlobalState::global(cx).unregister_workspace(workspace_id);
+            }
+        })
+        .detach();
+
+        this
     }
 
     pub fn view(window: &mut Window, cx: &mut App) -> Entity<Self> {
