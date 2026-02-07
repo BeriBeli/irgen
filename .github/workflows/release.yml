@@ -61,8 +61,7 @@ jobs:
           sudo apt-get install -y \
             libxcb1-dev \
             libxkbcommon-dev \
-            libxkbcommon-x11-dev \
-            musl-tools
+            libxkbcommon-x11-dev
       - name: Test
         run: cargo test --locked
       - name: Build
@@ -218,38 +217,17 @@ jobs:
             ARCH_LABEL="x86_64"
           fi
           echo "APP_ARCH=$ARCH_LABEL" >> "$GITHUB_ENV"
-      - name: Build MUSL binary (Linux)
-        if: runner.os == 'Linux'
-        run: |
-          echo "MUSL_ENABLED=false" >> "$GITHUB_ENV"
-          if [ "$APP_ARCH" != "x86_64" ]; then
-            echo "Skip MUSL build for unsupported arch: $APP_ARCH"
-            exit 0
-          fi
-          MUSL_TARGET="x86_64-unknown-linux-musl"
-          rustup target add "$MUSL_TARGET"
-          cargo build --release --locked --bin irgen-gui --target "$MUSL_TARGET"
-          echo "MUSL_TARGET=$MUSL_TARGET" >> "$GITHUB_ENV"
-          echo "MUSL_ENABLED=true" >> "$GITHUB_ENV"
       - name: Stage Linux binary
         if: runner.os == 'Linux'
         run: |
           mkdir -p dist
           cp target/release/irgen-gui dist/irgen-gui
           chmod +x dist/irgen-gui
-          if [ "${MUSL_ENABLED:-false}" = "true" ]; then
-            cp "target/${MUSL_TARGET}/release/irgen-gui" dist/irgen-gui-musl
-            chmod +x dist/irgen-gui-musl
-          fi
       - name: Package Linux artifacts
         if: runner.os == 'Linux'
         run: |
           TAR_PATH="dist/Irgen-${APP_ARCH}-linux.tar.gz"
           tar -C dist -czf "$TAR_PATH" irgen-gui
-          if [ "${MUSL_ENABLED:-false}" = "true" ]; then
-            MUSL_TAR_PATH="dist/Irgen-${APP_ARCH}-linux-musl.tar.gz"
-            tar -C dist -czf "$MUSL_TAR_PATH" irgen-gui-musl
-          fi
       - name: Stage Windows exe
         if: runner.os == 'Windows'
         shell: pwsh
@@ -337,8 +315,50 @@ jobs:
           name: dist-${{ runner.os }}
           path: dist/*
 
+  build-linux-musl:
+    name: Build (linux-musl)
+    runs-on: ubuntu-latest
+    needs: verify-version
+    container:
+      image: rust:1.85-alpine3.21
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Alpine dependencies
+        run: |
+          apk add --no-cache \
+            build-base \
+            pkgconf \
+            python3 \
+            libxcb-dev \
+            freetype-dev \
+            fontconfig-dev
+          if ! apk add --no-cache libxkbcommon-dev libxkbcommon-x11; then
+            apk add --no-cache libxkbcommon-dev
+          fi
+      - name: Verify MUSL toolchain
+        run: |
+          rustc -vV
+          rustc -vV | grep "host: x86_64-unknown-linux-musl"
+      - name: Test (MUSL)
+        run: cargo test --locked
+      - name: Build (MUSL)
+        run: cargo build --release --locked --bin irgen-gui
+      - name: Package Linux MUSL artifact
+        run: |
+          mkdir -p dist
+          cp target/release/irgen-gui dist/irgen-gui-musl
+          chmod +x dist/irgen-gui-musl
+          tar -C dist -czf dist/Irgen-x86_64-linux-musl.tar.gz irgen-gui-musl
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-Linux-musl
+          path: dist/*
+
   release:
-    needs: build
+    needs:
+      - build
+      - build-linux-musl
     runs-on: ubuntu-latest
     permissions:
       contents: write
