@@ -12,6 +12,12 @@ pub struct Assets;
 #[include = "templates/**/*"]
 pub struct TemplateAssets;
 
+#[derive(RustEmbed)]
+#[folder = "./assets/themes"]
+#[include = "**/*"]
+#[exclude = "*.DS_Store"]
+pub struct ThemeAssets;
+
 impl AssetSource for Assets {
     fn load(&self, path: &str) -> gpui::Result<Option<std::borrow::Cow<'static, [u8]>>> {
         if path.is_empty() {
