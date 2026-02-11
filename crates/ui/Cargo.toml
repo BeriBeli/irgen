@@ -15,7 +15,6 @@ gpui-component-assets = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 rust-embed = { workspace = true }
-parking_lot = { workspace = true }
 dirs = { workspace = true }
 
 [target.'cfg(target_os = "windows")'.build-dependencies]

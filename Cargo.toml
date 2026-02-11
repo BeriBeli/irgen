@@ -22,7 +22,6 @@ rust-embed = "8.11"
 tera = "1"
 lazy_static = "1"
 dirs = "6"
-parking_lot = "0.12"
 winresource = "0.1"
 
 [profile.release]

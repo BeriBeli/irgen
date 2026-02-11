@@ -7453,7 +7453,6 @@ dependencies = [
  "gpui",
  "gpui-component",
  "gpui-component-assets",
- "parking_lot",
  "rust-embed",
  "serde",
  "serde_json",
