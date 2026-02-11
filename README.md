@@ -29,6 +29,68 @@ Template loading priority:
 
 This means user templates override built-in templates with the same template name.
 
+### Template Context Variables
+
+Custom `.tera` templates receive one register model context with two aliases:
+
+- `compo`
+- `component`
+
+They point to the same object. Top-level fields are also exposed for backward compatibility.
+
+Context shape:
+
+```text
+Component:
+  vendor: string
+  library: string
+  name: string
+  version: string
+  blks: Block[]
+
+Block:
+  name: string
+  offset: string
+  range: string
+  size: string
+  regs: Register[]
+
+Register:
+  name: string
+  offset: string
+  size: string
+  fields: Field[]
+
+Field:
+  name: string
+  offset: string
+  width: string
+  attr: string
+  reset: string
+  desc: string
+```
+
+Important notes:
+
+- `offset`, `range`, `size`, `width`, `reset` are strings in template context (for example `0x100`, `32`).
+- Block-level and register-level descriptions are not currently provided in context. Field description is available as `field.desc`.
+- Built-in templates use standard Tera filters such as `upper`, `lower`, `replace`, and `default`.
+
+Minimal example:
+
+```tera
+/* {{ compo.name }} v{{ compo.version }} */
+{% for blk in compo.blks %}
+/* block {{ blk.name }} @ {{ blk.offset }} */
+{% for reg in blk.regs %}
+#define {{ compo.name | upper }}_{{ blk.name | upper }}_{{ reg.name | upper }}_OFF {{ reg.offset }}
+{% for field in reg.fields %}
+/* field {{ field.name }} width={{ field.width }} attr={{ field.attr }} reset={{ field.reset }} */
+{% endfor %}
+{% endfor %}
+{% endfor %}
+```
+
 Theme loading behavior:
 
 1. Built-in themes from `assets/themes/` are available in irgen.
