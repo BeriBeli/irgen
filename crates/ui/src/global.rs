@@ -1,9 +1,9 @@
-use crate::processing::{LoadResult, base};
-use gpui::{App, EntityId, Global, ReadGlobal};
-use gpui_component::ThemeConfig;
+use gpui::{App, EntityId, Global, ReadGlobal, SharedString};
+use gpui_component::{ThemeConfig, notification::NotificationType};
+use irgen_core::processing::{LoadResult, base};
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
+use std::collections::{HashSet, VecDeque};
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -27,6 +27,14 @@ pub enum ThemeModeSetting {
     Dark,
 }
 
+const NOTIFICATION_HISTORY_LIMIT: usize = 200;
+
+#[derive(Debug, Clone)]
+pub struct NotificationEntry {
+    pub type_: NotificationType,
+    pub message: SharedString,
+}
+
 pub struct GlobalState {
     workspace_ids: RwLock<HashSet<EntityId>>,
     component: RwLock<Option<Arc<base::Component>>>,
@@ -37,6 +45,8 @@ pub struct GlobalState {
     export_format: RwLock<ExportFormat>,
     theme_mode: RwLock<ThemeModeSetting>,
     effective_themes: RwLock<Vec<ThemeConfig>>,
+    notification_history: RwLock<VecDeque<NotificationEntry>>,
+    unread_notification_count: RwLock<usize>,
 }
 
 impl Global for GlobalState {}
@@ -53,6 +63,8 @@ impl GlobalState {
             export_format: RwLock::new(ExportFormat::default()),
             theme_mode: RwLock::new(ThemeModeSetting::default()),
             effective_themes: RwLock::new(Vec::new()),
+            notification_history: RwLock::new(VecDeque::new()),
+            unread_notification_count: RwLock::new(0),
         }
     }
 
@@ -145,6 +157,44 @@ impl GlobalState {
 
     pub fn set_effective_themes(&self, themes: Vec<ThemeConfig>) {
         *self.effective_themes.write() = themes;
+    }
+
+    pub fn push_notification(
+        &self,
+        notification_type: NotificationType,
+        message: impl Into<SharedString>,
+    ) {
+        let mut history = self.notification_history.write();
+        history.push_back(NotificationEntry {
+            type_: notification_type,
+            message: message.into(),
+        });
+        if history.len() > NOTIFICATION_HISTORY_LIMIT {
+            history.pop_front();
+        }
+
+        let history_len = history.len();
+        drop(history);
+
+        let mut unread_count = self.unread_notification_count.write();
+        *unread_count = unread_count.saturating_add(1).min(history_len);
+    }
+
+    pub fn notification_history(&self) -> Vec<NotificationEntry> {
+        self.notification_history.read().iter().cloned().collect()
+    }
+
+    pub fn unread_notification_count(&self) -> usize {
+        *self.unread_notification_count.read()
+    }
+
+    pub fn mark_notifications_read(&self) {
+        *self.unread_notification_count.write() = 0;
+    }
+
+    pub fn clear_notification_history(&self) {
+        self.notification_history.write().clear();
+        *self.unread_notification_count.write() = 0;
     }
 
     /// Get the directory path

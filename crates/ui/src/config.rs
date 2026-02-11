@@ -2,9 +2,9 @@ use std::fs;
 use std::path::PathBuf;
 
 use crate::assets::ThemeAssets;
-use crate::error::Error;
 use crate::global::ThemeModeSetting;
 use gpui_component::{ThemeConfig, ThemeMode, ThemeSet};
+use irgen_core::error::Error;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -31,10 +31,6 @@ pub fn config_root() -> Result<PathBuf, Error> {
 
 pub fn themes_dir() -> Result<PathBuf, Error> {
     Ok(config_root()?.join("themes"))
-}
-
-pub fn templates_dir() -> Result<PathBuf, Error> {
-    Ok(config_root()?.join("templates"))
 }
 
 pub fn config_file_path() -> Result<PathBuf, Error> {

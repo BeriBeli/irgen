@@ -20,7 +20,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Clippy
-        run: cargo clippy --all-targets --all-features --locked -- -D warnings
+        run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
 
   build-linux:
     runs-on: ubuntu-latest
@@ -37,9 +37,9 @@ jobs:
             libxkbcommon-dev \
             libxkbcommon-x11-dev
       - name: Test
-        run: cargo test --locked
+        run: cargo test --workspace --locked
       - name: Build
-        run: cargo build --release --locked
+        run: cargo build --release --locked --bin irgen-gui
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
@@ -56,9 +56,9 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Test
-        run: cargo test --locked
+        run: cargo test --workspace --locked
       - name: Build
-        run: cargo build --release --locked
+        run: cargo build --release --locked --bin irgen-gui
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
@@ -73,9 +73,9 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Test
-        run: cargo test --locked
+        run: cargo test --workspace --locked
       - name: Build
-        run: cargo build --release --locked
+        run: cargo build --release --locked --bin irgen-gui
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:

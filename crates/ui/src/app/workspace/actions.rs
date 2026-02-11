@@ -1,9 +1,10 @@
-use crate::error::Error;
 use crate::global::GlobalState;
-use crate::processing::LoadResult;
-use crate::processing::base;
+use crate::app::workspace::notifications as workspace_notifications;
 use gpui::*;
-use gpui_component::{WindowExt as _, notification::NotificationType};
+use gpui_component::notification::NotificationType;
+use irgen_core::error::Error;
+use irgen_core::processing::LoadResult;
+use irgen_core::processing::base;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -17,9 +18,12 @@ fn send_notification(
     notification_type: NotificationType,
     message: impl Into<SharedString>,
 ) {
-    if let Err(e) = cx.update_window(handle, |_, window, cx| {
-        window.push_notification((notification_type, message.into()), cx);
-    }) {
+    if let Err(e) = workspace_notifications::push_on_window_handle(
+        handle,
+        cx,
+        notification_type,
+        message.into(),
+    ) {
         // Log error - notification failures are non-critical but useful for debugging
         eprintln!("[DEBUG] Failed to show notification: {}", e);
     }
@@ -56,20 +60,19 @@ where
                     match result {
                         Ok(load) => {
                             GlobalState::global(cx).apply_load_result(load);
-                            window.push_notification(
-                                (
-                                    NotificationType::Success,
-                                    SharedString::from(
-                                        "File loaded successfully! Ready to export.",
-                                    ),
-                                ),
+                            workspace_notifications::push(
+                                window,
                                 cx,
+                                NotificationType::Success,
+                                "File loaded successfully! Ready to export.",
                             );
                         }
                         Err(err) => {
-                            window.push_notification(
-                                (NotificationType::Error, SharedString::from(err.to_string())),
+                            workspace_notifications::push(
+                                window,
                                 cx,
+                                NotificationType::Error,
+                                err.to_string(),
                             );
                         }
                     }
@@ -100,13 +103,7 @@ where
         .get_directory()
         .unwrap_or_else(|| Arc::new(Path::new(".").to_path_buf()));
     let Some(component) = GlobalState::global(cx).component() else {
-        window.push_notification(
-            (
-                NotificationType::Error,
-                SharedString::from("Component not loaded."),
-            ),
-            cx,
-        );
+        workspace_notifications::push(window, cx, NotificationType::Error, "Component not loaded.");
         return;
     };
     let path = cx.prompt_for_new_path(directory.as_ref(), None);
@@ -122,18 +119,19 @@ where
                 let _ = cx.update_window(handle, |_, window, cx| {
                     match result {
                         Ok(_) => {
-                            window.push_notification(
-                                (
-                                    NotificationType::Success,
-                                    SharedString::from("File exported successfully."),
-                                ),
+                            workspace_notifications::push(
+                                window,
                                 cx,
+                                NotificationType::Success,
+                                "File exported successfully.",
                             );
                         }
                         Err(err) => {
-                            window.push_notification(
-                                (NotificationType::Error, SharedString::from(err.to_string())),
+                            workspace_notifications::push(
+                                window,
                                 cx,
+                                NotificationType::Error,
+                                err.to_string(),
                             );
                         }
                     }

@@ -1195,6 +1195,23 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6245d59a3e82a7fc217c5828a6692dbc6dfb63a0c8c90495621f7b9d79704a0e"
 
 [[package]]
+name = "core"
+version = "0.3.0"
+dependencies = [
+ "calamine",
+ "derive_builder",
+ "dirs 6.0.0",
+ "lazy_static",
+ "polars",
+ "quick-xml 0.39.0",
+ "rust-embed",
+ "serde",
+ "serde_json",
+ "tera",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "core-foundation"
 version = "0.9.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3333,29 +3350,6 @@ name = "ipnet"
 version = "2.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "469fb0b9cefa57e3ef31275ee7cacb78f2fdca44e4765491884a2b119d4eb130"
-
-[[package]]
-name = "irgen-gui"
-version = "0.2.0"
-dependencies = [
- "anyhow",
- "calamine",
- "derive_builder",
- "dirs 6.0.0",
- "gpui",
- "gpui-component",
- "gpui-component-assets",
- "lazy_static",
- "parking_lot",
- "polars",
- "quick-xml 0.39.0",
- "rust-embed",
- "serde",
- "serde_json",
- "tera",
- "thiserror 2.0.18",
- "winresource",
-]
 
 [[package]]
 name = "iri-string"
@@ -7448,6 +7442,22 @@ dependencies = [
  "memoffset",
  "tempfile",
  "winapi",
+]
+
+[[package]]
+name = "ui"
+version = "0.3.0"
+dependencies = [
+ "core",
+ "dirs 6.0.0",
+ "gpui",
+ "gpui-component",
+ "gpui-component-assets",
+ "parking_lot",
+ "rust-embed",
+ "serde",
+ "serde_json",
+ "winresource",
 ]
 
 [[package]]

@@ -10,19 +10,17 @@
 
 mod assets;
 mod config;
-mod error;
 mod global;
-mod processing;
-mod ui;
+mod app;
 
 use assets::Assets;
-use ui::window::*;
+use app::window::*;
 
 use global::{GlobalState, ThemeModeSetting};
 use gpui::*;
 use gpui_component::{Theme, ThemeConfig, ThemeMode, ThemeRegistry};
 use std::rc::Rc;
-use ui::workspace::Workspace;
+use app::workspace::Workspace;
 
 fn refresh_effective_themes_in_global(cx: &mut App) {
     let themes = config::load_effective_themes_or_default();

@@ -21,7 +21,7 @@ jobs:
           import tomllib
           with open("Cargo.toml", "rb") as f:
               data = tomllib.load(f)
-          version = data["package"]["version"]
+          version = data["workspace"]["package"]["version"]
           tag = os.environ["GITHUB_REF_NAME"]
           expected = f"v{version}"
           if tag != expected:
@@ -63,7 +63,7 @@ jobs:
             libxkbcommon-dev \
             libxkbcommon-x11-dev
       - name: Test
-        run: cargo test --locked
+        run: cargo test --workspace --locked
       - name: Build
         run: cargo build --release --locked --bin irgen-gui
       - name: Detect arch (macOS)
@@ -81,7 +81,7 @@ jobs:
         run: cargo install cargo-bundle --locked
       - name: Bundle app (macOS)
         if: runner.os == 'macOS'
-        run: cargo bundle --release
+        run: cargo bundle --release -p ui
       - name: Locate app bundle (macOS)
         if: runner.os == 'macOS'
         id: app
@@ -256,7 +256,7 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $version = python -c "import tomllib; print(tomllib.load(open('Cargo.toml','rb'))['package']['version'])"
+          $version = python -c "import tomllib; print(tomllib.load(open('Cargo.toml','rb'))['workspace']['package']['version'])"
           $parts = $version.Split('.')
           while ($parts.Count -lt 3) { $parts += '0' }
           $msiVersion = "$($parts[0]).$($parts[1]).$($parts[2])"
@@ -342,7 +342,7 @@ jobs:
           rustc -vV
           rustc -vV | grep "host: x86_64-unknown-linux-musl"
       - name: Test (MUSL)
-        run: cargo test --locked
+        run: cargo test --workspace --locked
       - name: Build (MUSL)
         run: cargo build --release --locked --bin irgen-gui
       - name: Package Linux MUSL artifact

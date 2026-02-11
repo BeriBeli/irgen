@@ -2,18 +2,13 @@ use gpui::AssetSource;
 use rust_embed::RustEmbed;
 
 #[derive(RustEmbed)]
-#[folder = "./assets"]
+#[folder = "../../assets"]
 #[include = "icons/**/*"]
 #[exclude = "*.DS_Store"]
 pub struct Assets;
 
 #[derive(RustEmbed)]
-#[folder = "./assets"]
-#[include = "templates/**/*"]
-pub struct TemplateAssets;
-
-#[derive(RustEmbed)]
-#[folder = "./assets/themes"]
+#[folder = "../../assets/themes"]
 #[include = "**/*"]
 #[exclude = "*.DS_Store"]
 pub struct ThemeAssets;

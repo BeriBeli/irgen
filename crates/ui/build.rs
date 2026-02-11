@@ -39,7 +39,7 @@ fn main() {
             println!("cargo:rustc-link-arg=/stack:{}", 8 * 1024 * 1024);
         }
 
-        let icon_path = "resources/windows/app-icon.ico";
+        let icon_path = "../../resources/windows/app-icon.ico";
         let icon = Path::new(icon_path);
 
         // Re-run build script if icon file changes
@@ -75,7 +75,13 @@ fn main() {
 
     // Embed git commit SHA for build identification (optional)
     if let Ok(manifest_dir) = env::var("CARGO_MANIFEST_DIR") {
-        let git_dir = Path::new(&manifest_dir).join(".git");
+        let local_git_dir = Path::new(&manifest_dir).join(".git");
+        let parent_git_dir = Path::new(&manifest_dir).join("../../.git");
+        let git_dir = if local_git_dir.exists() {
+            local_git_dir
+        } else {
+            parent_git_dir
+        };
         let head_path = git_dir.join("HEAD");
 
         if head_path.exists() {

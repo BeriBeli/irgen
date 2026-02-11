@@ -1,5 +1,6 @@
 mod actions;
 mod components;
+pub(crate) mod notifications;
 
 use components::{WorkspaceLayout, WorkspaceTitleBar};
 

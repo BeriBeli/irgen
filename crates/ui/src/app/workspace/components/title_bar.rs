@@ -1,10 +1,14 @@
 use gpui::prelude::*;
 use gpui::*;
 use gpui_component::{
-    ActiveTheme as _, IconName, Sizable as _, Theme, ThemeConfig, ThemeMode, ThemeRegistry,
+    ActiveTheme as _, Disableable as _, Icon, IconName, Sizable as _, StyledExt as _, Theme,
+    ThemeConfig, ThemeMode, ThemeRegistry,
     TitleBar, WindowExt as _,
     button::{Button, ButtonVariants as _},
     menu::{AppMenuBar, DropdownMenu as _, PopupMenuItem},
+    notification::NotificationType,
+    popover::Popover,
+    scroll::ScrollableElement as _,
     white,
 };
 use std::collections::HashMap;
@@ -42,6 +46,15 @@ fn merge_themes_with_overrides(
     });
 
     base_themes
+}
+
+fn notification_meta(notification_type: NotificationType, cx: &App) -> (IconName, Hsla, &'static str) {
+    match notification_type {
+        NotificationType::Info => (IconName::Info, cx.theme().info, "Info"),
+        NotificationType::Success => (IconName::CircleCheck, cx.theme().success, "Success"),
+        NotificationType::Warning => (IconName::TriangleAlert, cx.theme().warning, "Warning"),
+        NotificationType::Error => (IconName::CircleX, cx.theme().danger, "Error"),
+    }
 }
 
 impl WorkspaceTitleBar {
@@ -90,7 +103,7 @@ impl Render for WorkspaceTitleBar {
             .cloned()
             .collect::<Vec<_>>();
 
-        let notifications_count = window.notifications(cx).len();
+        let unread_notifications = state.unread_notification_count();
         let theme_mode_picker = Button::new("title-theme-mode-toggle")
             .icon(theme_mode_icon)
             .small()
@@ -172,21 +185,137 @@ impl Render for WorkspaceTitleBar {
             .on_click(|_, _, cx| cx.open_url("https://github.com/BeriBeli/irgen-gpui"));
 
         let bell = {
-            let bell_button = Button::new("bell")
-                .small()
-                .ghost()
-                .compact()
-                .icon(IconName::Bell);
-            let count_label = if notifications_count > 99 {
+            let count_label = if unread_notifications > 99 {
                 "99+".to_string()
             } else {
-                notifications_count.to_string()
+                unread_notifications.to_string()
             };
 
             div()
                 .relative()
-                .child(bell_button)
-                .when(notifications_count > 0, |this| {
+                .child(
+                    Popover::new("notification-center-popover")
+                        .anchor(Corner::TopRight)
+                        .on_open_change(|open, _, cx: &mut App| {
+                            if *open {
+                                GlobalState::global(cx).mark_notifications_read();
+                                GlobalState::notify_workspaces(cx);
+                            }
+                        })
+                        .trigger(
+                            Button::new("bell")
+                                .small()
+                                .ghost()
+                                .compact()
+                                .icon(IconName::Bell),
+                        )
+                        .content(|_, _window, cx| {
+                            let state = GlobalState::global(cx);
+                            let notification_history = state.notification_history();
+                            let history_len = notification_history.len();
+                            let has_notifications = history_len > 0;
+                            let notification_content = if has_notifications {
+                                let items = notification_history
+                                    .iter()
+                                    .rev()
+                                    .enumerate()
+                                    .map(|(idx, note)| {
+                                        let (icon_name, icon_color, type_label) =
+                                            notification_meta(note.type_, cx);
+
+                                        div()
+                                            .id(("notification-item", idx))
+                                            .w_full()
+                                            .flex()
+                                            .items_start()
+                                            .gap_3()
+                                            .px_3()
+                                            .py_2()
+                                            .border_1()
+                                            .border_color(cx.theme().border)
+                                            .bg(cx.theme().background)
+                                            .rounded(cx.theme().radius)
+                                            .child(Icon::new(icon_name).text_color(icon_color).mt(px(2.)))
+                                            .child(
+                                                div()
+                                                    .min_w_0()
+                                                    .flex_1()
+                                                    .flex()
+                                                    .flex_col()
+                                                    .gap_1()
+                                                    .child(
+                                                        div()
+                                                            .text_xs()
+                                                            .font_medium()
+                                                            .text_color(cx.theme().muted_foreground)
+                                                            .child(type_label),
+                                                    )
+                                                    .child(
+                                                        div()
+                                                            .text_sm()
+                                                            .line_height(relative(1.3))
+                                                            .child(note.message.clone()),
+                                                    ),
+                                            )
+                                    })
+                                    .collect::<Vec<_>>();
+                                div().flex().flex_col().gap_2().children(items).into_any_element()
+                            } else {
+                                div()
+                                    .h(px(140.))
+                                    .flex()
+                                    .flex_col()
+                                    .items_center()
+                                    .justify_center()
+                                    .gap_2()
+                                    .text_color(cx.theme().muted_foreground)
+                                    .child(Icon::new(IconName::Bell).text_color(cx.theme().muted_foreground))
+                                    .child(div().text_sm().child("No notifications yet"))
+                                    .into_any_element()
+                            };
+
+                            div()
+                                .id("notification-center")
+                                .w(px(440.))
+                                .max_h(px(420.))
+                                .flex()
+                                .flex_col()
+                                .gap_3()
+                                .child(
+                                    div()
+                                        .flex()
+                                        .items_center()
+                                        .justify_between()
+                                        .child(
+                                            div()
+                                                .text_sm()
+                                                .font_semibold()
+                                                .child(format!("Notifications ({history_len})")),
+                                        )
+                                        .child(
+                                            Button::new("notification-clear")
+                                                .xsmall()
+                                                .ghost()
+                                                .label("Clear")
+                                                .disabled(!has_notifications)
+                                                .on_click(|_, window, cx| {
+                                                    GlobalState::global(cx)
+                                                        .clear_notification_history();
+                                                    window.clear_notifications(cx);
+                                                    GlobalState::notify_workspaces(cx);
+                                                }),
+                                        ),
+                                )
+                                .child(
+                                    div()
+                                        .max_h(px(320.))
+                                        .overflow_y_scrollbar()
+                                        .pr_1()
+                                        .child(notification_content),
+                                )
+                        }),
+                )
+                .when(unread_notifications > 0, |this| {
                     this.child(
                         div()
                             .absolute()

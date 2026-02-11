@@ -1,0 +1,21 @@
+[package]
+name = "core"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+name = "irgen_core"
+path = "src/lib.rs"
+
+[dependencies]
+calamine = { workspace = true }
+polars = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+quick-xml = { workspace = true }
+derive_builder = { workspace = true }
+rust-embed = { workspace = true }
+tera = { workspace = true }
+lazy_static = { workspace = true }
+dirs = { workspace = true }

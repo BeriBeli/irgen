@@ -1,0 +1,27 @@
+[package]
+name = "ui"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "irgen-gui"
+path = "src/main.rs"
+
+[dependencies]
+irgen_core = { package = "core", path = "../core" }
+gpui = { workspace = true }
+gpui-component = { workspace = true }
+gpui-component-assets = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+rust-embed = { workspace = true }
+parking_lot = { workspace = true }
+dirs = { workspace = true }
+
+[target.'cfg(target_os = "windows")'.build-dependencies]
+winresource = { workspace = true }
+
+[package.metadata.bundle]
+name = "irgen"
+identifier = "com.beribeli.irgen"
+icon = ["../../resources/app-icon.icns"]

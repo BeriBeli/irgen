@@ -7,13 +7,13 @@ use gpui_component::{
     menu::{DropdownMenu as _, PopupMenuItem},
     white,
 };
-
-use crate::global::{ExportFormat, GlobalState};
-use crate::processing::{
+use irgen_core::processing::{
     export_c_header, export_html, export_ipxact_xml, export_regvue_json, export_sv_rtl,
     export_uvm_ral,
 };
-use crate::ui::workspace::actions::save;
+
+use crate::global::{ExportFormat, GlobalState};
+use crate::app::workspace::actions::save;
 
 pub struct WorkspaceFooter {}
 

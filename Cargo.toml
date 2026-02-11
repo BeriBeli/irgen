@@ -1,7 +1,29 @@
-[package]
-name = "irgen-gui"
-version = "0.2.0"
+[workspace]
+members = ["crates/core", "crates/ui"]
+default-members = ["crates/ui"]
+resolver = "2"
+
+[workspace.package]
+version = "0.3.0"
 edition = "2024"
+
+[workspace.dependencies]
+gpui = "0.2.2"
+gpui-component = "0.5.1"
+gpui-component-assets = "0.5.1"
+calamine = { version = "0.33", features = ["dates"] }
+polars = { version = "0.52", default-features = false, features = ["lazy", "strings", "regex", "string_to_integer", "range", "rank", "dtype-u128", "dtype-i128", "dtype-array", "temporal", "moment", "timezones"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "2.0"
+quick-xml = { version = "0.39", features = ["serialize"] }
+derive_builder = "0.20"
+rust-embed = "8.11"
+tera = "1"
+lazy_static = "1"
+dirs = "6"
+parking_lot = "0.12"
+winresource = "0.1"
 
 [profile.release]
 opt-level = "z"
@@ -12,48 +34,3 @@ panic = "abort"
 
 [profile.dev]
 opt-level = 1
-
-[dependencies]
-# GUI framework - keep minor version for bug fixes
-gpui = "0.2.2"
-gpui-component = "0.5.1"
-gpui-component-assets = "0.5.1"
-
-# Data processing - keep minor version for bug fixes
-calamine = { version = "0.33", features = ["dates"] }
-polars = { version = "0.52", default-features = false, features = ["lazy", "strings", "regex", "string_to_integer", "range", "rank", "dtype-u128", "dtype-i128", "dtype-array", "temporal", "moment", "timezones"] }
-
-# Serialization - use compatible versions with gpui
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-
-# Error handling - pinned for stability
-anyhow = "1.0"
-thiserror = "2.0"
-
-# XML/JSON - use compatible versions
-quick-xml = { version = "0.39", features = ["serialize"] }
-derive_builder = "0.20"
-
-# Assets - pinned for stability
-rust-embed = "8.11"
-
-# Concurrency - use minor version
-parking_lot = "0.12"
-
-# Templating - for code generation
-tera = "1"
-
-# Lazy static for template initialization
-lazy_static = "1"
-
-# Platform config directory resolution
-dirs = "6"
-
-[target.'cfg(target_os = "windows")'.build-dependencies]
-winresource = "0.1"
-
-[package.metadata.bundle]
-name = "irgen"
-identifier = "com.beribeli.irgen"
-icon = ["resources/app-icon.icns"]

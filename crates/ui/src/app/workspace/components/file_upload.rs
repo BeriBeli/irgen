@@ -5,11 +5,12 @@ use std::path::Path;
 
 use gpui::prelude::*;
 use gpui::*;
-use gpui_component::{ActiveTheme as _, WindowExt as _, green_500, notification::NotificationType};
+use gpui_component::{ActiveTheme as _, green_500, notification::NotificationType};
+use irgen_core::processing::load_excel;
 
 use crate::global::GlobalState;
-use crate::processing::load_excel;
-use crate::ui::workspace::actions::open;
+use crate::app::workspace::actions::open;
+use crate::app::workspace::notifications as workspace_notifications;
 
 pub struct WorkspaceFileUpload {
     file_upload_empty: Entity<WorkspaceFileUploadEmpty>,
@@ -56,12 +57,11 @@ impl Render for WorkspaceFileUpload {
                         return;
                     };
                     if !is_supported_spreadsheet(&path) {
-                        window.push_notification(
-                            (
-                                NotificationType::Error,
-                                SharedString::from("Only .xlsx or .xlsm files are supported."),
-                            ),
+                        workspace_notifications::push(
+                            window,
                             cx,
+                            NotificationType::Error,
+                            "Only .xlsx or .xlsm files are supported.",
                         );
                         return;
                     }
@@ -72,23 +72,19 @@ impl Render for WorkspaceFileUpload {
                             match result {
                                 Ok(load) => {
                                     GlobalState::global(cx).apply_load_result(load);
-                                    window.push_notification(
-                                        (
-                                            NotificationType::Success,
-                                            SharedString::from(
-                                                "File loaded successfully! Ready to export.",
-                                            ),
-                                        ),
+                                    workspace_notifications::push(
+                                        window,
                                         cx,
+                                        NotificationType::Success,
+                                        "File loaded successfully! Ready to export.",
                                     );
                                 }
                                 Err(err) => {
-                                    window.push_notification(
-                                        (
-                                            NotificationType::Error,
-                                            SharedString::from(err.to_string()),
-                                        ),
+                                    workspace_notifications::push(
+                                        window,
                                         cx,
+                                        NotificationType::Error,
+                                        err.to_string(),
                                     );
                                 }
                             }
