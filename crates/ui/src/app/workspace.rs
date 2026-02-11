@@ -69,6 +69,7 @@ impl Render for Workspace {
             .id("workspace-content")
             .flex()
             .flex_grow()
+            .min_h_0()
             .bg(cx.theme().background)
             .child(self.layout.clone());
 
@@ -76,6 +77,7 @@ impl Render for Workspace {
             .flex()
             .flex_col()
             .size_full()
+            .min_h_0()
             .child(self.title_bar.clone())
             .child(content)
             .children(notification_layer)

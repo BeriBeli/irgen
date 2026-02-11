@@ -38,6 +38,7 @@ impl Render for WorkspaceLayout {
             .flex()
             .flex_col()
             .h_full()
+            .min_h_0()
             .w_full()
             .px_8()
             .py_6()
@@ -48,6 +49,7 @@ impl Render for WorkspaceLayout {
                     .flex()
                     .flex_col()
                     .flex_grow()
+                    .min_h_0()
                     .when_else(
                         is_file_selected,
                         |this| this.child(self.register_explorer.clone()),

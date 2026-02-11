@@ -61,7 +61,10 @@ impl Render for WorkspaceFooter {
                         .text_xs()
                         .dropdown_menu({
                             move |menu, _, _cx| {
-                                menu.item(PopupMenuItem::label("Format"))
+                                menu
+                                    .max_h(px(220.0))
+                                    .scrollable(true)
+                                    .item(PopupMenuItem::label("Format"))
                                     .item(PopupMenuItem::separator())
                                     .item(
                                         PopupMenuItem::new("IP-XACT")

@@ -7,6 +7,7 @@ use gpui_component::{
     input::{Input, InputEvent, InputState},
     list::ListItem,
     notification::NotificationType,
+    scroll::ScrollableElement as _,
     tree::{TreeItem, TreeState, tree},
 };
 use irgen_core::processing::load_excel;
@@ -34,9 +35,7 @@ pub struct WorkspaceRegisterExplorer {
 
 impl WorkspaceRegisterExplorer {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let search_input = cx.new(|cx| {
-            InputState::new(window, cx).placeholder("Search component / block / register / field")
-        });
+        let search_input = cx.new(|cx| InputState::new(window, cx).placeholder("Search"));
         let tree_state = cx.new(|cx| TreeState::new(cx).items(Vec::<TreeItem>::new()));
 
         let _search_subscription =
@@ -198,7 +197,9 @@ impl Render for WorkspaceRegisterExplorer {
         let tree_panel = div()
             .id("register-tree-panel")
             .h_full()
-            .w(px(420.0))
+            .min_h_0()
+            .min_w_0()
+            .flex_basis(relative(0.4))
             .flex()
             .flex_col()
             .gap_3()
@@ -213,7 +214,8 @@ impl Render for WorkspaceRegisterExplorer {
             )
             .child(
                 div()
-                    .h_full()
+                    .min_h_0()
+                    .flex_1()
                     .bg(cx.theme().background)
                     .border_1()
                     .border_color(cx.theme().border)
@@ -232,33 +234,43 @@ impl Render for WorkspaceRegisterExplorer {
                                 .child("No matching nodes.")
                                 .into_any_element()
                         } else {
-                            tree(&self.tree_state, |ix, entry, selected, _, cx| {
-                                let depth_padding = px((entry.depth() as f32) * 14.0);
-                                let node_icon =
-                                    node_icon(entry.item().id.as_ref(), entry.is_expanded());
-                                let disclose =
-                                    disclosure_icon(entry.is_folder(), entry.is_expanded(), cx);
+                            div()
+                                .size_full()
+                                .overflow_x_scrollbar()
+                                .child(
+                                    tree(&self.tree_state, |ix, entry, selected, _, cx| {
+                                        let depth_padding = px((entry.depth() as f32) * 14.0);
+                                        let node_icon =
+                                            node_icon(entry.item().id.as_ref(), entry.is_expanded());
+                                        let disclose = disclosure_icon(
+                                            entry.is_folder(),
+                                            entry.is_expanded(),
+                                            cx,
+                                        );
 
-                                ListItem::new(ix)
-                                    .pl(depth_padding)
-                                    .selected(selected)
-                                    .child(
-                                        div()
-                                            .flex()
-                                            .items_center()
-                                            .gap_2()
-                                            .child(disclose)
-                                            .child(node_icon)
+                                        ListItem::new(ix)
+                                            .pl(depth_padding)
+                                            .selected(selected)
                                             .child(
                                                 div()
-                                                    .text_sm()
-                                                    .text_color(cx.theme().foreground)
-                                                    .child(entry.item().label.clone()),
-                                            ),
-                                    )
-                            })
-                            .size_full()
-                            .into_any_element()
+                                                    .flex()
+                                                    .flex_shrink_0()
+                                                    .items_center()
+                                                    .gap_2()
+                                                    .child(disclose)
+                                                    .child(node_icon)
+                                                    .child(
+                                                        div()
+                                                            .text_sm()
+                                                            .text_color(cx.theme().foreground)
+                                                            .whitespace_nowrap()
+                                                            .child(entry.item().label.clone()),
+                                                    ),
+                                            )
+                                    })
+                                    .size_full(),
+                                )
+                                .into_any_element()
                         }
                     }),
             );
@@ -266,6 +278,7 @@ impl Render for WorkspaceRegisterExplorer {
         div()
             .id("workspace-register-explorer")
             .h_full()
+            .min_h_0()
             .w_full()
             .flex()
             .flex_col()
@@ -307,12 +320,23 @@ impl Render for WorkspaceRegisterExplorer {
             )
             .child(
                 div()
-                    .h_full()
+                    .min_h_0()
+                    .flex_1()
                     .w_full()
+                    .min_w_0()
                     .flex()
                     .gap_4()
                     .child(tree_panel)
-                    .child(self.register_detail.clone()),
+                    .child(
+                        div()
+                            .id("register-detail-panel")
+                            .min_h_0()
+                            .min_w_0()
+                            .flex_basis(relative(0.6))
+                            .flex()
+                            .flex_col()
+                            .child(self.register_detail.clone()),
+                    ),
             )
     }
 }

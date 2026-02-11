@@ -1,6 +1,6 @@
 use gpui::prelude::*;
 use gpui::*;
-use gpui_component::ActiveTheme as _;
+use gpui_component::{ActiveTheme as _, scroll::ScrollableElement as _};
 
 use crate::global::GlobalState;
 
@@ -51,7 +51,7 @@ impl Render for WorkspaceRegisterDetail {
 
                 container = container
                     .child(title(cx, "Component"))
-                    .child(rows(
+                    .child(detail_scroll(rows(
                         cx,
                         vec![
                             ("Name", component.name().to_string()),
@@ -62,14 +62,14 @@ impl Render for WorkspaceRegisterDetail {
                             ("Registers", register_count.to_string()),
                             ("Fields", field_count.to_string()),
                         ],
-                    ));
+                    )));
             }
             Some(RegisterNodeKind::Block { block_index }) => {
                 let Some(block) = component.blks().get(*block_index) else {
                     return detail_container(cx).child(center_message(cx, "Block not found."));
                 };
 
-                container = container.child(title(cx, "Block")).child(rows(
+                container = container.child(title(cx, "Block")).child(detail_scroll(rows(
                     cx,
                     vec![
                         ("Name", block.name().to_string()),
@@ -78,7 +78,7 @@ impl Render for WorkspaceRegisterDetail {
                         ("Size", block.size().to_string()),
                         ("Registers", block.regs().len().to_string()),
                     ],
-                ));
+                )));
             }
             Some(RegisterNodeKind::Register {
                 block_index,
@@ -91,16 +91,18 @@ impl Render for WorkspaceRegisterDetail {
                     return detail_container(cx).child(center_message(cx, "Register not found."));
                 };
 
-                container = container.child(title(cx, "Register")).child(rows(
-                    cx,
-                    vec![
-                        ("Name", reg.name().to_string()),
-                        ("Block", block.name().to_string()),
-                        ("Offset", reg.offset().to_string()),
-                        ("Size", reg.size().to_string()),
-                        ("Fields", reg.fields().len().to_string()),
-                    ],
-                ));
+                container = container
+                    .child(title(cx, "Register"))
+                    .child(detail_scroll(rows(
+                        cx,
+                        vec![
+                            ("Name", reg.name().to_string()),
+                            ("Block", block.name().to_string()),
+                            ("Offset", reg.offset().to_string()),
+                            ("Size", reg.size().to_string()),
+                            ("Fields", reg.fields().len().to_string()),
+                        ],
+                    )));
             }
             Some(RegisterNodeKind::Field {
                 block_index,
@@ -117,7 +119,7 @@ impl Render for WorkspaceRegisterDetail {
                     return detail_container(cx).child(center_message(cx, "Field not found."));
                 };
 
-                container = container.child(title(cx, "Field")).child(rows(
+                container = container.child(title(cx, "Field")).child(detail_scroll(rows(
                     cx,
                     vec![
                         ("Name", field.name().to_string()),
@@ -129,7 +131,7 @@ impl Render for WorkspaceRegisterDetail {
                         ("Reset", field.reset().to_string()),
                         ("Description", field.desc().to_string()),
                     ],
-                ));
+                )));
             }
             None => {
                 container = container.child(center_message(
@@ -146,6 +148,7 @@ impl Render for WorkspaceRegisterDetail {
 fn detail_container(cx: &App) -> Stateful<Div> {
     div()
         .id("register-detail")
+        .min_h_0()
         .h_full()
         .w_full()
         .bg(cx.theme().background)
@@ -159,6 +162,16 @@ fn detail_container(cx: &App) -> Stateful<Div> {
         .gap_4()
 }
 
+fn detail_scroll(content: AnyElement) -> AnyElement {
+    div()
+        .min_h_0()
+        .flex_1()
+        .overflow_y_scrollbar()
+        .pr_1()
+        .child(content)
+        .into_any_element()
+}
+
 fn title(cx: &App, value: impl Into<SharedString>) -> AnyElement {
     div()
         .text_lg()
@@ -169,25 +182,31 @@ fn title(cx: &App, value: impl Into<SharedString>) -> AnyElement {
 }
 
 fn rows(cx: &App, data: Vec<(&'static str, String)>) -> AnyElement {
-    let mut body = div().flex().flex_col().gap_2();
+    let mut body = div().w_full().flex().flex_col().gap_2();
     for (label, value) in data {
         body = body.child(
             div()
+                .w_full()
                 .flex()
                 .items_start()
-                .justify_between()
                 .gap_4()
                 .child(
                     div()
+                        .w(px(112.0))
+                        .flex_shrink_0()
                         .text_sm()
                         .text_color(cx.theme().muted_foreground)
                         .child(label),
                 )
                 .child(
                     div()
+                        .min_w_0()
+                        .flex_1()
                         .text_sm()
                         .text_color(cx.theme().foreground)
-                        .text_right()
+                        .text_left()
+                        .whitespace_normal()
+                        .line_height(relative(1.3))
                         .font_family("monospace")
                         .child(value),
                 ),
