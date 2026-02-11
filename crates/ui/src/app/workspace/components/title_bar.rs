@@ -2,8 +2,7 @@ use gpui::prelude::*;
 use gpui::*;
 use gpui_component::{
     ActiveTheme as _, Disableable as _, Icon, IconName, Sizable as _, StyledExt as _, Theme,
-    ThemeConfig, ThemeMode, ThemeRegistry,
-    TitleBar, WindowExt as _,
+    ThemeConfig, ThemeMode, ThemeRegistry, TitleBar, WindowExt as _,
     button::{Button, ButtonVariants as _},
     menu::{AppMenuBar, DropdownMenu as _, PopupMenuItem},
     notification::NotificationType,
@@ -48,7 +47,10 @@ fn merge_themes_with_overrides(
     base_themes
 }
 
-fn notification_meta(notification_type: NotificationType, cx: &App) -> (IconName, Hsla, &'static str) {
+fn notification_meta(
+    notification_type: NotificationType,
+    cx: &App,
+) -> (IconName, Hsla, &'static str) {
     match notification_type {
         NotificationType::Info => (IconName::Info, cx.theme().info, "Info"),
         NotificationType::Success => (IconName::CircleCheck, cx.theme().success, "Success"),
@@ -182,7 +184,7 @@ impl Render for WorkspaceTitleBar {
             .icon(IconName::GitHub)
             .small()
             .ghost()
-            .on_click(|_, _, cx| cx.open_url("https://github.com/BeriBeli/irgen-gpui"));
+            .on_click(|_, _, cx| cx.open_url("https://github.com/BeriBeli/irgen"));
 
         let bell = {
             let count_label = if unread_notifications > 99 {
@@ -235,7 +237,11 @@ impl Render for WorkspaceTitleBar {
                                             .border_color(cx.theme().border)
                                             .bg(cx.theme().background)
                                             .rounded(cx.theme().radius)
-                                            .child(Icon::new(icon_name).text_color(icon_color).mt(px(2.)))
+                                            .child(
+                                                Icon::new(icon_name)
+                                                    .text_color(icon_color)
+                                                    .mt(px(2.)),
+                                            )
                                             .child(
                                                 div()
                                                     .min_w_0()
@@ -259,7 +265,12 @@ impl Render for WorkspaceTitleBar {
                                             )
                                     })
                                     .collect::<Vec<_>>();
-                                div().flex().flex_col().gap_2().children(items).into_any_element()
+                                div()
+                                    .flex()
+                                    .flex_col()
+                                    .gap_2()
+                                    .children(items)
+                                    .into_any_element()
                             } else {
                                 div()
                                     .h(px(140.))
@@ -269,7 +280,10 @@ impl Render for WorkspaceTitleBar {
                                     .justify_center()
                                     .gap_2()
                                     .text_color(cx.theme().muted_foreground)
-                                    .child(Icon::new(IconName::Bell).text_color(cx.theme().muted_foreground))
+                                    .child(
+                                        Icon::new(IconName::Bell)
+                                            .text_color(cx.theme().muted_foreground),
+                                    )
                                     .child(div().text_sm().child("No notifications yet"))
                                     .into_any_element()
                             };
