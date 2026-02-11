@@ -118,7 +118,7 @@ impl Render for WorkspaceTitleBar {
                     ThemeModeSetting::Dark => ThemeModeSetting::System,
                 };
 
-                GlobalState::global(cx).set_theme_mode(next_mode);
+                GlobalState::set_theme_mode(cx, next_mode);
                 match next_mode {
                     ThemeModeSetting::System => Theme::sync_system_appearance(Some(window), cx),
                     ThemeModeSetting::Light => Theme::change(ThemeMode::Light, Some(window), cx),
@@ -170,7 +170,7 @@ impl Render for WorkspaceTitleBar {
                                 } else {
                                     ThemeModeSetting::Light
                                 };
-                                GlobalState::global(cx).set_theme_mode(mode_setting);
+                                GlobalState::set_theme_mode(cx, mode_setting);
                                 Theme::change(target_mode, Some(window), cx);
                                 persist_theme_preferences(cx);
                                 GlobalState::notify_workspaces(cx);
@@ -200,7 +200,7 @@ impl Render for WorkspaceTitleBar {
                         .anchor(Corner::TopRight)
                         .on_open_change(|open, _, cx: &mut App| {
                             if *open {
-                                GlobalState::global(cx).mark_notifications_read();
+                                GlobalState::mark_notifications_read(cx);
                                 GlobalState::notify_workspaces(cx);
                             }
                         })
@@ -313,8 +313,7 @@ impl Render for WorkspaceTitleBar {
                                                 .label("Clear")
                                                 .disabled(!has_notifications)
                                                 .on_click(|_, window, cx| {
-                                                    GlobalState::global(cx)
-                                                        .clear_notification_history();
+                                                    GlobalState::clear_notification_history(cx);
                                                     window.clear_notifications(cx);
                                                     GlobalState::notify_workspaces(cx);
                                                 }),

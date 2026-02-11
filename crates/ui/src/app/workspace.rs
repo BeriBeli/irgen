@@ -18,7 +18,7 @@ impl Workspace {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let workspace_id = cx.entity_id();
         if cx.has_global::<GlobalState>() {
-            GlobalState::global(cx).register_workspace(workspace_id);
+            GlobalState::register_workspace(cx, workspace_id);
         } else {
             cx.set_global(GlobalState::with_workspace_id(workspace_id));
         }
@@ -39,7 +39,7 @@ impl Workspace {
         let entity = cx.entity();
         cx.observe_release(&entity, move |_, _, cx| {
             if cx.has_global::<GlobalState>() {
-                GlobalState::global(cx).unregister_workspace(workspace_id);
+                GlobalState::unregister_workspace(cx, workspace_id);
             }
         })
         .detach();

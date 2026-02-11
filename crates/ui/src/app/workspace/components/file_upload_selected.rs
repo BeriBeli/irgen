@@ -56,7 +56,7 @@ impl Render for WorkspaceFileUploadSelected {
             .on_click({
                 move |_, _, cx| {
                     cx.stop_propagation();
-                    GlobalState::global(cx).clear_selection();
+                    GlobalState::clear_selection(cx);
                     GlobalState::notify_workspaces(cx);
                 }
             });

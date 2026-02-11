@@ -25,13 +25,10 @@ use app::workspace::Workspace;
 fn refresh_effective_themes_in_global(cx: &mut App) {
     let themes = config::load_effective_themes_or_default();
 
-    if cx.has_global::<GlobalState>() {
-        GlobalState::global(cx).set_effective_themes(themes);
-    } else {
-        let state = GlobalState::new();
-        state.set_effective_themes(themes);
-        cx.set_global(state);
+    if !cx.has_global::<GlobalState>() {
+        cx.set_global(GlobalState::new());
     }
+    GlobalState::set_effective_themes(cx, themes);
 }
 
 fn resolve_theme_by_name(
@@ -95,12 +92,11 @@ fn restore_theme_from_config(cx: &mut App) {
     }
 
     if cx.has_global::<GlobalState>() {
-        GlobalState::global(cx).set_theme_mode(theme_prefs.mode);
+        GlobalState::set_theme_mode(cx, theme_prefs.mode);
     } else {
-        let state = GlobalState::new();
-        state.set_theme_mode(theme_prefs.mode);
-        state.set_effective_themes(preferred_themes);
-        cx.set_global(state);
+        cx.set_global(GlobalState::new());
+        GlobalState::set_theme_mode(cx, theme_prefs.mode);
+        GlobalState::set_effective_themes(cx, preferred_themes);
     }
 }
 

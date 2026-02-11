@@ -10,7 +10,7 @@ pub fn push(
     message: impl Into<SharedString>,
 ) {
     let message = message.into();
-    GlobalState::global(cx).push_notification(notification_type, message.clone());
+    GlobalState::push_notification(cx, notification_type, message.clone());
     window.push_notification((notification_type, message), cx);
     GlobalState::notify_workspaces(cx);
 }

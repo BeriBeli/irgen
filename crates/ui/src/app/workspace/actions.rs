@@ -59,7 +59,7 @@ where
                 let _ = cx.update_window(handle, |_, window, cx| {
                     match result {
                         Ok(load) => {
-                            GlobalState::global(cx).apply_load_result(load);
+                            GlobalState::apply_load_result(cx, load);
                             workspace_notifications::push(
                                 window,
                                 cx,
@@ -76,7 +76,6 @@ where
                             );
                         }
                     }
-                    GlobalState::notify_workspaces(cx);
                 });
             }
             Ok(None) => {
@@ -135,7 +134,6 @@ where
                             );
                         }
                     }
-                    GlobalState::notify_workspaces(cx);
                 });
             }
             Ok(None) => {

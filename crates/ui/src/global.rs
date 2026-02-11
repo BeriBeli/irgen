@@ -1,7 +1,6 @@
 use gpui::{App, EntityId, Global, ReadGlobal, SharedString};
 use gpui_component::{ThemeConfig, notification::NotificationType};
 use irgen_core::processing::{LoadResult, base};
-use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashSet, VecDeque};
 use std::path::PathBuf;
@@ -36,17 +35,17 @@ pub struct NotificationEntry {
 }
 
 pub struct GlobalState {
-    workspace_ids: RwLock<HashSet<EntityId>>,
-    component: RwLock<Option<Arc<base::Component>>>,
-    directory: RwLock<Option<Arc<PathBuf>>>,
-    selected_file: RwLock<Option<Arc<PathBuf>>>,
-    selected_file_size: RwLock<Option<u64>>,
-    sheet_count: RwLock<Option<usize>>,
-    export_format: RwLock<ExportFormat>,
-    theme_mode: RwLock<ThemeModeSetting>,
-    effective_themes: RwLock<Vec<ThemeConfig>>,
-    notification_history: RwLock<VecDeque<NotificationEntry>>,
-    unread_notification_count: RwLock<usize>,
+    workspace_ids: HashSet<EntityId>,
+    component: Option<Arc<base::Component>>,
+    directory: Option<Arc<PathBuf>>,
+    selected_file: Option<Arc<PathBuf>>,
+    selected_file_size: Option<u64>,
+    sheet_count: Option<usize>,
+    export_format: ExportFormat,
+    theme_mode: ThemeModeSetting,
+    effective_themes: Vec<ThemeConfig>,
+    notification_history: VecDeque<NotificationEntry>,
+    unread_notification_count: usize,
 }
 
 impl Global for GlobalState {}
@@ -54,36 +53,47 @@ impl Global for GlobalState {}
 impl GlobalState {
     pub fn new() -> Self {
         Self {
-            workspace_ids: RwLock::new(HashSet::new()),
-            component: RwLock::new(None),
-            directory: RwLock::new(None),
-            selected_file: RwLock::new(None),
-            selected_file_size: RwLock::new(None),
-            sheet_count: RwLock::new(None),
-            export_format: RwLock::new(ExportFormat::default()),
-            theme_mode: RwLock::new(ThemeModeSetting::default()),
-            effective_themes: RwLock::new(Vec::new()),
-            notification_history: RwLock::new(VecDeque::new()),
-            unread_notification_count: RwLock::new(0),
+            workspace_ids: HashSet::new(),
+            component: None,
+            directory: None,
+            selected_file: None,
+            selected_file_size: None,
+            sheet_count: None,
+            export_format: ExportFormat::default(),
+            theme_mode: ThemeModeSetting::default(),
+            effective_themes: Vec::new(),
+            notification_history: VecDeque::new(),
+            unread_notification_count: 0,
         }
     }
 
     pub fn with_workspace_id(workspace_id: EntityId) -> Self {
         let state = Self::new();
-        state.register_workspace(workspace_id);
+        let mut state = state;
+        state.register_workspace_inner(workspace_id);
         state
     }
 
-    pub fn register_workspace(&self, workspace_id: EntityId) {
-        self.workspace_ids.write().insert(workspace_id);
+    pub fn register_workspace(cx: &mut App, workspace_id: EntityId) {
+        cx.global_mut::<Self>()
+            .register_workspace_inner(workspace_id);
     }
 
-    pub fn unregister_workspace(&self, workspace_id: EntityId) {
-        self.workspace_ids.write().remove(&workspace_id);
+    fn register_workspace_inner(&mut self, workspace_id: EntityId) {
+        self.workspace_ids.insert(workspace_id);
+    }
+
+    pub fn unregister_workspace(cx: &mut App, workspace_id: EntityId) {
+        cx.global_mut::<Self>()
+            .unregister_workspace_inner(workspace_id);
+    }
+
+    fn unregister_workspace_inner(&mut self, workspace_id: EntityId) {
+        self.workspace_ids.remove(&workspace_id);
     }
 
     pub fn workspace_ids(&self) -> Vec<EntityId> {
-        self.workspace_ids.read().iter().copied().collect()
+        self.workspace_ids.iter().copied().collect()
     }
 
     pub fn notify_workspaces(cx: &mut App) {
@@ -93,127 +103,136 @@ impl GlobalState {
         }
     }
 
-    pub fn apply_load_result(&self, result: LoadResult) {
-        self.set_file_metadata(result.file_size, result.sheet_count);
-        self.load_component(result.compo, result.directory, result.file);
+    pub fn apply_load_result(cx: &mut App, result: LoadResult) {
+        let state = cx.global_mut::<Self>();
+        state.set_file_metadata(result.file_size, result.sheet_count);
+        state.load_component(result.compo, result.directory, result.file);
     }
 
     /// Load component and related info atomically
-    pub fn load_component(&self, compo: base::Component, dir: PathBuf, file: PathBuf) {
-        *self.component.write() = Some(Arc::new(compo));
-        *self.directory.write() = Some(Arc::new(dir));
-        *self.selected_file.write() = Some(Arc::new(file));
+    fn load_component(&mut self, compo: base::Component, dir: PathBuf, file: PathBuf) {
+        self.component = Some(Arc::new(compo));
+        self.directory = Some(Arc::new(dir));
+        self.selected_file = Some(Arc::new(file));
     }
 
     /// Store metadata for the selected file.
-    pub fn set_file_metadata(&self, file_size: Option<u64>, sheet_count: Option<usize>) {
-        *self.selected_file_size.write() = file_size;
-        *self.sheet_count.write() = sheet_count;
+    fn set_file_metadata(&mut self, file_size: Option<u64>, sheet_count: Option<usize>) {
+        self.selected_file_size = file_size;
+        self.sheet_count = sheet_count;
     }
 
     /// Check if a file is selected
     pub fn is_file_selected(&self) -> bool {
-        self.selected_file.read().is_some()
+        self.selected_file.is_some()
     }
 
     /// Get the selected file path
     pub fn get_selected_file(&self) -> Option<Arc<PathBuf>> {
-        self.selected_file.read().clone()
+        self.selected_file.clone()
     }
 
     /// Get the selected file size in bytes
     pub fn get_selected_file_size(&self) -> Option<u64> {
-        *self.selected_file_size.read()
+        self.selected_file_size
     }
 
     /// Get the sheet count of the loaded workbook
     pub fn get_sheet_count(&self) -> Option<usize> {
-        *self.sheet_count.read()
+        self.sheet_count
     }
 
     /// Get the selected export format.
     pub fn get_export_format(&self) -> ExportFormat {
-        *self.export_format.read()
+        self.export_format
     }
 
     /// Set the export format.
-    pub fn set_export_format(&self, format: ExportFormat) {
-        *self.export_format.write() = format;
+    pub fn set_export_format(cx: &mut App, format: ExportFormat) {
+        cx.global_mut::<Self>().export_format = format;
     }
 
     /// Get the current theme mode setting.
     pub fn get_theme_mode(&self) -> ThemeModeSetting {
-        *self.theme_mode.read()
+        self.theme_mode
     }
 
     /// Set the current theme mode setting.
-    pub fn set_theme_mode(&self, mode: ThemeModeSetting) {
-        *self.theme_mode.write() = mode;
+    pub fn set_theme_mode(cx: &mut App, mode: ThemeModeSetting) {
+        cx.global_mut::<Self>().set_theme_mode_inner(mode);
+    }
+
+    fn set_theme_mode_inner(&mut self, mode: ThemeModeSetting) {
+        self.theme_mode = mode;
     }
 
     pub fn effective_themes(&self) -> Vec<ThemeConfig> {
-        self.effective_themes.read().clone()
+        self.effective_themes.clone()
     }
 
-    pub fn set_effective_themes(&self, themes: Vec<ThemeConfig>) {
-        *self.effective_themes.write() = themes;
+    pub fn set_effective_themes(cx: &mut App, themes: Vec<ThemeConfig>) {
+        cx.global_mut::<Self>().set_effective_themes_inner(themes);
+    }
+
+    fn set_effective_themes_inner(&mut self, themes: Vec<ThemeConfig>) {
+        self.effective_themes = themes;
     }
 
     pub fn push_notification(
-        &self,
+        cx: &mut App,
         notification_type: NotificationType,
         message: impl Into<SharedString>,
     ) {
-        let mut history = self.notification_history.write();
-        history.push_back(NotificationEntry {
+        let state = cx.global_mut::<Self>();
+        state.notification_history.push_back(NotificationEntry {
             type_: notification_type,
             message: message.into(),
         });
-        if history.len() > NOTIFICATION_HISTORY_LIMIT {
-            history.pop_front();
+        if state.notification_history.len() > NOTIFICATION_HISTORY_LIMIT {
+            state.notification_history.pop_front();
         }
 
-        let history_len = history.len();
-        drop(history);
-
-        let mut unread_count = self.unread_notification_count.write();
-        *unread_count = unread_count.saturating_add(1).min(history_len);
+        let history_len = state.notification_history.len();
+        state.unread_notification_count =
+            state.unread_notification_count.saturating_add(1).min(history_len);
     }
 
     pub fn notification_history(&self) -> Vec<NotificationEntry> {
-        self.notification_history.read().iter().cloned().collect()
+        self.notification_history.iter().cloned().collect()
     }
 
     pub fn unread_notification_count(&self) -> usize {
-        *self.unread_notification_count.read()
+        self.unread_notification_count
     }
 
-    pub fn mark_notifications_read(&self) {
-        *self.unread_notification_count.write() = 0;
+    pub fn mark_notifications_read(cx: &mut App) {
+        cx.global_mut::<Self>().unread_notification_count = 0;
     }
 
-    pub fn clear_notification_history(&self) {
-        self.notification_history.write().clear();
-        *self.unread_notification_count.write() = 0;
+    pub fn clear_notification_history(cx: &mut App) {
+        let state = cx.global_mut::<Self>();
+        state.notification_history.clear();
+        state.unread_notification_count = 0;
     }
 
     /// Get the directory path
     pub fn get_directory(&self) -> Option<Arc<PathBuf>> {
-        self.directory.read().clone()
+        self.directory.clone()
     }
 
     /// Get component for internal use (processing module)
     pub fn component(&self) -> Option<Arc<base::Component>> {
-        self.component.read().clone()
+        self.component.clone()
     }
 
     /// Clear loaded data and selected file.
-    pub fn clear_selection(&self) {
-        *self.component.write() = None;
-        *self.directory.write() = None;
-        *self.selected_file.write() = None;
-        *self.selected_file_size.write() = None;
-        *self.sheet_count.write() = None;
+    pub fn clear_selection(cx: &mut App) {
+        let state = cx.global_mut::<Self>();
+        state.component = None;
+        state.directory = None;
+        state.selected_file = None;
+        state.selected_file_size = None;
+        state.sheet_count = None;
     }
 }
 

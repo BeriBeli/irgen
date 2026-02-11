@@ -67,8 +67,7 @@ impl Render for WorkspaceFooter {
                                         PopupMenuItem::new("IP-XACT")
                                             .checked(export_format == ExportFormat::Ipxact)
                                             .on_click(move |_, _, cx| {
-                                                GlobalState::global(cx)
-                                                    .set_export_format(ExportFormat::Ipxact);
+                                                GlobalState::set_export_format(cx, ExportFormat::Ipxact);
                                                 GlobalState::notify_workspaces(cx);
                                             }),
                                     )
@@ -76,8 +75,7 @@ impl Render for WorkspaceFooter {
                                         PopupMenuItem::new("RegVue")
                                             .checked(export_format == ExportFormat::Regvue)
                                             .on_click(move |_, _, cx| {
-                                                GlobalState::global(cx)
-                                                    .set_export_format(ExportFormat::Regvue);
+                                                GlobalState::set_export_format(cx, ExportFormat::Regvue);
                                                 GlobalState::notify_workspaces(cx);
                                             }),
                                     )
@@ -85,8 +83,7 @@ impl Render for WorkspaceFooter {
                                         PopupMenuItem::new("C Header")
                                             .checked(export_format == ExportFormat::CHeader)
                                             .on_click(move |_, _, cx| {
-                                                GlobalState::global(cx)
-                                                    .set_export_format(ExportFormat::CHeader);
+                                                GlobalState::set_export_format(cx, ExportFormat::CHeader);
                                                 GlobalState::notify_workspaces(cx);
                                             }),
                                     )
@@ -94,8 +91,7 @@ impl Render for WorkspaceFooter {
                                         PopupMenuItem::new("UVM RAL")
                                             .checked(export_format == ExportFormat::UvmRal)
                                             .on_click(move |_, _, cx| {
-                                                GlobalState::global(cx)
-                                                    .set_export_format(ExportFormat::UvmRal);
+                                                GlobalState::set_export_format(cx, ExportFormat::UvmRal);
                                                 GlobalState::notify_workspaces(cx);
                                             }),
                                     )
@@ -103,8 +99,7 @@ impl Render for WorkspaceFooter {
                                         PopupMenuItem::new("Verilog RTL")
                                             .checked(export_format == ExportFormat::Rtl)
                                             .on_click(move |_, _, cx| {
-                                                GlobalState::global(cx)
-                                                    .set_export_format(ExportFormat::Rtl);
+                                                GlobalState::set_export_format(cx, ExportFormat::Rtl);
                                                 GlobalState::notify_workspaces(cx);
                                             }),
                                     )
@@ -112,8 +107,7 @@ impl Render for WorkspaceFooter {
                                         PopupMenuItem::new("HTML")
                                             .checked(export_format == ExportFormat::Html)
                                             .on_click(move |_, _, cx| {
-                                                GlobalState::global(cx)
-                                                    .set_export_format(ExportFormat::Html);
+                                                GlobalState::set_export_format(cx, ExportFormat::Html);
                                                 GlobalState::notify_workspaces(cx);
                                             }),
                                     )

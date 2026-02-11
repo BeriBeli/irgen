@@ -29,6 +29,7 @@ pub struct WorkspaceRegisterExplorer {
     register_detail: Entity<WorkspaceRegisterDetail>,
     _search_subscription: Subscription,
     _tree_observer: Subscription,
+    _global_observer: Subscription,
 }
 
 impl WorkspaceRegisterExplorer {
@@ -40,7 +41,13 @@ impl WorkspaceRegisterExplorer {
 
         let _search_subscription =
             cx.subscribe_in(&search_input, window, Self::on_search_input_event);
-        let _tree_observer = cx.observe(&tree_state, |_, _, cx| cx.notify());
+        let _tree_observer = cx.observe(&tree_state, |this, _, cx| {
+            this.sync_detail_selection(cx);
+            cx.notify();
+        });
+        let _global_observer = cx.observe_global::<GlobalState>(|this, cx| {
+            this.sync_with_loaded_file(cx);
+        });
         let register_detail = WorkspaceRegisterDetail::view(window, cx);
 
         let mut this = Self {
@@ -53,6 +60,7 @@ impl WorkspaceRegisterExplorer {
             register_detail,
             _search_subscription,
             _tree_observer,
+            _global_observer,
         };
         this.rebuild_tree(cx);
         this
@@ -101,6 +109,7 @@ impl WorkspaceRegisterExplorer {
                 tree.set_items(Vec::<TreeItem>::new(), cx);
                 tree.set_selected_index(None, cx);
             });
+            self.sync_detail_selection(cx);
             cx.notify();
             return;
         };
@@ -124,7 +133,15 @@ impl WorkspaceRegisterExplorer {
             tree.set_selected_index(next_selected_ix, cx);
         });
 
+        self.sync_detail_selection(cx);
         cx.notify();
+    }
+
+    fn sync_detail_selection(&mut self, cx: &mut Context<Self>) {
+        let selected_kind = self.selected_kind(cx);
+        self.register_detail.update(cx, |detail, cx| {
+            detail.set_selected(selected_kind, cx);
+        });
     }
 
     fn selected_kind(&self, cx: &App) -> Option<RegisterNodeKind> {
@@ -138,8 +155,6 @@ impl WorkspaceRegisterExplorer {
 
 impl Render for WorkspaceRegisterExplorer {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        self.sync_with_loaded_file(cx);
-
         let state = GlobalState::global(cx);
         let selected_name = state
             .get_selected_file()
@@ -151,11 +166,6 @@ impl Render for WorkspaceRegisterExplorer {
         if state.component().is_none() {
             return div().id("workspace-register-explorer").h_full().w_full();
         }
-
-        let selected_kind = self.selected_kind(cx);
-        self.register_detail.update(cx, |detail, cx| {
-            detail.set_selected(selected_kind.clone(), cx);
-        });
 
         let replace_button = Button::new("replace-excel")
             .label("Switch")
@@ -176,14 +186,13 @@ impl Render for WorkspaceRegisterExplorer {
             .w(px(132.0))
             .on_click(|_, window, cx| {
                 cx.stop_propagation();
-                GlobalState::global(cx).clear_selection();
+                GlobalState::clear_selection(cx);
                 workspace_notifications::push(
                     window,
                     cx,
                     NotificationType::Success,
                     "Selection cleared.",
                 );
-                GlobalState::notify_workspaces(cx);
             });
 
         let tree_panel = div()
