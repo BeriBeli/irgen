@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/core", "crates/ui"]
+members = ["crates/core", "crates/ui", "crates/ipxact"]
 default-members = ["crates/ui"]
 resolver = "2"
 

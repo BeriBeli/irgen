@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component xmlns="http://www.spiritconsortium.org/XMLSchema/SPIRIT/1685-2009"
+           xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+           xsi:schemaLocation="http://www.spiritconsortium.org/XMLSchema/SPIRIT/1685-2009 http://www.spiritconsortium.org/XMLSchema/SPIRIT/1685-2009/index.xsd">
+  <vendor>vendor.com</vendor>
+  <library>peripheral_lib</library>
+  <name>uart</name>
+  <version>1.0</version>
+  <description>UART peripheral component</description>
+  <memoryMaps>
+    <memoryMap>
+      <name>reg_map</name>
+      <displayName>Register Map</displayName>
+      <addressUnitBits>8</addressUnitBits>
+      <memoryMap>
+        <addressBlock>
+          <name>control_regs</name>
+          <displayName>Control Registers</displayName>
+          <baseAddress>0x0000</baseAddress>
+          <range>64</range>
+          <width>32</width>
+          <usage>register</usage>
+          <access>read-write</access>
+        </addressBlock>
+        <addressBlock>
+          <name>data_buffer</name>
+          <displayName>Data Buffer</displayName>
+          <baseAddress>0x0040</baseAddress>
+          <range>256</range>
+          <width>8</width>
+          <usage>memory</usage>
+          <access>read-write</access>
+          <volatile>true</volatile>
+        </addressBlock>
+      </memoryMap>
+    </memoryMap>
+  </memoryMaps>
+  <parameters>
+    <parameter>
+      <name>CLK_FREQ</name>
+      <value>100000000</value>
+      <format>long</format>
+    </parameter>
+    <parameter>
+      <name>BAUD_RATE</name>
+      <value>115200</value>
+      <format>long</format>
+    </parameter>
+  </parameters>
+</component>

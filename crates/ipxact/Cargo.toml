@@ -1,0 +1,17 @@
+[package]
+name = "ip-xact"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+name = "ip_xact"
+path = "src/lib.rs"
+
+[dependencies]
+quick-xml = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+serde-xml-rs = "0.6"
+serde_json = "1.0"
