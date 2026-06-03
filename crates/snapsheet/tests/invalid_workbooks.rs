@@ -8,6 +8,7 @@ fn fixture(name: &str) -> PathBuf {
 
 #[test]
 fn rejects_invalid_workbook_fixtures() {
+    let spec = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../snapsheet.toml");
     let cases = [
         ("conflicting_registers.xlsx", "register name collides"),
         ("duplicate_fields.xlsx", "field `value` is duplicated"),
@@ -18,7 +19,7 @@ fn rejects_invalid_workbook_fixtures() {
     ];
 
     for (filename, expected) in cases {
-        let error = irgen_snapsheet::load_excel(&fixture(filename))
+        let error = irgen_snapsheet::load_excel_with_config_file(&fixture(filename), &spec)
             .err()
             .unwrap_or_else(|| panic!("{filename} should be rejected"));
         let message = error.to_string();

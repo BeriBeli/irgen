@@ -19,6 +19,7 @@ serde_json = "1.0"
 thiserror = "2.0"
 quick-xml = { version = "0.39", features = ["serialize"] }
 derive_builder = "0.20"
+toml = "0.8"
 
 [profile.release]
 opt-level = "z"

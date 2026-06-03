@@ -3,15 +3,16 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command as ProcessCommand, ExitCode};
 
-const USAGE: &str = "Usage: irgen <input.xlsx> [-o <output>] [--format ipxact] [--validate <schema.xsd>]\n\
+const USAGE: &str = "Usage: irgen <input.xlsx> [-o <output>] [--format ipxact] [--snapsheet-spec <snapsheet.toml>] [--validate <schema.xsd>]\n\
                      \n\
                      Convert a register spreadsheet into an output file.\n\
                      \n\
                      Options:\n\
-                       -o, --output <path>  Output path (default: input path with .xml extension)\n\
-                       -f, --format <name>  Output format: ipxact (default)\n\
-                      --validate <path>    Validate IP-XACT XML with xmllint and the supplied XSD\n\
-                       -h, --help           Print help";
+                       -o, --output <path>           Output path (default: input path with .xml extension)\n\
+                       -f, --format <name>           Output format: ipxact (default)\n\
+                      --snapsheet-spec <snapsheet.toml>  TOML file describing snapsheet sheet names, columns, and parser rules\n\
+                      --validate <path>             Validate IP-XACT XML with xmllint and the supplied XSD\n\
+                       -h, --help                    Print help";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum OutputFormat {
@@ -38,12 +39,27 @@ struct ConvertArgs {
     input: PathBuf,
     output: PathBuf,
     format: OutputFormat,
+    snapsheet_spec: Option<PathBuf>,
     validate_xsd: Option<PathBuf>,
 }
 
 enum Command {
     Convert(ConvertArgs),
     Help,
+}
+
+#[derive(Debug)]
+enum CliError {
+    Usage(String),
+    Runtime(String),
+}
+
+impl std::fmt::Display for CliError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Usage(message) | Self::Runtime(message) => formatter.write_str(message),
+        }
+    }
 }
 
 fn main() -> ExitCode {
@@ -53,26 +69,39 @@ fn main() -> ExitCode {
             ExitCode::SUCCESS
         }
         Ok(None) => ExitCode::SUCCESS,
-        Err(message) => {
+        Err(CliError::Usage(message)) => {
             eprintln!("error: {message}\n\n{USAGE}");
+            ExitCode::FAILURE
+        }
+        Err(CliError::Runtime(message)) => {
+            eprintln!("error: {message}");
             ExitCode::FAILURE
         }
     }
 }
 
-fn run(args: impl Iterator<Item = OsString>) -> Result<Option<PathBuf>, String> {
-    let Command::Convert(args) = parse_args(args)? else {
+fn run(args: impl Iterator<Item = OsString>) -> Result<Option<PathBuf>, CliError> {
+    let Command::Convert(args) = parse_args(args).map_err(CliError::Usage)? else {
         println!("{USAGE}");
         return Ok(None);
     };
 
-    let loaded = irgen_snapsheet::load_excel(&args.input).map_err(|error| error.to_string())?;
-    let output =
-        irgen_model::serialize_ipxact_xml(&loaded.compo).map_err(|error| error.to_string())?;
-    fs::write(&args.output, output)
-        .map_err(|error| format!("failed to write {}: {error}", args.output.display()))?;
+    let loaded = if let Some(spec) = &args.snapsheet_spec {
+        irgen_snapsheet::load_excel_with_config_file(&args.input, spec)
+    } else {
+        irgen_snapsheet::load_excel(&args.input)
+    }
+    .map_err(|error| CliError::Runtime(error.to_string()))?;
+    let output = irgen_model::serialize_ipxact_xml(&loaded.compo)
+        .map_err(|error| CliError::Runtime(error.to_string()))?;
+    fs::write(&args.output, output).map_err(|error| {
+        CliError::Runtime(format!(
+            "failed to write {}: {error}",
+            args.output.display()
+        ))
+    })?;
     if let Some(schema) = args.validate_xsd {
-        validate_ipxact_xml(&schema, &args.output)?;
+        validate_ipxact_xml(&schema, &args.output).map_err(CliError::Runtime)?;
     }
     Ok(Some(args.output))
 }
@@ -110,6 +139,7 @@ fn parse_args(args: impl Iterator<Item = OsString>) -> Result<Command, String> {
     let mut input = None;
     let mut output = None;
     let mut format = None;
+    let mut snapsheet_spec = None;
     let mut validate_xsd = None;
 
     while let Some(arg) = args.next() {
@@ -142,6 +172,14 @@ fn parse_args(args: impl Iterator<Item = OsString>) -> Result<Command, String> {
                     return Err("--validate may only be specified once".into());
                 }
             }
+            Some("--snapsheet-spec") => {
+                let path = args
+                    .next()
+                    .ok_or_else(|| "missing path after --snapsheet-spec".to_string())?;
+                if snapsheet_spec.replace(PathBuf::from(path)).is_some() {
+                    return Err("--snapsheet-spec may only be specified once".into());
+                }
+            }
             Some(flag) if flag.starts_with('-') => {
                 return Err(format!("unknown option: {flag}"));
             }
@@ -160,6 +198,7 @@ fn parse_args(args: impl Iterator<Item = OsString>) -> Result<Command, String> {
         input,
         output,
         format,
+        snapsheet_spec,
         validate_xsd,
     }))
 }
@@ -227,6 +266,43 @@ mod tests {
     }
 
     #[test]
+    fn accepts_explicit_snapsheet_spec() {
+        let Command::Convert(parsed) =
+            parse_args(args(&["input.xlsx", "--snapsheet-spec", "snapsheet.toml"])).unwrap()
+        else {
+            panic!("expected conversion command");
+        };
+
+        assert_eq!(parsed.snapsheet_spec, Some(PathBuf::from("snapsheet.toml")));
+    }
+
+    #[test]
+    fn rejects_missing_snapsheet_spec_path() {
+        assert_eq!(
+            parse_args(args(&["input.xlsx", "--snapsheet-spec"]))
+                .err()
+                .as_deref(),
+            Some("missing path after --snapsheet-spec")
+        );
+    }
+
+    #[test]
+    fn rejects_duplicate_snapsheet_spec() {
+        assert_eq!(
+            parse_args(args(&[
+                "input.xlsx",
+                "--snapsheet-spec",
+                "first.toml",
+                "--snapsheet-spec",
+                "second.toml",
+            ]))
+            .err()
+            .as_deref(),
+            Some("--snapsheet-spec may only be specified once")
+        );
+    }
+
+    #[test]
     fn rejects_regvue_format() {
         assert_eq!(
             parse_args(args(&["input.xlsx", "--format", "regvue"]))
@@ -240,6 +316,6 @@ mod tests {
     fn reports_failing_spreadsheet_conversion() {
         let error = run(args(&["this-file-does-not-exist.xlsx"])).unwrap_err();
 
-        assert!(error.contains("Xlsx error"));
+        assert!(error.to_string().contains("Xlsx error"));
     }
 }

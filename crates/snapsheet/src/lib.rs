@@ -1,9 +1,10 @@
+pub mod config;
+pub mod error;
+
 mod excel;
 mod number;
 mod register;
 mod transform;
-
-pub mod error;
 
 use std::collections::HashMap;
 use std::fs;
@@ -11,6 +12,8 @@ use std::path::{Path, PathBuf};
 
 use calamine::{Reader, Xlsx, open_workbook};
 use irgen_model::base::Component;
+
+pub use config::SnapsheetConfig;
 
 use error::Error;
 use excel::Table;
@@ -26,6 +29,15 @@ pub struct LoadResult {
 }
 
 pub fn load_excel(input: &Path) -> Result<LoadResult, Error> {
+    load_excel_with_config(input, &SnapsheetConfig::default())
+}
+
+pub fn load_excel_with_config_file(input: &Path, config: &Path) -> Result<LoadResult, Error> {
+    let config = SnapsheetConfig::from_toml_file(config)?;
+    load_excel_with_config(input, &config)
+}
+
+pub fn load_excel_with_config(input: &Path, config: &SnapsheetConfig) -> Result<LoadResult, Error> {
     let directory = input
         .parent()
         .map(Path::to_path_buf)
@@ -41,24 +53,26 @@ pub fn load_excel(input: &Path) -> Result<LoadResult, Error> {
         .map(|(sheet, range)| Table::from_range(sheet, range).map(|table| (sheet.clone(), table)))
         .collect::<Result<HashMap<_, _>, _>>()?;
 
+    let version_sheet = &config.workbook.sheets.version;
     let version = tables
-        .remove("version")
+        .remove(version_sheet)
         .ok_or_else(|| Error::MissingSheet {
-            sheet: "version".into(),
+            sheet: version_sheet.into(),
         })?;
+    let address_map_sheet = &config.workbook.sheets.address_map;
     let address_map = tables
-        .remove("address_map")
+        .remove(address_map_sheet)
         .ok_or_else(|| Error::MissingSheet {
-            sheet: "address_map".into(),
+            sheet: address_map_sheet.into(),
         })?;
 
-    let blocks = parse_blocks(&address_map, |block, range| {
+    let blocks = parse_blocks(config, &address_map, |block, range| {
         let registers = tables.remove(block).ok_or_else(|| Error::MissingSheet {
             sheet: block.into(),
         })?;
-        parse_registers(&registers, block, range)
+        parse_registers(config, &registers, block, range)
     })?;
-    let compo = parse_component(&version, blocks)?;
+    let compo = parse_component(config, &version, blocks)?;
 
     Ok(LoadResult {
         compo,

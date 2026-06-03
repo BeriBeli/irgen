@@ -3,7 +3,7 @@ use std::fmt::Display;
 
 use calamine::{CellType, DataType, Range};
 
-use crate::error::Error;
+use crate::error::{Error, ValidationIssue};
 
 #[derive(Debug, Clone)]
 pub(crate) struct Row {
@@ -41,10 +41,11 @@ impl Table {
 
         let mut headers = Vec::with_capacity(header_row.len());
         let mut seen = HashSet::new();
+        let mut issues = Vec::new();
         for (index, cell) in header_row.iter().enumerate() {
             let header = cell.to_string().trim().to_owned();
             if header.is_empty() {
-                return Err(Error::validation(
+                issues.push(ValidationIssue::new(
                     &sheet,
                     Some(1),
                     Some(&format!("#{}", index + 1)),
@@ -52,9 +53,11 @@ impl Table {
                     None,
                     "column header is empty",
                 ));
+                headers.push(header);
+                continue;
             }
             if !seen.insert(header.clone()) {
-                return Err(Error::validation(
+                issues.push(ValidationIssue::new(
                     &sheet,
                     Some(1),
                     Some(&header),
@@ -64,6 +67,9 @@ impl Table {
                 ));
             }
             headers.push(header);
+        }
+        if !issues.is_empty() {
+            return Err(Error::validation_issues(issues));
         }
 
         let rows = all_rows
@@ -106,9 +112,10 @@ impl Table {
     }
 
     pub(crate) fn require_columns(&self, columns: &[&str]) -> Result<(), Error> {
+        let mut issues = Vec::new();
         for column in columns {
             if !self.headers.contains(*column) {
-                return Err(Error::validation(
+                issues.push(ValidationIssue::new(
                     &self.sheet,
                     Some(1),
                     Some(column),
@@ -117,6 +124,9 @@ impl Table {
                     "required column is missing",
                 ));
             }
+        }
+        if !issues.is_empty() {
+            return Err(Error::validation_issues(issues));
         }
         Ok(())
     }

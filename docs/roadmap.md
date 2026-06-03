@@ -34,19 +34,20 @@ Grouping remains intentional.
   `ADDR` and `REG` are inherited across merged cells; empty rows are ignored.
 - Added validation for conflicting register definitions, duplicate fields,
   overlapping bit ranges, `BIT` / `WIDTH` mismatches, invalid attributes,
-  reset values that do not fit their field, 32-bit register width rules,
-  byte alignment, out-of-range registers, duplicate address block names, and
-  overlapping address blocks.
+  reset values that do not fit their field, IP-XACT-style byte-aligned register
+  sizes inferred from field extents, out-of-range registers, duplicate address
+  block names, and overlapping address blocks.
 - Replaced `UInt32` address arithmetic with checked `u64` arithmetic.
 - Standardized numeric input: addresses, ranges, reset values, and
   `range(...)` arguments accept decimal or `0x`-prefixed hexadecimal values.
 - Added array validation for malformed expressions, invalid argument counts,
-  zero steps, empty expansions, overflow, excessive expansion size, generated
+  zero steps, empty expansions, overflow, excessive expansion size, registerFile
   name collisions, and generated address collisions.
-- Changed array suffixes to use the actual `n` value. For example,
-  `reg{n}, n=range(1, 3)` generates `reg_1` and `reg_2`.
-- Changed the optional third `range(...)` argument to the byte offset between
-  adjacent expanded registers. The default offset is `0x4`.
+- Changed `{n}, n=range(start?, end, step?)` register arrays to emit IP-XACT
+  `registerFile` arrays instead of expanded top-level registers. The
+  registerFile `dim` is `end - start`.
+- Changed the optional third `range(...)` argument to the registerFile
+  `range`/byte stride between adjacent elements. The default offset is `0x4`.
 - Added parser diagnostics with sheet name, row number, column name, register
   name, and block name where available.
 - Added CLI tests for missing input, unknown options, output path handling,

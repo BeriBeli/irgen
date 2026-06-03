@@ -8,20 +8,91 @@ snapsheets into IP-XACT XML files using the IEEE 1685-2014 format.
 Convert a snapsheet into IP-XACT XML:
 
 ```sh
-cargo run -p irgen-cli -- example.xlsx
+cargo run -p irgen-cli -- example_simple.xlsx
 ```
 
 Write to a specific path:
 
 ```sh
-cargo run -p irgen-cli -- example.xlsx -o output.xml
+cargo run -p irgen-cli -- example_simple.xlsx -o output.xml
 ```
 
 Validate generated IP-XACT XML with an installed `xmllint` and an explicitly
 supplied XSD:
 
 ```sh
-cargo run -p irgen-cli -- example.xlsx --validate path/to/index.xsd
+cargo run -p irgen-cli -- example_simple.xlsx --validate path/to/index.xsd
+```
+
+Without a TOML file, `irgen` uses a simple default parser. Each register row
+must provide its own `ADDR`, `REG`, and `FIELD`; array syntax, inherited cells,
+blank field names that become register names, and reserved-name matching are not
+enabled.
+
+Use a TOML snapsheet specification to enable richer parser rules:
+
+```sh
+cargo run -p irgen-cli -- example.xlsx --snapsheet-spec snapsheet.toml
+```
+
+See [`docs/snapsheet-spec.example.toml`](docs/snapsheet-spec.example.toml)
+or [`snapsheet.toml`](snapsheet.toml) for the complex example specification.
+
+```toml
+[workbook.sheets]
+version = "version"
+address_map = "address_map"
+register_sheet = "block_name"
+
+[columns.version]
+vendor = "VENDOR"
+library = "LIBRARY"
+name = "NAME"
+version = "VERSION"
+
+[columns.address_block]
+name = "BLOCK"
+offset = "OFFSET"
+range = "RANGE"
+
+[columns.register]
+address = "ADDR"
+register = "REG"
+field = "FIELD"
+bit = "BIT"
+width = "WIDTH"
+access = "ATTRIBUTE"
+reset = "DEFAULT"
+description = "DESCRIPTION"
+
+[register]
+inherit_address = true
+inherit_register = true
+default_description = "No Description"
+default_array_step_bytes = "0x4"
+max_array_elements = 1000000
+register_size = "infer_from_fields"
+require_byte_aligned = true
+blank_field_name = "register_name"
+
+[register.array]
+enabled = true
+syntax = "range"
+pattern = "{name}{n}, n=range({start?}, {end}, {step?})"
+
+[validation]
+reject_duplicate_blocks = true
+reject_overlapping_blocks = true
+reject_duplicate_registers = true
+reject_overlapping_registers = true
+reject_duplicate_fields = true
+reject_overlapping_fields = true
+check_bit_range_matches_width = true
+check_reset_fits_width = true
+
+[reserved]
+enabled = true
+patterns = ["^reserved[0-9]+$", "^rsvd[0-9]+$"]
 ```
 
 ## Snapsheet Format
@@ -29,8 +100,8 @@ cargo run -p irgen-cli -- example.xlsx --validate path/to/index.xsd
 > [!important]
 >
 > 1. ***Addresses, ranges, reset values, and `range(...)` arguments accept decimal numbers or hexadecimal numbers prefixed with 0x.***
-> 2. ***`range(start?, end, step?)` expands register suffixes from `start` (inclusive) to `end` (exclusive). `step` is the byte offset between adjacent expanded registers and defaults to `0x4`. For example, to generate 10 registers incrementing by `0x10`, write `range(0, 10, 0x10)`.***
-> 3. ***see example.xlsx as an example***
+> 2. ***`range(start?, end, step?)` creates an IP-XACT `registerFile` array. `dim` is `end - start`, and `step` becomes the registerFile `range`/byte stride between adjacent elements. The default `step` is `0x4`.***
+> 3. ***see example_simple.xlsx for the no-TOML default format, and example.xlsx with snapsheet.toml for the richer format***
 
 1. Version/Vendor sheet (sheet name: `version`)
 
@@ -98,9 +169,9 @@ cargo run -p irgen-cli -- example.xlsx --validate path/to/index.xsd
 
     > [!important]
     >
-    > - ***When the register is named `reg{n}` with `n=range(start?, end, step?)`, only fill in the base address of the first expanded register.***
-    > - ***`step` is the byte offset between adjacent expanded registers and defaults to `0x4`.***
-    > - ***Expanded register addresses use 64-bit arithmetic.***
+    > - ***When `REG` uses `{n}` with `n=range(start?, end, step?)`, fill in the base address of the generated registerFile.***
+    > - ***`step` becomes the generated registerFile `range` and defaults to `0x4`.***
+    > - ***Register and registerFile address calculations use 64-bit arithmetic.***
 
     This field indicates the register’s base address offset relative to the address block.
 
@@ -110,8 +181,8 @@ cargo run -p irgen-cli -- example.xlsx --validate path/to/index.xsd
     >
     > - ***Must be unique within the address block. When a register contains multiple fields, merge the corresponding cells.***
     >
-    > - ***For repeated registers, use `reg{n}, n=range(start?, end, step?)` to represent the array.***
-    > - ***The generated suffix is the actual `n` value. For example, `reg{n}, n=range(1, 3)` generates `reg_1` and `reg_2`.***
+    > - ***For repeated register structures, use `reg{n}, n=range(start?, end, step?)`. This emits one IP-XACT registerFile named `reg`.***
+    > - ***The generated registerFile has `dim = end - start`; `start` is accepted by the syntax but is not emitted as a suffix.***
 
     This field specifies the register name.
 
@@ -120,7 +191,7 @@ cargo run -p irgen-cli -- example.xlsx --validate path/to/index.xsd
     > [!important]
     >
     > - ***Must be unique within the register.***
-    > - ***If left blank, the field name defaults to the register name after array expansion.***
+    > - ***If left blank, the field name defaults to the register name. For `{n}` forms, this is the child register name inside the generated registerFile.***
     > - ***Reserved fields must be named using `reserved` or `rsvd` followed by a number (e.g., `reserved1`, `rsvd2`).***
 
     This field specifies the field name within the register.
@@ -133,7 +204,7 @@ cargo run -p irgen-cli -- example.xlsx --validate path/to/index.xsd
 
     > [!important]
     >
-    > - ***The register width is calculated by summing the widths of all its fields. Ensure the total equals 32.***
+    > - ***The register size is inferred from the highest field bit plus one, matching IP-XACT `register/size`. It may be 32, 64, 128, etc., and must be byte-aligned.***
 
     This field indicates the number of bits occupied by the field.
 

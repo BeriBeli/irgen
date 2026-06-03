@@ -27,32 +27,26 @@ impl TryFrom<&base::Component> for ipxact::Component {
                 ipxact::AddressBlock::new(blk.name(), blk.offset(), blk.range(), blk.size());
 
             for reg in blk.regs() {
-                let mut register = ipxact::Register::new(reg.name(), reg.offset(), reg.size());
+                address_block.add_register(register_to_ipxact(reg)?);
+            }
 
-                for field in reg.fields() {
-                    // .filter(|field| {
-                    //     !re.is_match(field.name())
-                    // })
-                    let mut ipxact_field =
-                        ipxact::Field::new(field.name(), field.offset(), field.width());
-                    ipxact_field.description = non_empty_string(field.desc());
-                    ipxact_field.access = Some(access_kind(&extract_access_value(field.attr())?)?);
-                    ipxact_field.modified_write_value = extract_modified_write_value(field.attr())?
-                        .map(|value| {
-                            modified_write_value_kind(&value).map(ipxact::ModifiedWriteValue::new)
-                        })
-                        .transpose()?;
-                    ipxact_field.read_action = extract_read_action_value(field.attr())?
-                        .map(|value| read_action_kind(&value).map(ipxact::ReadAction::new))
-                        .transpose()?;
-                    ipxact_field.resets = Some(ipxact::Resets {
-                        reset: vec![ipxact::Reset::new(field.reset())],
-                    });
+            for register_file in blk.register_files() {
+                let mut ipxact_register_file = ipxact::RegisterFile::new(
+                    register_file.name(),
+                    register_file.offset(),
+                    register_file.range(),
+                );
+                ipxact_register_file
+                    .dim
+                    .push(ipxact::RegisterDim::new(register_file.dim()));
 
-                    register.add_field(ipxact_field);
+                for reg in register_file.regs() {
+                    ipxact_register_file.add_register(register_to_ipxact(reg)?);
                 }
 
-                address_block.add_register(register);
+                address_block
+                    .register_data
+                    .push(ipxact::RegisterData::RegisterFile(ipxact_register_file));
             }
 
             memory_map.add_address_block(address_block);
@@ -67,6 +61,32 @@ impl TryFrom<&base::Component> for ipxact::Component {
 
         Ok(component)
     }
+}
+
+fn register_to_ipxact(reg: &base::Register) -> Result<ipxact::Register, Error> {
+    let mut register = ipxact::Register::new(reg.name(), reg.offset(), reg.size());
+
+    for field in reg.fields() {
+        // .filter(|field| {
+        //     !re.is_match(field.name())
+        // })
+        let mut ipxact_field = ipxact::Field::new(field.name(), field.offset(), field.width());
+        ipxact_field.description = non_empty_string(field.desc());
+        ipxact_field.access = Some(access_kind(&extract_access_value(field.attr())?)?);
+        ipxact_field.modified_write_value = extract_modified_write_value(field.attr())?
+            .map(|value| modified_write_value_kind(&value).map(ipxact::ModifiedWriteValue::new))
+            .transpose()?;
+        ipxact_field.read_action = extract_read_action_value(field.attr())?
+            .map(|value| read_action_kind(&value).map(ipxact::ReadAction::new))
+            .transpose()?;
+        ipxact_field.resets = Some(ipxact::Resets {
+            reset: vec![ipxact::Reset::new(field.reset())],
+        });
+
+        register.add_field(ipxact_field);
+    }
+
+    Ok(register)
 }
 
 fn non_empty_string(value: &str) -> Option<String> {

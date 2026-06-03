@@ -50,8 +50,6 @@ jobs:
         run: cargo build --release --locked --bin irgen
       - name: Smoke test IP-XACT conversion
         run: cargo run --locked -p irgen-cli -- example.xlsx -o target/irgen-example.xml
-      - name: Smoke test RegVue conversion
-        run: cargo run --locked -p irgen-cli -- example.xlsx --format regvue -o target/irgen-example.json
       - name: Install xmllint
         if: runner.os == 'Linux'
         run: command -v xmllint || (sudo apt-get update && sudo apt-get install -y libxml2-utils)

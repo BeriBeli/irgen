@@ -16,6 +16,7 @@ pub struct Block {
     range: String,
     size: String,
     regs: Vec<Register>,
+    register_files: Vec<RegisterFile>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -24,6 +25,15 @@ pub struct Register {
     offset: String,
     size: String,
     fields: Vec<Field>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RegisterFile {
+    name: String,
+    offset: String,
+    range: String,
+    dim: String,
+    regs: Vec<Register>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -84,6 +94,25 @@ impl Block {
             range,
             size,
             regs,
+            register_files: Vec::new(),
+        }
+    }
+
+    pub fn new_with_register_files(
+        name: String,
+        offset: String,
+        range: String,
+        size: String,
+        regs: Vec<Register>,
+        register_files: Vec<RegisterFile>,
+    ) -> Self {
+        Self {
+            name,
+            offset,
+            range,
+            size,
+            regs,
+            register_files,
         }
     }
 
@@ -101,6 +130,9 @@ impl Block {
     }
     pub fn regs(&self) -> &[Register] {
         &self.regs
+    }
+    pub fn register_files(&self) -> &[RegisterFile] {
+        &self.register_files
     }
 }
 
@@ -125,6 +157,40 @@ impl Register {
     }
     pub fn fields(&self) -> &[Field] {
         &self.fields
+    }
+}
+
+impl RegisterFile {
+    pub fn new(
+        name: String,
+        offset: String,
+        range: String,
+        dim: String,
+        regs: Vec<Register>,
+    ) -> Self {
+        Self {
+            name,
+            offset,
+            range,
+            dim,
+            regs,
+        }
+    }
+
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+    pub fn offset(&self) -> &str {
+        &self.offset
+    }
+    pub fn range(&self) -> &str {
+        &self.range
+    }
+    pub fn dim(&self) -> &str {
+        &self.dim
+    }
+    pub fn regs(&self) -> &[Register] {
+        &self.regs
     }
 }
 
