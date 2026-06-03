@@ -156,7 +156,9 @@ name = "irgen-cli"
 version = "0.1.0"
 dependencies = [
  "irgen-model",
+ "irgen-ralf",
  "irgen-snapsheet",
+ "irgen-systemrdl",
 ]
 
 [[package]]
@@ -170,6 +172,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "irgen-ralf"
+version = "0.1.0"
+dependencies = [
+ "irgen-model",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "irgen-snapsheet"
 version = "0.1.0"
 dependencies = [
@@ -178,6 +188,14 @@ dependencies = [
  "serde",
  "thiserror 2.0.18",
  "toml",
+]
+
+[[package]]
+name = "irgen-systemrdl"
+version = "0.1.0"
+dependencies = [
+ "irgen-model",
+ "thiserror 2.0.18",
 ]
 
 [[package]]

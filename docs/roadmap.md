@@ -10,14 +10,21 @@ and lightweight model crates.
   assembly.
 - `crates/model`: lightweight register IR and conversion into the IP-XACT 2014
   model.
+- `crates/ralf`: native RALF model and serializer, plus conversion from the
+  current lightweight register IR.
+- `crates/systemrdl`: native SystemRDL model and serializer, plus conversion
+  from the current lightweight register IR.
 - `crates/ipxact`: broader IP-XACT model library; its IEEE 1685-2014 types now
   back the CLI's emitted model.
 
 The active dependency direction is `cli -> snapsheet -> model -> ipxact`, with
-`cli` also depending on `model` for serialization.
+`cli` also depending on `model`, `ralf`, and `systemrdl` for serialization. The
+RALF and SystemRDL crates depend on `model` and do not depend on the IP-XACT
+model.
 
-The CLI can convert `example.xlsx` into IEEE 1685-2014 XML. The generated XML
-has been validated against the official Accellera IEEE 1685-2014 XSD.
+The CLI can convert `example.xlsx` into IEEE 1685-2014 XML, RALF, and
+SystemRDL. The generated XML has been validated against the official Accellera
+IEEE 1685-2014 XSD.
 
 ## Register Grouping
 
@@ -51,11 +58,19 @@ Grouping remains intentional.
 - Added parser diagnostics with sheet name, row number, column name, register
   name, and block name where available.
 - Added CLI tests for missing input, unknown options, output path handling,
-  explicit IP-XACT selection, and failing spreadsheet conversion.
+  explicit IP-XACT/RALF selection, and failing spreadsheet conversion.
 - Added row-level invalid input tests for duplicate registers, duplicate
   fields, overlapping fields, invalid attributes, malformed ranges,
   out-of-range offsets, and trailing empty rows.
-- Removed RegVue output support; the CLI now emits IP-XACT only.
+- Removed RegVue output support while keeping the output format enum narrow and
+  explicit.
+- Added native RALF output support through `--format ralf`, backed by the
+  dedicated `crates/ralf` model and serializer crate. The crate now models the
+  core RALF constructs separately from the current snapsheet conversion path.
+- Added native SystemRDL output support through `--format systemrdl`, backed by
+  the dedicated `crates/systemrdl` model and serializer crate. The crate models
+  core SystemRDL declarations, components, instances, properties, arrays, bit
+  ranges, constraints, and current snapsheet-to-addrmap conversion.
 - Added generated `.xlsx` fixtures that exercise invalid workbook handling
   through the public loader.
 - Added `--validate <xsd>` support for explicitly supplied IEEE 1685-2014
@@ -79,6 +94,8 @@ Grouping remains intentional.
 - Added schema-valid IEEE 1685-2014 mirrored-interface channels with
   bus-interface keyref validation. Channel and channel bus-interface-reference
   presence expressions now use the schema's unsigned bit-expression shape.
+  Channel `xml:id`/display metadata and channel bus-interface-reference
+  `xml:id` values now roundtrip through official XSD coverage.
 - Added schema-valid IEEE 1685-2014 indirect interfaces with field-ID and
   memory-map keyref validation, plus schema-ordered parameters and
   QName-preserving vendor extensions. Indirect-interface endianness now uses
@@ -96,27 +113,35 @@ Grouping remains intentional.
   file-set functions with `fileRef` keyref validation.
 - Added schema-valid IEEE 1685-2014 file defines and typed file-set function
   arguments using dedicated name-value-pair models. File defines now retain
-  schema-ordered vendor extensions.
+  schema-ordered vendor extensions, and function arguments now retain the
+  same `nameValuePairType` vendor-extension slot.
 - Added schema-valid IEEE 1685-2014 component CPUs and address-space
-  executable images with address-space and file-set keyref validation.
+  executable images with address-space and file-set keyref validation. CPU
+  presence controls, parameters, and vendor extensions now have roundtrip
+  coverage.
 - Added schema-valid IEEE 1685-2014 executable-image language tools with
   builders, linker flags, and linker command-file configuration.
 - Added schema-valid IEEE 1685-2014 component generators with linker-command
   `generatorRef` keyref validation.
 - Expanded schema-valid IEEE 1685-2014 component instantiations with strict
   language matching, module parameters, builders, file-set references, and
-  parameters. Added design-configuration-instantiation parameters.
+  parameters. Component instantiation default builders, file-set references,
+  and vendor extensions now have roundtrip coverage. Added
+  design-configuration-instantiation parameters.
 - Added schema-valid IEEE 1685-2014 wire-port constraint sets,
   component-instantiation constraint-set references, component whitebox
   elements, and instantiation whitebox HDL paths. The schema-valid structure is
   covered without claiming whitebox keyref enforcement because the vendored
-  schema selector and model placement differ.
+  schema selector and model placement differ. Whitebox-element presence,
+  driveability, parameters, and vendor extensions now have roundtrip coverage.
 - Expanded schema-valid wire-port constraint sets with vector slices, typed
   drive/load cell specifications, and timing constraints. Added
   multi-dimensional indices to whitebox HDL path segments.
 - Added schema-valid wire type definitions with constrained type names,
-  definition paths, and per-view references. Added default-value, clock, and
-  single-shot wire driver choices, including clock units.
+  definition paths, per-view references, and `xml:id` roundtrip coverage for
+  wire type definitions, type-definition paths, and view references. Added
+  default-value, clock, and single-shot wire driver choices, including clock
+  units.
 - Expanded schema-valid bus interfaces with presence expressions,
   required-connection flags, LAU widths, bit steering, endianness, and
   parameters.
@@ -179,12 +204,16 @@ Grouping remains intentional.
   older schema models.
 - Expanded dedicated transactional component ports with protocol, payload, and
   type-definition metadata, including custom protocol names, mandatory payload
-  extensions, nested service types, typed parameters, view references,
-  QName-preserving vendor extensions, and read-modify-write validation.
+  extensions, nested service types, typed parameters, type-parameter presence
+  controls and extension points, view references, QName-preserving vendor
+  extensions, and read-modify-write validation.
 - Added dedicated component-root clock drivers, reset types, and assertions.
-  Independent clock waveforms, field-reset policy keyrefs, QName-preserving
-  reset-type vendor extensions, and read-modify-write behavior pass official
-  XSD validation.
+  Independent clock waveforms, clock-driver `xml:id`, clock time-expression
+  bounds/units/extension attributes, field-reset policy keyrefs,
+  reset-type `xml:id`/display metadata, QName-preserving reset-type vendor
+  extensions, assertion `xml:id`/display metadata and assert-expression
+  extension attributes, and read-modify-write behavior pass official XSD
+  validation.
 - Added dedicated vendor-extension attachment points across the
   memory-map/register path. Memory maps, address blocks, banks, local banks,
   nested banks, banked subspace maps, register files, registers, alternate
@@ -201,7 +230,9 @@ Grouping remains intentional.
   indexed access handles. Address blocks, banks, local banks, subspace maps,
   register files, registers, alternate registers, and fields now serialize
   schema-ordered `isPresent`, while register files and registers also serialize
-  schema-ordered `dim` arrays. Memory maps and memory remaps now serialize
+  schema-ordered `dim` arrays. Address blocks, banks, nested banks, banked
+  address blocks, registers, alternate registers, and fields now retain
+  schema-ordered `volatile` values. Memory maps and memory remaps now serialize
   schema-ordered `isPresent`. Address spaces, segments, and local memory maps
   now serialize schema-ordered `isPresent`; address spaces and segments also
   retain QName-based vendor extensions. Address-space, address-block, and
@@ -217,7 +248,9 @@ Grouping remains intentional.
   and `reserved` now use the schema's unsigned integer, unsigned positive
   integer, and unsigned bit-expression shapes. Enumerated field values, field
   reset values and masks, and field write-constraint bounds now use the
-  schema's unsigned bit-vector expression shape. Register files now include
+  schema's unsigned bit-vector expression shape. Field resets now retain
+  `xml:id` plus reset value/mask extension attributes. Address blocks, register
+  files, registers, alternate registers, and fields now retain
   `typeIdentifier`.
 - Normalized schema-specific port width/count expressions. Abstraction
   wire-mode `width`, abstraction transactional-mode `busWidth`, load
@@ -245,12 +278,20 @@ Grouping remains intentional.
   Indirect-interface targets now use a schema-choice model for either a
   memory-map reference or one-or-more transparent bridges. Slave bus-interface
   targets now use the optional schema choice for either a memory-map reference
-  or one-or-more transparent bridges. Component bus interfaces, abstractor bus
-  interfaces, bus-interface `bitSteering`, design ad-hoc tied values,
-  component parameters, module parameters, parameter values, configurable
-  element values, and files now retain QName-preserving `any.att` extension
-  attributes, while file defines retain schema-ordered vendor extensions. These
-  paths pass official XSD validation.
+  or one-or-more transparent bridges, and now retain schema-ordered
+  `fileSetRefGroup` entries for slave-associated file sets. Executable-image
+  `languageTools` now models the linker `linkerFlags`/`linkerCommandFile`
+  choice and rejects linker-only configurations. Component bus interfaces,
+  abstractor bus interfaces, bus-interface `bitSteering`, design ad-hoc tied
+  values, component parameters, module parameters, parameter values,
+  configurable element values, choice enumerations, unsigned bit expressions,
+  unsigned bit-vector expressions, unsigned integer expressions, unsigned
+  positive integer expressions, signed long integer expressions, unsigned long
+  integer expressions, unsigned positive long integer expressions, real expressions,
+  clock time expressions, string expressions, URI string expressions, file build
+  flags, and files now retain QName-preserving `any.att` extension attributes,
+  while file defines and file-set function arguments retain schema-ordered
+  vendor extensions. These paths pass official XSD validation.
 - Added executable-image build metadata extension points. Executable images,
   language file builders, and linker command files now retain QName-based
   vendor extensions and pass official XSD validation on the address-space
@@ -258,7 +299,7 @@ Grouping remains intentional.
 - Added file-set extension points. Files and file sets now retain QName-based
   vendor extensions and pass official XSD validation and roundtrip coverage on
   the file-set build metadata path.
-- Added model instantiation extension points. Design instantiations and
+- Added model instantiation extension points. Component, design, and
   design-configuration instantiations now retain QName-based vendor extensions
   and pass official XSD validation and roundtrip coverage on the model-view
   instantiation path.
@@ -278,8 +319,8 @@ Grouping remains intentional.
 
 - Keep `crates/model` focused on snapsheet conversion while using
   `ip_xact::v2014` as the emitted IP-XACT model. The previous lightweight
-  IP-XACT and RegVue model files are retained for reference but are no longer
-  included from the model crate root.
+  IP-XACT and RegVue model files have been removed rather than retained as
+  inactive reference code.
 - If C header, UVM RAL, SystemVerilog RTL, or HTML exports return, add them as
   explicit CLI formats backed by dedicated output crates instead of restoring
   a generic `core` facade.

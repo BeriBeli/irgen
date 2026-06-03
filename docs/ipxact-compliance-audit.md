@@ -9,7 +9,8 @@ bus-interface-mode, register-file, alternate-register, field-data, model/ports
 core, model views and instantiations, and catalog paths now pass official XSD
 validation. Bus-interface abstraction port maps also pass official view and
 physical-port keyref validation. Mirrored-interface channels pass interface
-keyref validation. Indirect interfaces pass field-ID and memory-map keyref
+keyref validation and retain channel/channel-reference metadata. Indirect
+interfaces pass field-ID and memory-map keyref
 validation. Component-level configurable parameters and choices pass
 choice-reference keyref validation. Indirect-interface parameters, vendor
 extensions, schema-enum endianness, and schema-shaped `bitsInLau` now pass
@@ -17,11 +18,13 @@ along with field-ID and memory-map keyref validation.
 Component file sets, build metadata, functions, file/file-set vendor
 extensions, and instantiation file-set references pass file-set and
 file-reference keyref validation. Component CPUs and address-space executable
-images pass address-space and file-set keyref validation. Wire-port constraint
-sets, drive/load/timing constraint details, component-instantiation constraint
-references, indexed whitebox HDL paths, wire type definitions, and
-default/clock/single-shot wire drivers also pass official XSD structural
-validation. The dedicated 2014 bus-definition root now passes official XSD
+images pass address-space and file-set keyref validation, with CPU presence,
+parameters, and vendor extensions covered by roundtrip tests. Wire-port
+constraint sets, drive/load/timing constraint details,
+component-instantiation constraint references, indexed whitebox HDL paths,
+wire type definitions, whitebox-element presence/driveability/parameters/vendor
+extensions, and default/clock/single-shot wire drivers also pass official XSD
+structural validation. The dedicated 2014 bus-definition root now passes official XSD
 validation and roundtrip coverage, including required connectivity flags,
 inheritance, capacity expressions, system groups, parameters, assertions, and
 vendor extensions. The dedicated 2014 design root now passes official XSD
@@ -49,18 +52,23 @@ Port-level presence expressions, multi-dimensional arrays, and HDL
 access handles also pass. Component and module parameter vectors and arrays
 pass as well. Transactional component-port protocols, payload metadata, type
 definitions, nested service types, typed parameters, and view references pass
-as well. Component-root independent clock drivers, reset types, reset-policy
-keyrefs, and assertions pass as well. Structured vendor-extension trees with
-arbitrary namespaced elements, attributes, text, and nested children pass on
+as well. Component-root independent clock drivers, clock-driver `xml:id`, clock
+time-expression bounds/units/extension attributes, reset types with
+`xml:id`/display metadata, reset-policy keyrefs, and assertions with
+`xml:id`/display metadata and assert-expression extension attributes pass as
+well. Structured vendor-extension trees with arbitrary namespaced elements,
+attributes, text, and nested children pass on
 representative component, bus-interface, parameter, module-parameter, port,
 memory-map, bank, local-bank, register-file, register, alternate-register,
 field, and enumerated-value paths. Register-path parameter attachment points
 also pass on address blocks, banks, local banks, subspace maps, register files,
 registers, alternate registers, and fields. Register-path access handles,
-presence expressions, register arrays, and register-file type identifiers now
-pass on representative address-block, bank, local-bank, subspace-map,
-register-file, register, alternate-register, and field paths. Memory-map and
-memory-remap presence expressions pass as well. Register-path `access`
+presence expressions, register arrays, and type identifiers now pass on
+representative address-block, bank, local-bank, subspace-map, register-file,
+register, alternate-register, and field paths. Register-path
+`volatile` values now pass on representative address-block, bank, nested-bank,
+banked-address-block, register, alternate-register, and field paths. Memory-map
+and memory-remap presence expressions pass as well. Register-path `access`
 attachment points and memory-block `usage` values now use 2014 schema enums
 instead of raw strings. Memory-map `shared` values and enumerated-value
 `usage` attributes also use their dedicated schema enums. Field
@@ -68,30 +76,40 @@ instead of raw strings. Memory-map `shared` values and enumerated-value
 `useEnumeratedValues`, and `minimum`/`maximum` range branches.
 Indirect-interface targets now preserve the schema choice between a memory-map
 reference and one-or-more transparent bridges. Slave bus-interface targets now
-preserve the optional schema choice with the same alternatives. Address-space,
-segment, and local-memory-map presence expressions pass as well, with
-QName-preserving vendor extensions on address spaces and segments. Component
+preserve the optional schema choice with the same alternatives, and retain
+schema-ordered `fileSetRefGroup` entries for slave-associated file sets.
+Executable-image `languageTools` now preserves the linker branch choice between
+`linkerFlags` with optional `linkerCommandFile` and a required
+`linkerCommandFile`, while rejecting linker-only configurations.
+Address-space, segment, and local-memory-map presence expressions pass as well,
+with QName-preserving vendor extensions on address spaces and segments. Component
 bus interfaces, abstractor bus interfaces, bus-interface `bitSteering`, design
 ad-hoc tied values, component parameters, module parameters, parameter values,
-configurable element values, and files now retain QName-preserving `any.att`
-extension attributes. File defines now retain schema-ordered vendor extensions.
+configurable element values, choice enumerations, unsigned bit expressions,
+unsigned bit-vector expressions, unsigned integer expressions, unsigned positive
+integer expressions, signed long integer expressions, unsigned long integer
+expressions, unsigned positive long integer expressions, real expressions, clock
+time expressions, string expressions, URI string expressions, file build flags,
+and files now retain QName-preserving `any.att` extension attributes. File
+defines and file-set function arguments now retain schema-ordered vendor
+extensions.
 Executable-image build metadata now preserves QName-based
 vendor extensions on executable images, language file builders, and linker
 command files. Design instantiations and design-configuration instantiations
 now preserve QName-based vendor extensions and roundtrip through the model-view
-instantiation path. Component model views now preserve schema-ordered presence
-expressions on the same path.
+instantiation path, with component instantiations covered as well. Component
+model views now preserve schema-ordered presence expressions on the same path.
 
 The focused `crates/model` conversion layer now uses `ip_xact::v2014` as the
 emitted IP-XACT 2014 model for the current snapsheet-to-IP-XACT workflow.
 
 ## Verified Behavior
 
-- `cargo test -p ip-xact --offline` passes: 43 unit tests and 48 integration
+- `cargo test -p ip-xact --offline` passes: 43 unit tests and 49 integration
   tests.
 - The 2009 integration coverage exercises component parsing, construction,
   serialization, and self-roundtrip behavior. The 2014 integration coverage
-  exercises forty-four serialization, deserialization, roundtrip, and
+  exercises forty-five serialization, deserialization, roundtrip, and
   official-XSD validation cases.
 - `v2014::Component` and `v2014::Catalog` now emit the IEEE 1685-2014 namespace
   and schema location.
@@ -106,7 +124,8 @@ emitted IP-XACT 2014 model for the current snapsheet-to-IP-XACT workflow.
   component/design/design-configuration instantiation references, system,
   mirrored, and monitor bus-interface modes, abstraction types, and logical
   to physical port maps, mirrored-interface channels with bit-expression
-  presence controls, indirect interfaces with parameters, vendor extensions,
+  presence controls and channel/channel-reference metadata, indirect interfaces
+  with parameters, vendor extensions,
   schema-enum endianness, and schema-shaped `bitsInLau`, root-level component
   descriptions, and component-level parameters and choices, file sets, file and
   file-set-reference bit-expression presence controls, file build metadata,
@@ -150,8 +169,9 @@ emitted IP-XACT 2014 model for the current snapsheet-to-IP-XACT workflow.
 - Added dedicated mirrored-interface channels. Validated channel interface
   references against component bus interfaces, plus schema-shaped unsigned
   bit-expression presence controls on channels and channel bus-interface
-  references. Validated schema-shaped unsigned positive longint-expression
-  `bitsInLau` on bus interfaces.
+  references, channel `xml:id`/display metadata, and channel
+  bus-interface-reference `xml:id` values. Validated schema-shaped unsigned
+  positive longint-expression `bitsInLau` on bus interfaces.
 - Added dedicated indirect interfaces. Validated address/data `fieldID`
   references, text-based memory-map references, schema-enum endianness,
   schema-shaped unsigned positive longint-expression `bitsInLau`,
@@ -167,10 +187,11 @@ emitted IP-XACT 2014 model for the current snapsheet-to-IP-XACT workflow.
   Validated QName-preserving vendor extensions on files and file sets, plus
   function `fileRef` keyrefs against `file@fileId`.
 - Added dedicated 2014 name-value pairs for file defines and typed file-set
-  function arguments.
+  function arguments, including schema-ordered vendor extensions for both
+  `nameValuePairType` paths.
 - Added dedicated component CPUs and address-space executable images,
-  including CPU address-space references, image parameters, and image
-  file-set-reference groups.
+  including CPU address-space references, CPU presence controls, CPU parameters,
+  CPU vendor extensions, image parameters, and image file-set-reference groups.
 - Added dedicated executable-image language tools, including file builders,
   linker flags, and linker command-file configuration.
 - Added dedicated component generators, including scope, phase, parameters,
@@ -178,20 +199,26 @@ emitted IP-XACT 2014 model for the current snapsheet-to-IP-XACT workflow.
   `generatorRef` keyrefs.
 - Expanded component instantiations with strict language matching, typed
   module parameters, default file builders, file-set references, and
-  parameters. Added design-configuration-instantiation parameters.
+  parameters. Component instantiation default builders, file-set references, and
+  vendor extensions now have roundtrip and official XSD coverage. Added
+  design-configuration-instantiation parameters.
 - Added wire-port constraint sets, component-instantiation constraint-set
   references, component whitebox elements, and instantiation whitebox HDL
   paths. Their structure passes the official XSD. The vendored schema's
   whitebox keyref selector targets view-level references while its model
   definition places them inside component instantiations, so whitebox keyref
-  enforcement is not claimed.
+  enforcement is not claimed. Whitebox-element presence, driveability,
+  parameters, and QName-preserving vendor extensions now roundtrip through the
+  same official-XSD path.
 - Expanded wire-port constraint sets with vector slices, typed drive/load cell
   specifications, timing constraints, and typed cell function, class,
   strength, edge, and delay enums. Added multi-dimensional indices to whitebox
   HDL path segments.
 - Added dedicated wire type definitions with constrained type names,
-  definition paths, and per-view references. Added typed wire drivers covering
-  default values, clock waveforms with units, and single-shot waveforms.
+  definition paths, per-view references, and `xml:id` roundtrip coverage for
+  wire type definitions, type-definition paths, and view references. Added typed
+  wire drivers covering default values, clock waveforms with units, and
+  single-shot waveforms.
 - Expanded dedicated bus interfaces with typed presence expressions,
   required-connection flags, LAU widths, bit-steering expressions, endianness,
   and parameters.
@@ -283,11 +310,15 @@ emitted IP-XACT 2014 model for the current snapsheet-to-IP-XACT workflow.
   2014 whitebox, CPU, and port-protocol structures.
 - Expanded dedicated transactional component ports with protocol, payload, and
   type-definition metadata, including custom protocol names, mandatory payload
-  extensions, nested service types, typed parameters, view references, and
-  QName-preserving vendor extensions.
+  extensions, nested service types, typed parameters, type-parameter presence
+  controls and extension points, service/type-definition `xml:id` attributes,
+  view references, and QName-preserving vendor extensions.
 - Added dedicated component-root independent clock drivers, reset types, and
-  assertions. Validated full clock waveforms, field-reset policy keyrefs,
-  QName-preserving reset-type extensions, and read-modify-write behavior.
+  assertions. Validated full clock waveforms, clock-driver `xml:id`, clock
+  time-expression bounds/units/extension attributes, field-reset policy keyrefs,
+  reset-type `xml:id`/display metadata, QName-preserving reset-type extensions,
+  assertion `xml:id`/display metadata, assert-expression extension attributes,
+  and read-modify-write behavior.
 - Added dedicated memory-map/register vendor-extension attachment points.
   Validated QName-preserving extensions across memory maps, address blocks,
   banks, local banks, nested banks, banked subspace maps, register files,
@@ -300,8 +331,10 @@ emitted IP-XACT 2014 model for the current snapsheet-to-IP-XACT workflow.
   points. Validated schema-ordered simple access handles on banks/local banks,
   non-indexed access handles on address blocks/fields, indexed access handles
   on register files/registers/alternate registers, `isPresent` across the
-  register path and memory-remap path, register-file/register `dim`, and
-  register-file `typeIdentifier`.
+  register path and memory-remap path, register-file/register `dim`,
+  `typeIdentifier` across representative address-block, register-file,
+  register, alternate-register, and field paths, and `volatile` values across
+  representative memory-block, register, alternate-register, and field paths.
 - Added dedicated address-space/local-memory-map presence and extension
   attachment points. Validated schema-ordered `isPresent` on address spaces,
   segments, and local memory maps, plus QName-preserving vendor extensions on
@@ -310,9 +343,16 @@ emitted IP-XACT 2014 model for the current snapsheet-to-IP-XACT workflow.
   QName-preserving vendor extensions on executable images, language file
   builders, and linker command files.
 - Added dedicated file-set extension points. Validated QName-preserving vendor
-  extensions on files and file sets.
+  extensions on files and file sets, plus schema-ordered vendor extensions on
+  typed file-set function arguments.
 - Added dedicated model-view presence expressions. Validated schema-ordered
   `isPresent` on component model views.
+- Added component-instantiation extension-point coverage. Validated
+  schema-ordered default file builders, file-set references, and QName-preserving
+  vendor extensions on component instantiations.
+- Added component-root CPU and whitebox optional-structure coverage. Validated
+  CPU presence controls, CPU vendor extensions, and whitebox-element presence,
+  driveability, parameters, and QName-preserving vendor extensions.
 - Added dedicated indirect-interface parameter and extension attachment
   points. Validated schema-ordered parameters and QName-preserving vendor
   extensions on indirect interfaces.
@@ -346,7 +386,8 @@ emitted IP-XACT 2014 model for the current snapsheet-to-IP-XACT workflow.
   integer-expression shapes instead of the broader numeric-expression shape.
 - Normalized dedicated enumerated field values, field reset values/masks, and
   write-constraint bounds to the schema's unsigned bit-vector expression shape
-  instead of the broader numeric-expression shape.
+  instead of the broader numeric-expression shape. Field resets now retain
+  `xml:id` plus reset value/mask extension attributes.
 - Normalized dedicated abstraction wire-mode `width`, abstraction
   transactional-mode `busWidth`, load-constraint `count`, component
   transactional-port `busWidth`, and component transactional connection bounds
@@ -387,13 +428,24 @@ emitted IP-XACT 2014 model for the current snapsheet-to-IP-XACT workflow.
 - Normalized slave bus-interface targets to an optional schema choice,
   preventing a memory-map reference and transparent bridges from being
   represented together.
+- Added schema-ordered slave bus-interface `fileSetRefGroup` support with
+  roundtrip and official XSD coverage.
+- Normalized executable-image `languageTools` linker metadata to the schema
+  choice between `linkerFlags` and `linkerCommandFile`, with roundtrip, official
+  XSD coverage, and a negative linker-only deserialization test.
 - Added QName-preserving `any.att` extension attributes for component bus
   interfaces, abstractor bus interfaces, bus-interface `bitSteering`, design
   ad-hoc tied values, component parameters, module parameters, parameter values,
-  configurable element values, and files with roundtrip and official XSD
+  configurable element values, choice enumerations, unsigned bit expressions,
+  unsigned bit-vector expressions, unsigned integer expressions, unsigned
+  positive integer expressions, signed long integer expressions, unsigned long
+  integer expressions, unsigned positive long integer expressions, real
+  expressions, clock time expressions, string expressions, URI string
+  expressions, file build flags, and files with roundtrip and official XSD
   coverage.
-- Added schema-ordered vendor extensions for file `define`
-  `nameValuePairType` values with roundtrip and official XSD coverage.
+- Added schema-ordered vendor extensions for file `define` and file-set
+  function `argument` `nameValuePairType` values with roundtrip and official
+  XSD coverage.
 - Normalized dedicated field `reserved` attachment points to the schema's
   unsigned bit-expression shape instead of the broader numeric-expression
   shape.

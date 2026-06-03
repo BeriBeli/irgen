@@ -392,6 +392,9 @@ pub struct ChoiceEnumeration {
     #[serde(rename = "@xml:id", skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
 
+    #[serde(flatten)]
+    pub extension_attributes: ExtensionAttributes,
+
     #[serde(rename = "$text")]
     pub value: String,
 }
@@ -402,6 +405,7 @@ impl ChoiceEnumeration {
             text: None,
             help: None,
             id: None,
+            extension_attributes: ExtensionAttributes::default(),
             value: value.into(),
         }
     }
@@ -996,6 +1000,9 @@ pub struct BuildCommand {
 /// File-level compiler flags with optional append behavior.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BuildFlags {
+    #[serde(flatten)]
+    pub extension_attributes: ExtensionAttributes,
+
     #[serde(rename = "@append", skip_serializing_if = "Option::is_none")]
     pub append: Option<bool>,
 
@@ -1006,6 +1013,7 @@ pub struct BuildFlags {
 impl BuildFlags {
     pub fn new(value: impl Into<String>) -> Self {
         Self {
+            extension_attributes: ExtensionAttributes::default(),
             append: None,
             value: value.into(),
         }
@@ -1015,6 +1023,9 @@ impl BuildFlags {
 /// Single-bit expression used by build metadata.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BitExpression {
+    #[serde(flatten)]
+    pub extension_attributes: ExtensionAttributes,
+
     #[serde(rename = "$text")]
     pub value: String,
 }
@@ -1022,6 +1033,7 @@ pub struct BitExpression {
 impl BitExpression {
     pub fn new(value: impl Into<String>) -> Self {
         Self {
+            extension_attributes: ExtensionAttributes::default(),
             value: value.into(),
         }
     }
@@ -1364,6 +1376,15 @@ pub struct FunctionArgument {
 
     #[serde(rename(serialize = "ipxact:value", deserialize = "value"))]
     pub value: StringExpression,
+
+    #[serde(
+        rename(
+            serialize = "ipxact:vendorExtensions",
+            deserialize = "vendorExtensions"
+        ),
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub vendor_extensions: Option<VendorExtensions>,
 }
 
 impl FunctionArgument {
@@ -1379,6 +1400,7 @@ impl FunctionArgument {
             display_name: None,
             description: None,
             value: value.into(),
+            vendor_extensions: None,
         }
     }
 }
@@ -1428,7 +1450,7 @@ impl FunctionSourceFile {
 }
 
 /// Reference from an instantiation to a component-local file set.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FileSetRef {
     #[serde(rename = "@xml:id", skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
@@ -2764,25 +2786,33 @@ impl AddressSpaceRef {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Slave {
     pub target: Option<SlaveTarget>,
+    pub file_set_ref_group: Vec<SlaveFileSetRefGroup>,
 }
 
 impl Slave {
     pub fn memory_map_ref(memory_map_ref: impl Into<String>) -> Self {
         Self {
             target: Some(SlaveTarget::MemoryMapRef(MemoryMapRef::new(memory_map_ref))),
+            file_set_ref_group: Vec::new(),
         }
     }
 
     pub fn transparent_bridge(bridge: TransparentBridge) -> Self {
         Self {
             target: Some(SlaveTarget::transparent_bridge(bridge)),
+            file_set_ref_group: Vec::new(),
         }
     }
 
     pub fn transparent_bridges(bridges: Vec<TransparentBridge>) -> Self {
         Self {
             target: Some(SlaveTarget::TransparentBridges(bridges)),
+            file_set_ref_group: Vec::new(),
         }
+    }
+
+    pub fn add_file_set_ref_group(&mut self, group: SlaveFileSetRefGroup) {
+        self.file_set_ref_group.push(group);
     }
 }
 
@@ -2821,6 +2851,13 @@ impl Serialize for Slave {
                 skip_serializing_if = "Vec::is_empty"
             )]
             transparent_bridge: Vec<TransparentBridge>,
+
+            #[serde(
+                rename(serialize = "ipxact:fileSetRefGroup", deserialize = "fileSetRefGroup"),
+                default,
+                skip_serializing_if = "Vec::is_empty"
+            )]
+            file_set_ref_group: Vec<SlaveFileSetRefGroup>,
         }
 
         let (memory_map_ref, transparent_bridge) = match &self.target {
@@ -2841,6 +2878,7 @@ impl Serialize for Slave {
         Helper {
             memory_map_ref,
             transparent_bridge,
+            file_set_ref_group: self.file_set_ref_group.clone(),
         }
         .serialize(serializer)
     }
@@ -2867,6 +2905,12 @@ impl<'de> Deserialize<'de> for Slave {
                 default
             )]
             transparent_bridge: Vec<TransparentBridge>,
+
+            #[serde(
+                rename(serialize = "ipxact:fileSetRefGroup", deserialize = "fileSetRefGroup"),
+                default
+            )]
+            file_set_ref_group: Vec<SlaveFileSetRefGroup>,
         }
 
         let helper = Helper::deserialize(deserializer)?;
@@ -2885,7 +2929,46 @@ impl<'de> Deserialize<'de> for Slave {
             }
         };
 
-        Ok(Self { target })
+        Ok(Self {
+            target,
+            file_set_ref_group: helper.file_set_ref_group,
+        })
+    }
+}
+
+/// File-set references associated with a slave bus interface.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SlaveFileSetRefGroup {
+    #[serde(rename = "@xml:id", skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+
+    #[serde(
+        rename(serialize = "ipxact:group", deserialize = "group"),
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub group: Option<String>,
+
+    #[serde(
+        rename(serialize = "ipxact:fileSetRef", deserialize = "fileSetRef"),
+        default
+    )]
+    pub file_set_ref: Vec<FileSetRef>,
+}
+
+impl SlaveFileSetRefGroup {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn with_group(group: impl Into<String>) -> Self {
+        Self {
+            group: Some(group.into()),
+            ..Self::default()
+        }
+    }
+
+    pub fn add(&mut self, file_set_ref: FileSetRef) {
+        self.file_set_ref.push(file_set_ref);
     }
 }
 
@@ -3705,6 +3788,7 @@ impl NonIndexedLeafAccessHandle {
 
 /// Component port style.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[allow(clippy::large_enum_variant)]
 pub enum PortStyle {
     #[serde(rename(serialize = "ipxact:wire", deserialize = "wire"))]
     Wire(WirePort),
@@ -4055,6 +4139,9 @@ impl OtherClockDriver {
 /// Clock duration with optional delay units.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ClockTimeExpression {
+    #[serde(flatten)]
+    pub extension_attributes: ExtensionAttributes,
+
     #[serde(rename = "@minimum", skip_serializing_if = "Option::is_none")]
     pub minimum: Option<f64>,
 
@@ -4071,6 +4158,7 @@ pub struct ClockTimeExpression {
 impl ClockTimeExpression {
     pub fn new(value: impl Into<String>) -> Self {
         Self {
+            extension_attributes: ExtensionAttributes::default(),
             minimum: None,
             maximum: None,
             units: None,
@@ -4887,34 +4975,195 @@ impl ExecutableImage {
 }
 
 /// Commands used to build and link an executable image.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct LanguageTools {
-    #[serde(
-        rename(serialize = "ipxact:fileBuilder", deserialize = "fileBuilder"),
-        default
-    )]
     pub file_builder: Vec<LanguageFileBuilder>,
+    pub linker: Option<LanguageLinker>,
+}
 
-    #[serde(
-        rename(serialize = "ipxact:linker", deserialize = "linker"),
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub linker: Option<StringExpression>,
+/// Schema choice for linker flags and command-file configuration.
+#[derive(Debug, Clone, PartialEq)]
+pub enum LanguageLinker {
+    Flags {
+        linker: StringExpression,
+        linker_flags: StringExpression,
+        linker_command_file: Option<LinkerCommandFile>,
+    },
+    CommandFile {
+        linker: StringExpression,
+        linker_command_file: LinkerCommandFile,
+    },
+}
 
-    #[serde(
-        rename(serialize = "ipxact:linkerFlags", deserialize = "linkerFlags"),
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub linker_flags: Option<StringExpression>,
+impl LanguageLinker {
+    pub fn flags(
+        linker: impl Into<StringExpression>,
+        linker_flags: impl Into<StringExpression>,
+    ) -> Self {
+        Self::Flags {
+            linker: linker.into(),
+            linker_flags: linker_flags.into(),
+            linker_command_file: None,
+        }
+    }
 
-    #[serde(
-        rename(
-            serialize = "ipxact:linkerCommandFile",
-            deserialize = "linkerCommandFile"
-        ),
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub linker_command_file: Option<LinkerCommandFile>,
+    pub fn flags_with_command_file(
+        linker: impl Into<StringExpression>,
+        linker_flags: impl Into<StringExpression>,
+        linker_command_file: LinkerCommandFile,
+    ) -> Self {
+        Self::Flags {
+            linker: linker.into(),
+            linker_flags: linker_flags.into(),
+            linker_command_file: Some(linker_command_file),
+        }
+    }
+
+    pub fn command_file(
+        linker: impl Into<StringExpression>,
+        linker_command_file: LinkerCommandFile,
+    ) -> Self {
+        Self::CommandFile {
+            linker: linker.into(),
+            linker_command_file,
+        }
+    }
+}
+
+impl Serialize for LanguageTools {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        #[derive(Serialize)]
+        struct Helper {
+            #[serde(
+                rename(serialize = "ipxact:fileBuilder", deserialize = "fileBuilder"),
+                default,
+                skip_serializing_if = "Vec::is_empty"
+            )]
+            file_builder: Vec<LanguageFileBuilder>,
+
+            #[serde(
+                rename(serialize = "ipxact:linker", deserialize = "linker"),
+                skip_serializing_if = "Option::is_none"
+            )]
+            linker: Option<StringExpression>,
+
+            #[serde(
+                rename(serialize = "ipxact:linkerFlags", deserialize = "linkerFlags"),
+                skip_serializing_if = "Option::is_none"
+            )]
+            linker_flags: Option<StringExpression>,
+
+            #[serde(
+                rename(
+                    serialize = "ipxact:linkerCommandFile",
+                    deserialize = "linkerCommandFile"
+                ),
+                skip_serializing_if = "Option::is_none"
+            )]
+            linker_command_file: Option<LinkerCommandFile>,
+        }
+
+        let (linker, linker_flags, linker_command_file) = match &self.linker {
+            None => (None, None, None),
+            Some(LanguageLinker::Flags {
+                linker,
+                linker_flags,
+                linker_command_file,
+            }) => (
+                Some(linker.clone()),
+                Some(linker_flags.clone()),
+                linker_command_file.clone(),
+            ),
+            Some(LanguageLinker::CommandFile {
+                linker,
+                linker_command_file,
+            }) => (
+                Some(linker.clone()),
+                None,
+                Some(linker_command_file.clone()),
+            ),
+        };
+
+        Helper {
+            file_builder: self.file_builder.clone(),
+            linker,
+            linker_flags,
+            linker_command_file,
+        }
+        .serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for LanguageTools {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct Helper {
+            #[serde(
+                rename(serialize = "ipxact:fileBuilder", deserialize = "fileBuilder"),
+                default
+            )]
+            file_builder: Vec<LanguageFileBuilder>,
+
+            #[serde(rename(serialize = "ipxact:linker", deserialize = "linker"), default)]
+            linker: Option<StringExpression>,
+
+            #[serde(
+                rename(serialize = "ipxact:linkerFlags", deserialize = "linkerFlags"),
+                default
+            )]
+            linker_flags: Option<StringExpression>,
+
+            #[serde(
+                rename(
+                    serialize = "ipxact:linkerCommandFile",
+                    deserialize = "linkerCommandFile"
+                ),
+                default
+            )]
+            linker_command_file: Option<LinkerCommandFile>,
+        }
+
+        let helper = Helper::deserialize(deserializer)?;
+        let linker = match (
+            helper.linker,
+            helper.linker_flags,
+            helper.linker_command_file,
+        ) {
+            (None, None, None) => None,
+            (Some(linker), Some(linker_flags), linker_command_file) => {
+                Some(LanguageLinker::Flags {
+                    linker,
+                    linker_flags,
+                    linker_command_file,
+                })
+            }
+            (Some(linker), None, Some(linker_command_file)) => Some(LanguageLinker::CommandFile {
+                linker,
+                linker_command_file,
+            }),
+            (None, Some(_), _) | (None, None, Some(_)) => {
+                return Err(D::Error::custom(
+                    "languageTools linkerFlags/linkerCommandFile require linker",
+                ));
+            }
+            (Some(_), None, None) => {
+                return Err(D::Error::custom(
+                    "languageTools linker requires linkerFlags or linkerCommandFile",
+                ));
+            }
+        };
+
+        Ok(Self {
+            file_builder: helper.file_builder,
+            linker,
+        })
+    }
 }
 
 /// Builder for one file type in an executable image.
@@ -5154,6 +5403,9 @@ pub enum GeneratorScope {
 /// Floating-point expression used to order generators.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RealExpression {
+    #[serde(flatten)]
+    pub extension_attributes: ExtensionAttributes,
+
     #[serde(rename = "@minimum", skip_serializing_if = "Option::is_none")]
     pub minimum: Option<f64>,
 
@@ -5167,6 +5419,7 @@ pub struct RealExpression {
 impl RealExpression {
     pub fn new(value: impl Into<String>) -> Self {
         Self {
+            extension_attributes: ExtensionAttributes::default(),
             minimum: None,
             maximum: None,
             value: value.into(),
@@ -5705,7 +5958,8 @@ impl MemoryMap {
     }
 
     pub fn add_subspace_map(&mut self, subspace_map: SubspaceMap) {
-        self.entries.push(MemoryMapEntry::SubspaceMap(subspace_map));
+        self.entries
+            .push(MemoryMapEntry::SubspaceMap(Box::new(subspace_map)));
     }
 
     pub fn add_bank(&mut self, bank: Bank) {
@@ -5781,7 +6035,8 @@ impl MemoryRemap {
     }
 
     pub fn add_subspace_map(&mut self, subspace_map: SubspaceMap) {
-        self.entries.push(MemoryMapEntry::SubspaceMap(subspace_map));
+        self.entries
+            .push(MemoryMapEntry::SubspaceMap(Box::new(subspace_map)));
     }
 
     pub fn add_bank(&mut self, bank: Bank) {
@@ -5799,7 +6054,7 @@ pub enum MemoryMapEntry {
     Bank(Box<Bank>),
 
     #[serde(rename(serialize = "ipxact:subspaceMap", deserialize = "subspaceMap"))]
-    SubspaceMap(SubspaceMap),
+    SubspaceMap(Box<SubspaceMap>),
 }
 
 /// Top-level address block in a memory map.

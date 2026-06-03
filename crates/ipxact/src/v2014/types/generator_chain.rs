@@ -161,7 +161,7 @@ pub enum GeneratorChainEntry {
     ComponentGeneratorSelector(ComponentGeneratorSelector),
 
     #[serde(rename(serialize = "ipxact:generator", deserialize = "generator"))]
-    Generator(ChainGenerator),
+    Generator(Box<ChainGenerator>),
 }
 
 impl From<GeneratorChainSelector> for GeneratorChainEntry {
@@ -178,7 +178,7 @@ impl From<ComponentGeneratorSelector> for GeneratorChainEntry {
 
 impl From<ChainGenerator> for GeneratorChainEntry {
     fn from(value: ChainGenerator) -> Self {
-        Self::Generator(value)
+        Self::Generator(Box::new(value))
     }
 }
 

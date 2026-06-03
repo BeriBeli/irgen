@@ -1,7 +1,8 @@
 # irgen
 
 irgen (IP-XACT Register Generator) is a CLI tool that converts structured
-snapsheets into IP-XACT XML files using the IEEE 1685-2014 format.
+snapsheets into register model files. It can emit IEEE 1685-2014 IP-XACT XML,
+native Synopsys RALF, or SystemRDL.
 
 ## CLI
 
@@ -11,6 +12,18 @@ Convert a snapsheet into IP-XACT XML:
 cargo run -p irgen-cli -- example_simple.xlsx
 ```
 
+Convert a snapsheet into RALF:
+
+```sh
+cargo run -p irgen-cli -- example_simple.xlsx --format ralf
+```
+
+Convert a snapsheet into SystemRDL:
+
+```sh
+cargo run -p irgen-cli -- example_simple.xlsx --format systemrdl
+```
+
 Write to a specific path:
 
 ```sh
@@ -18,7 +31,7 @@ cargo run -p irgen-cli -- example_simple.xlsx -o output.xml
 ```
 
 Validate generated IP-XACT XML with an installed `xmllint` and an explicitly
-supplied XSD:
+supplied XSD. Validation is only available for `--format ipxact`:
 
 ```sh
 cargo run -p irgen-cli -- example_simple.xlsx --validate path/to/index.xsd
@@ -37,6 +50,10 @@ cargo run -p irgen-cli -- example.xlsx --snapsheet-spec snapsheet.toml
 
 See [`docs/snapsheet-spec.example.toml`](docs/snapsheet-spec.example.toml)
 or [`snapsheet.toml`](snapsheet.toml) for the complex example specification.
+See [`docs/ralf-generation.md`](docs/ralf-generation.md) for RALF output
+coverage and current limitations.
+See [`docs/systemrdl-generation.md`](docs/systemrdl-generation.md) for
+SystemRDL output coverage and current limitations.
 
 ```toml
 [workbook.sheets]

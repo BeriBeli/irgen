@@ -2,6 +2,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use super::vendor_extensions::ExtensionAttributes;
+
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct LegacyAbstractionDefinition {
     #[serde(rename = "vendor", skip_serializing_if = "Option::is_none")]
@@ -2472,6 +2474,9 @@ pub struct SignedIntExpression {
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct SignedLongintExpression {
+    #[serde(flatten)]
+    pub extension_attributes: ExtensionAttributes,
+
     #[serde(rename = "$text")]
     pub value: String,
 
@@ -2485,6 +2490,7 @@ pub struct SignedLongintExpression {
 impl SignedLongintExpression {
     pub fn new(value: impl Into<String>) -> Self {
         Self {
+            extension_attributes: ExtensionAttributes::default(),
             value: value.into(),
             minimum: None,
             maximum: None,
@@ -2754,6 +2760,9 @@ pub struct UnsignedBitExpression {}
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct UnsignedBitVectorExpression {
+    #[serde(flatten)]
+    pub extension_attributes: ExtensionAttributes,
+
     #[serde(rename = "$text")]
     pub value: String,
 }
@@ -2761,6 +2770,7 @@ pub struct UnsignedBitVectorExpression {
 impl UnsignedBitVectorExpression {
     pub fn new(value: impl Into<String>) -> Self {
         Self {
+            extension_attributes: ExtensionAttributes::default(),
             value: value.into(),
         }
     }
@@ -2789,6 +2799,9 @@ pub struct UnsignedIntExpression {
 
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct UnsignedLongintExpression {
+    #[serde(flatten)]
+    pub extension_attributes: ExtensionAttributes,
+
     #[serde(rename = "$text")]
     pub value: String,
 
@@ -2802,6 +2815,7 @@ pub struct UnsignedLongintExpression {
 impl UnsignedLongintExpression {
     pub fn new(value: impl Into<String>) -> Self {
         Self {
+            extension_attributes: ExtensionAttributes::default(),
             value: value.into(),
             minimum: None,
             maximum: None,
@@ -2823,6 +2837,9 @@ impl From<String> for UnsignedLongintExpression {
 
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct UnsignedPositiveIntExpression {
+    #[serde(flatten)]
+    pub extension_attributes: ExtensionAttributes,
+
     #[serde(rename = "$text")]
     pub value: String,
 
@@ -2836,6 +2853,7 @@ pub struct UnsignedPositiveIntExpression {
 impl UnsignedPositiveIntExpression {
     pub fn new(value: impl Into<String>) -> Self {
         Self {
+            extension_attributes: ExtensionAttributes::default(),
             value: value.into(),
             minimum: None,
             maximum: None,
@@ -2857,6 +2875,9 @@ impl From<String> for UnsignedPositiveIntExpression {
 
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct UnsignedPositiveLongintExpression {
+    #[serde(flatten)]
+    pub extension_attributes: ExtensionAttributes,
+
     #[serde(rename = "$text")]
     pub value: String,
 
@@ -2870,6 +2891,7 @@ pub struct UnsignedPositiveLongintExpression {
 impl UnsignedPositiveLongintExpression {
     pub fn new(value: impl Into<String>) -> Self {
         Self {
+            extension_attributes: ExtensionAttributes::default(),
             value: value.into(),
             minimum: None,
             maximum: None,

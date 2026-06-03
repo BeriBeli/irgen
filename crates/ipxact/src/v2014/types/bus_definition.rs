@@ -6,7 +6,7 @@ use super::Parameters;
 use super::assertions::Assertions;
 use super::component::{NAMESPACE, SCHEMA_LOCATION, XSI_NAMESPACE};
 use super::library_ref::LibraryRefType;
-use super::vendor_extensions::{VendorExtensions, protect_qnames};
+use super::vendor_extensions::{ExtensionAttributes, VendorExtensions, protect_qnames};
 
 fn namespace() -> String {
     NAMESPACE.into()
@@ -164,6 +164,9 @@ impl BusDefinition {
 /// Unsigned integer expression with optional resolver bounds.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct UnsignedIntExpression {
+    #[serde(flatten)]
+    pub extension_attributes: ExtensionAttributes,
+
     #[serde(rename = "$text")]
     pub value: String,
 
@@ -177,6 +180,7 @@ pub struct UnsignedIntExpression {
 impl UnsignedIntExpression {
     pub fn new(value: impl Into<String>) -> Self {
         Self {
+            extension_attributes: ExtensionAttributes::default(),
             value: value.into(),
             minimum: None,
             maximum: None,

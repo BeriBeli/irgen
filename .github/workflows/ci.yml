@@ -49,7 +49,17 @@ jobs:
       - name: Build CLI
         run: cargo build --release --locked --bin irgen
       - name: Smoke test IP-XACT conversion
-        run: cargo run --locked -p irgen-cli -- example.xlsx -o target/irgen-example.xml
+        run: cargo run --locked -p irgen-cli -- example_simple.xlsx -o target/irgen-simple.xml
+      - name: Smoke test RALF conversion
+        run: cargo run --locked -p irgen-cli -- example_simple.xlsx --format ralf -o target/irgen-simple.ralf
+      - name: Smoke test SystemRDL conversion
+        run: cargo run --locked -p irgen-cli -- example_simple.xlsx --format systemrdl -o target/irgen-simple.rdl
+      - name: Smoke test configured snapsheet IP-XACT conversion
+        run: cargo run --locked -p irgen-cli -- example.xlsx --snapsheet-spec snapsheet.toml -o target/irgen-configured-example.xml
+      - name: Smoke test configured snapsheet RALF conversion
+        run: cargo run --locked -p irgen-cli -- example.xlsx --snapsheet-spec snapsheet.toml --format ralf -o target/irgen-configured-example.ralf
+      - name: Smoke test configured snapsheet SystemRDL conversion
+        run: cargo run --locked -p irgen-cli -- example.xlsx --snapsheet-spec snapsheet.toml --format systemrdl -o target/irgen-configured-example.rdl
       - name: Install xmllint
         if: runner.os == 'Linux'
         run: command -v xmllint || (sudo apt-get update && sudo apt-get install -y libxml2-utils)
@@ -58,4 +68,4 @@ jobs:
         run: cargo test --locked -p ip-xact --test v2014_test
       - name: Validate IP-XACT against official XSD
         if: runner.os == 'Linux'
-        run: cargo run --locked -p irgen-cli -- example.xlsx -o target/irgen-example.xml --validate crates/model/tests/fixtures/ipxact-1685-2014/index.xsd
+        run: cargo run --locked -p irgen-cli -- example.xlsx --snapsheet-spec snapsheet.toml -o target/irgen-configured-example.xml --validate crates/model/tests/fixtures/ipxact-1685-2014/index.xsd

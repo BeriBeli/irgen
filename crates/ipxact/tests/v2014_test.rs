@@ -11,27 +11,27 @@ use ip_xact::v2014::types::{
     AbstractorMode, AbstractorModeValue, AbstractorModel, AbstractorPort, AbstractorPortStyle,
     AbstractorPorts, AbstractorView, AbstractorViews, AbstractorWirePort, Access, AccessHandles,
     AccessViewRef, ActiveInterface, AdHocConnection, AdHocConnections, Assertion, Assertions,
-    BitExpression, BitSteeringExpression, BuildCommand, BuildFlags, CellClass, CellFunction,
-    CellFunctionValue, CellSpecification, CellStrength, ChainGenerator, ClockDriver, ClockEdge,
-    ComponentGenerator, ComponentGeneratorSelector, ComponentGenerators, ComponentInstance,
-    ComponentInstances, ConfigurableArray, ConfigurableArrays, ConfigurableElementValue,
-    ConfigurableElementValues, ConstraintSet, ConstraintSetRef, ConstraintSets, Cpu, Cpus,
-    DelayType, DelayUnit, Dependency, DesignConfiguration, Direction, DirectionValue,
-    DriveConstraint, Driver, DriverKind, Drivers, Endianness, ExcludePort, ExcludePorts,
-    ExecutableImage, ExportedName, ExternalPortReference, FileBuilder, FileSetFunction,
-    FileSetRefGroup, FunctionArgument, FunctionDataType, FunctionReturnType, FunctionSourceFile,
-    GeneratorApi, GeneratorApiType, GeneratorChain, GeneratorChainSelector, GeneratorGroup,
-    GeneratorRef, GeneratorScope, GroupSelector, ImageType, IncludeFile, IndexedAccessHandle,
-    IndexedAccessHandles, Indices, Initiative, InitiativeValue, Interconnection,
-    InterconnectionConfiguration, Interconnections, InterfaceRef, InternalPortReference,
-    LanguageFileBuilder, LanguageTools, LeafAccessHandle, LinkerCommandFile, LoadConstraint,
-    LogicalName, ModuleParameter, ModuleParameterUsage, ModuleParameters, MonitorInterconnection,
-    MonitorInterface, MultipleGroupSelectionOperator, NameValuePair, NonIndexedAccessHandles,
-    NonIndexedLeafAccessHandle, OnSystem, OtherClockDriver, OtherClockDrivers, PartSelect,
-    PathSegment, PathSegments, Payload, PayloadExtension, PayloadType, PortAccess,
-    PortProtocolType, PortReferences, Presence, PresenceValue, Protocol, ProtocolTypeType,
-    ProtocolTypeValue, Qualifier, RealExpression, RegisterDim, ResetType, ResetTypes,
-    ServiceTypeDef, ServiceTypeName, SignedLongintExpression, SimpleAccessHandle,
+    BankEntry, BitExpression, BitSteeringExpression, BuildCommand, BuildFlags, CellClass,
+    CellFunction, CellFunctionValue, CellSpecification, CellStrength, ChainGenerator, ClockDriver,
+    ClockEdge, ComponentGenerator, ComponentGeneratorSelector, ComponentGenerators,
+    ComponentInstance, ComponentInstances, ConfigurableArray, ConfigurableArrays,
+    ConfigurableElementValue, ConfigurableElementValues, ConstraintSet, ConstraintSetRef,
+    ConstraintSets, Cpu, Cpus, DelayType, DelayUnit, Dependency, DesignConfiguration, Direction,
+    DirectionValue, DriveConstraint, Driver, DriverKind, Drivers, Endianness, ExcludePort,
+    ExcludePorts, ExecutableImage, ExportedName, ExternalPortReference, FileBuilder,
+    FileSetFunction, FileSetRefGroup, FunctionArgument, FunctionDataType, FunctionReturnType,
+    FunctionSourceFile, GeneratorApi, GeneratorApiType, GeneratorChain, GeneratorChainSelector,
+    GeneratorGroup, GeneratorRef, GeneratorScope, GroupSelector, ImageType, IncludeFile,
+    IndexedAccessHandle, IndexedAccessHandles, Indices, Initiative, InitiativeValue,
+    Interconnection, InterconnectionConfiguration, Interconnections, InterfaceRef,
+    InternalPortReference, LanguageFileBuilder, LanguageLinker, LanguageTools, LeafAccessHandle,
+    LinkerCommandFile, LoadConstraint, LogicalName, ModuleParameter, ModuleParameterUsage,
+    ModuleParameters, MonitorInterconnection, MonitorInterface, MultipleGroupSelectionOperator,
+    NameValuePair, NonIndexedAccessHandles, NonIndexedLeafAccessHandle, OnSystem, OtherClockDriver,
+    OtherClockDrivers, PartSelect, PathSegment, PathSegments, Payload, PayloadExtension,
+    PayloadType, PortAccess, PortProtocolType, PortReferences, Presence, PresenceValue, Protocol,
+    ProtocolTypeType, ProtocolTypeValue, Qualifier, RealExpression, RegisterDim, ResetType,
+    ResetTypes, ServiceTypeDef, ServiceTypeName, SignedLongintExpression, SimpleAccessHandle,
     SimpleAccessHandles, SimplePortAccess, SingleShotDriver, Slice, Slices, StringExpression,
     SystemGroupName, SystemGroupNames, TiedValue, TimingConstraint, TransTypeDef, TransTypeDefs,
     TransactionalAbstraction, TransactionalPortMode, TransactionalTypeName, TransportMethods,
@@ -59,9 +59,10 @@ use ip_xact::v2014::types::{
     PhysicalPort, Port, PortConnection, PortDirection, PortInitiative, PortKind, PortMap,
     PortMapTarget, PortMaps, PortRange, PortStyle, PortVector, PortVectors, Ports, ReadAction,
     ReadActionKind, Register, RegisterData, RegisterFile, RemapAddress, RemapPort, RemapPorts,
-    RemapState, RemapStates, Reset, Resets, Segment, Segments, Shared, Slave, SlaveTarget,
-    StringURIExpression, SubspaceMap, System, TestConstraint, Testable, TransactionalPort,
-    TransparentBridge, View, Views, WirePort, WriteValueConstraint, WriteValueConstraintChoice,
+    RemapState, RemapStates, Reset, Resets, Segment, Segments, Shared, Slave, SlaveFileSetRefGroup,
+    SlaveTarget, StringURIExpression, SubspaceMap, System, TestConstraint, Testable,
+    TransactionalPort, TransparentBridge, View, Views, WirePort, WriteValueConstraint,
+    WriteValueConstraintChoice,
 };
 
 fn register_component() -> Component {
@@ -145,6 +146,22 @@ fn serializes_register_component_with_2014_namespace_and_attributes() {
         .for_each(|entry| {
             if let ip_xact::v2014::types::MemoryMapEntry::AddressBlock(block) = entry {
                 block.base_address.minimum = Some(0);
+                block
+                    .base_address
+                    .extension_attributes
+                    .insert("xmlns:irgen", "urn:irgen:test");
+                block
+                    .base_address
+                    .extension_attributes
+                    .insert("irgen:addressSource", "register-map");
+                block
+                    .range
+                    .extension_attributes
+                    .insert("xmlns:irgen", "urn:irgen:test");
+                block
+                    .range
+                    .extension_attributes
+                    .insert("irgen:rangeSource", "register-map");
             }
         });
 
@@ -153,7 +170,8 @@ fn serializes_register_component_with_2014_namespace_and_attributes() {
     assert!(xml.starts_with("<ipxact:component"));
     assert!(xml.contains("xmlns:ipxact=\"http://www.accellera.org/XMLSchema/IPXACT/1685-2014\""));
     assert!(xml.contains("<ipxact:addressBlock xml:id=\"register-block\">"));
-    assert!(xml.contains("<ipxact:baseAddress minimum=\"0\">0x0</ipxact:baseAddress>"));
+    assert!(xml.contains("irgen:addressSource=\"register-map\""));
+    assert!(xml.contains("irgen:rangeSource=\"register-map\""));
     assert!(xml.contains("<ipxact:usage>register</ipxact:usage>"));
     assert!(xml.contains("<ipxact:addressOffset>0x0</ipxact:addressOffset>"));
     assert!(xml.contains("<ipxact:shared>yes</ipxact:shared>"));
@@ -162,6 +180,36 @@ fn serializes_register_component_with_2014_namespace_and_attributes() {
     assert!(xml.contains(
         "<ipxact:resets><ipxact:reset><ipxact:value>0</ipxact:value></ipxact:reset></ipxact:resets>"
     ));
+    validate_xml("component-with-address-attributes", &xml);
+
+    let parsed =
+        Component::from_xml_str(&xml).expect("component should deserialize from its 2014 XML");
+    let memory_map = &parsed
+        .memory_maps
+        .as_ref()
+        .expect("component should retain memory maps")
+        .memory_map[0];
+    let ip_xact::v2014::types::MemoryMapEntry::AddressBlock(block) = &memory_map.entries[0] else {
+        panic!("memory map should retain address block");
+    };
+    assert_eq!(
+        block
+            .base_address
+            .extension_attributes
+            .attributes
+            .get("irgen:addressSource")
+            .map(String::as_str),
+        Some("register-map")
+    );
+    assert_eq!(
+        block
+            .range
+            .extension_attributes
+            .attributes
+            .get("irgen:rangeSource")
+            .map(String::as_str),
+        Some("register-map")
+    );
 }
 
 #[test]
@@ -199,6 +247,12 @@ fn component_parameter_choice_ref_validates_against_official_2014_xsd() {
     let mut enumeration = ChoiceEnumeration::new("100");
     enumeration.text = Some("100 MHz".into());
     enumeration.help = Some("Select the timer input clock".into());
+    enumeration
+        .extension_attributes
+        .insert("xmlns:irgen", "urn:irgen:test");
+    enumeration
+        .extension_attributes
+        .insert("irgen:displayRank", "primary");
     choice.add_enumeration(enumeration);
     choice.add_enumeration(ChoiceEnumeration::new("200"));
 
@@ -242,6 +296,19 @@ fn component_parameter_choice_ref_validates_against_official_2014_xsd() {
     validate_xml("component-parameter-choice-ref", &xml);
 
     let parsed = Component::from_xml_str(&xml).expect("component should deserialize");
+    assert_eq!(
+        parsed
+            .choices
+            .as_ref()
+            .expect("component should retain choices")
+            .choice[0]
+            .enumeration[0]
+            .extension_attributes
+            .attributes
+            .get("irgen:displayRank")
+            .map(String::as_str),
+        Some("primary")
+    );
     let parsed_parameter = &parsed
         .parameters
         .as_ref()
@@ -280,7 +347,14 @@ fn component_file_set_ref_validates_against_official_2014_xsd() {
 
     let mut instantiation = ComponentInstantiation::new("rtlComponent");
     let mut file_set_ref = FileSetRef::new("rtlSources");
-    file_set_ref.is_present = Some(BitExpression::new("true"));
+    let mut file_set_ref_presence = BitExpression::new("true");
+    file_set_ref_presence
+        .extension_attributes
+        .insert("xmlns:irgen", "urn:irgen:test");
+    file_set_ref_presence
+        .extension_attributes
+        .insert("irgen:condition", "rtl-enabled");
+    file_set_ref.is_present = Some(file_set_ref_presence);
     instantiation.file_set_ref.push(file_set_ref);
 
     let mut component = Component::new("example.org", "peripherals", "timer", "1.0");
@@ -296,6 +370,7 @@ fn component_file_set_ref_validates_against_official_2014_xsd() {
     });
 
     let xml = quick_xml::se::to_string(&component).expect("component should serialize");
+    assert!(xml.contains("irgen:condition=\"rtl-enabled\""));
     validate_xml("component-file-set-ref", &xml);
 
     let parsed = Component::from_xml_str(&xml).expect("component should deserialize");
@@ -318,13 +393,30 @@ fn component_file_set_ref_validates_against_official_2014_xsd() {
             .value,
         "true"
     );
+    assert_eq!(
+        component_instantiation.file_set_ref[0]
+            .is_present
+            .as_ref()
+            .expect("fileSetRef should retain isPresent")
+            .extension_attributes
+            .attributes
+            .get("irgen:condition")
+            .map(String::as_str),
+        Some("rtl-enabled")
+    );
 }
 
 #[test]
 fn component_cpu_address_space_ref_validates_against_official_2014_xsd() {
     let mut cpu = Cpu::new("cpu0", AddressSpaceRef::new("cpuSpace"));
+    cpu.is_present = Some(BitExpression::new("true"));
     cpu.parameters = Some(Parameters {
         parameter: vec![Parameter::new("HART_COUNT", "1")],
+    });
+    cpu.vendor_extensions = Some(VendorExtensions {
+        element: vec![
+            VendorExtension::new("acme:cpu").with_attribute("xmlns:acme", "urn:example:acme"),
+        ],
     });
 
     let mut component = Component::new("example.org", "processors", "cpu", "1.0");
@@ -333,9 +425,31 @@ fn component_cpu_address_space_ref_validates_against_official_2014_xsd() {
     });
     component.cpus = Some(Cpus { cpu: vec![cpu] });
 
-    validate_xml(
-        "component-cpu-address-space-ref",
-        &quick_xml::se::to_string(&component).expect("component should serialize"),
+    let xml = quick_xml::se::to_string(&component).expect("component should serialize");
+    assert!(xml.contains("<ipxact:isPresent>true</ipxact:isPresent>"));
+    assert!(xml.contains("acme:cpu"));
+    validate_xml("component-cpu-address-space-ref", &xml);
+
+    let parsed = Component::from_xml_str(&xml).expect("component should deserialize");
+    let cpu = &parsed
+        .cpus
+        .as_ref()
+        .expect("component should retain CPUs")
+        .cpu[0];
+    assert_eq!(
+        cpu.is_present
+            .as_ref()
+            .expect("cpu should retain isPresent")
+            .value,
+        "true"
+    );
+    assert_eq!(
+        cpu.vendor_extensions
+            .as_ref()
+            .expect("cpu should retain vendor extensions")
+            .element[0]
+            .name,
+        "acme:cpu"
     );
 }
 
@@ -352,7 +466,14 @@ fn address_space_executable_image_validates_against_official_2014_xsd() {
         ],
     });
     let mut image_builder = LanguageFileBuilder::new(FileType::new(FileTypeValue::CSource), "cc");
-    image_builder.flags = Some(StringExpression::new("-Os"));
+    let mut image_flags = StringExpression::new("-Os");
+    image_flags
+        .extension_attributes
+        .insert("xmlns:irgen", "urn:irgen:test");
+    image_flags
+        .extension_attributes
+        .insert("irgen:stringSource", "image-builder");
+    image_builder.flags = Some(image_flags);
     image_builder.replace_default_flags = Some(BitExpression::new("false"));
     image_builder.vendor_extensions = Some(VendorExtensions {
         element: vec![
@@ -372,9 +493,11 @@ fn address_space_executable_image_validates_against_official_2014_xsd() {
     });
     image.language_tools = Some(LanguageTools {
         file_builder: vec![image_builder],
-        linker: Some(StringExpression::new("ld")),
-        linker_flags: Some(StringExpression::new("-nostdlib")),
-        linker_command_file: Some(linker_command_file),
+        linker: Some(LanguageLinker::flags_with_command_file(
+            "ld",
+            "-nostdlib",
+            linker_command_file,
+        )),
     });
     image.file_set_ref_group = Some(FileSetRefGroup {
         file_set_ref: vec![FileSetRef::new("software")],
@@ -395,7 +518,14 @@ fn address_space_executable_image_validates_against_official_2014_xsd() {
     });
     let mut generator = ComponentGenerator::new("firmwareGenerator", "tools/build-firmware");
     generator.scope = Some(GeneratorScope::Entity);
-    generator.phase = Some(RealExpression::new("1.0"));
+    let mut phase = RealExpression::new("1.0");
+    phase
+        .extension_attributes
+        .insert("xmlns:irgen", "urn:irgen:test");
+    phase
+        .extension_attributes
+        .insert("irgen:phaseSource", "firmware");
+    generator.phase = Some(phase);
     generator.parameters = Some(Parameters {
         parameter: vec![Parameter::new("OPT_LEVEL", "s")],
     });
@@ -407,6 +537,8 @@ fn address_space_executable_image_validates_against_official_2014_xsd() {
     });
 
     let xml = quick_xml::se::to_string(&component).expect("component should serialize");
+    assert!(xml.contains("irgen:stringSource=\"image-builder\""));
+    assert!(xml.contains("irgen:phaseSource=\"firmware\""));
     validate_xml("address-space-executable-image", &xml);
 
     let parsed = Component::from_xml_str(&xml).expect("component should deserialize");
@@ -439,16 +571,63 @@ fn address_space_executable_image_validates_against_official_2014_xsd() {
         "acme:fileBuilder"
     );
     assert_eq!(
-        language_tools
-            .linker_command_file
+        language_tools.file_builder[0]
+            .flags
             .as_ref()
-            .expect("language tools should retain linker command file")
+            .expect("file builder should retain flags")
+            .extension_attributes
+            .attributes
+            .get("irgen:stringSource")
+            .map(String::as_str),
+        Some("image-builder")
+    );
+    let Some(LanguageLinker::Flags {
+        linker,
+        linker_flags,
+        linker_command_file: Some(linker_command_file),
+    }) = &language_tools.linker
+    else {
+        panic!("language tools should retain linker flags branch with command file");
+    };
+    assert_eq!(linker.value, "ld");
+    assert_eq!(linker_flags.value, "-nostdlib");
+    assert_eq!(
+        linker_command_file
             .vendor_extensions
             .as_ref()
             .expect("linker command file should retain vendor extensions")
             .element[0]
             .name,
         "acme:linkerCommandFile"
+    );
+    assert_eq!(
+        parsed
+            .component_generators
+            .as_ref()
+            .expect("component should retain generators")
+            .component_generator[0]
+            .phase
+            .as_ref()
+            .expect("generator should retain phase")
+            .extension_attributes
+            .attributes
+            .get("irgen:phaseSource")
+            .map(String::as_str),
+        Some("firmware")
+    );
+}
+
+#[test]
+fn language_tools_rejects_linker_without_choice_branch() {
+    let error = quick_xml::de::from_str::<LanguageTools>(
+        "<languageTools><linker>ld</linker></languageTools>",
+    )
+    .expect_err("languageTools should reject linker without flags or command file");
+
+    assert!(
+        error
+            .to_string()
+            .contains("languageTools linker requires linkerFlags or linkerCommandFile")
     );
 }
 
@@ -459,11 +638,14 @@ fn instantiation_constraints_and_whitebox_refs_validate_against_official_2014_xs
         vector: vec![PortVector::new("7", "0")],
     });
     let mut wire_type_def = WireTypeDef::new("std_logic_vector");
+    wire_type_def.id = Some("wire-rtl-type".into());
     wire_type_def.type_name.as_mut().unwrap().constrained = Some(true);
-    wire_type_def
-        .type_definition
-        .push(WireTypeDefinition::new("IEEE.std_logic_1164.all"));
-    wire_type_def.view_ref.push(WireTypeViewRef::new("rtl"));
+    let mut wire_type_definition = WireTypeDefinition::new("IEEE.std_logic_1164.all");
+    wire_type_definition.id = Some("std-logic-package".into());
+    wire_type_def.type_definition.push(wire_type_definition);
+    let mut wire_type_view_ref = WireTypeViewRef::new("rtl");
+    wire_type_view_ref.id = Some("wire-rtl-view-ref".into());
+    wire_type_def.view_ref.push(wire_type_view_ref);
     wire.wire_type_defs = Some(WireTypeDefs {
         wire_type_def: vec![wire_type_def],
     });
@@ -472,6 +654,14 @@ fn instantiation_constraints_and_whitebox_refs_validate_against_official_2014_xs
     let mut clock_driver = ClockDriver::new("10", "0", "1", "5");
     clock_driver.clock_name = Some("clk".into());
     clock_driver.clock_period.units = Some(DelayUnit::Nanoseconds);
+    clock_driver
+        .clock_period
+        .extension_attributes
+        .insert("xmlns:irgen", "urn:irgen:test");
+    clock_driver
+        .clock_period
+        .extension_attributes
+        .insert("irgen:clockSource", "constraint");
     wire.drivers = Some(Drivers {
         driver: vec![
             default_driver,
@@ -495,6 +685,15 @@ fn instantiation_constraints_and_whitebox_refs_validate_against_official_2014_xs
     });
 
     let mut instantiation = ComponentInstantiation::new("rtlComponent");
+    let mut default_builder = FileBuilder::new(FileType::new(FileTypeValue::SystemVerilogSource));
+    default_builder.id = Some("rtl-default-builder".into());
+    default_builder.command = Some(StringExpression::new("vlog"));
+    default_builder.flags = Some(StringExpression::new("+acc"));
+    default_builder.replace_default_flags = Some(BitExpression::new("false"));
+    instantiation.default_file_builder.push(default_builder);
+    let mut file_set_ref = FileSetRef::new("rtlFiles");
+    file_set_ref.is_present = Some(BitExpression::new("true"));
+    instantiation.file_set_ref.push(file_set_ref);
     instantiation
         .constraint_set_ref
         .push(ConstraintSetRef::new("timing"));
@@ -510,10 +709,30 @@ fn instantiation_constraints_and_whitebox_refs_validate_against_official_2014_xs
             },
         )],
     });
+    instantiation.vendor_extensions = Some(VendorExtensions {
+        element: vec![
+            VendorExtension::new("acme:componentInstantiation")
+                .with_attribute("xmlns:acme", "urn:example:acme"),
+        ],
+    });
 
     let mut component = Component::new("example.org", "peripherals", "timer", "1.0");
+    component.file_sets = Some(FileSets {
+        file_set: vec![FileSet::new("rtlFiles")],
+    });
+    let mut whitebox = WhiteboxElement::new("internalSignal", WhiteboxType::Signal);
+    whitebox.is_present = Some(BitExpression::new("true"));
+    whitebox.driveable = Some(true);
+    whitebox.parameters = Some(Parameters {
+        parameter: vec![Parameter::new("WB_WIDTH", "8")],
+    });
+    whitebox.vendor_extensions = Some(VendorExtensions {
+        element: vec![
+            VendorExtension::new("acme:whitebox").with_attribute("xmlns:acme", "urn:example:acme"),
+        ],
+    });
     component.whitebox_elements = Some(WhiteboxElements {
-        whitebox_element: vec![WhiteboxElement::new("internalSignal", WhiteboxType::Signal)],
+        whitebox_element: vec![whitebox],
     });
     component.model = Some(Model {
         views: Some(Views {
@@ -528,9 +747,49 @@ fn instantiation_constraints_and_whitebox_refs_validate_against_official_2014_xs
     });
 
     let xml = quick_xml::se::to_string(&component).expect("component should serialize");
+    assert!(xml.contains("irgen:clockSource=\"constraint\""));
+    assert!(xml.contains("<ipxact:wireTypeDef xml:id=\"wire-rtl-type\">"));
+    assert!(xml.contains("<ipxact:typeDefinition xml:id=\"std-logic-package\">"));
+    assert!(xml.contains("<ipxact:viewRef xml:id=\"wire-rtl-view-ref\">rtl</ipxact:viewRef>"));
+    assert!(xml.contains("<ipxact:defaultFileBuilder xml:id=\"rtl-default-builder\">"));
+    assert!(xml.contains("<ipxact:fileSetRef><ipxact:localName>rtlFiles</ipxact:localName>"));
+    assert!(xml.contains("acme:componentInstantiation"));
+    assert!(xml.contains("acme:whitebox"));
     validate_xml("instantiation-constraints-whitebox-refs", &xml);
 
     let parsed = Component::from_xml_str(&xml).expect("component should deserialize");
+    let whitebox = &parsed
+        .whitebox_elements
+        .as_ref()
+        .expect("component should retain whitebox elements")
+        .whitebox_element[0];
+    assert_eq!(
+        whitebox
+            .is_present
+            .as_ref()
+            .expect("whitebox should retain isPresent")
+            .value,
+        "true"
+    );
+    assert_eq!(whitebox.driveable, Some(true));
+    assert_eq!(
+        whitebox
+            .parameters
+            .as_ref()
+            .expect("whitebox should retain parameters")
+            .parameter[0]
+            .name,
+        "WB_WIDTH"
+    );
+    assert_eq!(
+        whitebox
+            .vendor_extensions
+            .as_ref()
+            .expect("whitebox should retain vendor extensions")
+            .element[0]
+            .name,
+        "acme:whitebox"
+    );
     let PortStyle::Wire(wire) = &parsed
         .model
         .as_ref()
@@ -550,6 +809,20 @@ fn instantiation_constraints_and_whitebox_refs_validate_against_official_2014_xs
         .vector[0];
     assert_eq!(vector.left.value, "7");
     assert_eq!(vector.right.value, "0");
+    let wire_type_def = &wire
+        .wire_type_defs
+        .as_ref()
+        .expect("wire port should retain wire type definitions")
+        .wire_type_def[0];
+    assert_eq!(wire_type_def.id.as_deref(), Some("wire-rtl-type"));
+    assert_eq!(
+        wire_type_def.type_definition[0].id.as_deref(),
+        Some("std-logic-package")
+    );
+    assert_eq!(
+        wire_type_def.view_ref[0].id.as_deref(),
+        Some("wire-rtl-view-ref")
+    );
     let default_range = wire
         .drivers
         .as_ref()
@@ -580,6 +853,15 @@ fn instantiation_constraints_and_whitebox_refs_validate_against_official_2014_xs
         panic!("clock driver should retain unsigned bit-vector pulse value");
     };
     assert_eq!(clock_value.clock_pulse_value.value, "1");
+    assert_eq!(
+        clock_value
+            .clock_period
+            .extension_attributes
+            .attributes
+            .get("irgen:clockSource")
+            .map(String::as_str),
+        Some("constraint")
+    );
     let Some(DriverKind::SingleShot(single_shot_value)) = &wire
         .drivers
         .as_ref()
@@ -625,6 +907,28 @@ fn instantiation_constraints_and_whitebox_refs_validate_against_official_2014_xs
     else {
         panic!("expected component instantiation");
     };
+    assert_eq!(
+        instantiation.default_file_builder[0].id.as_deref(),
+        Some("rtl-default-builder")
+    );
+    assert_eq!(
+        instantiation.default_file_builder[0]
+            .command
+            .as_ref()
+            .expect("default file builder should retain command")
+            .value,
+        "vlog"
+    );
+    assert_eq!(instantiation.file_set_ref[0].local_name, "rtlFiles");
+    assert_eq!(
+        instantiation
+            .vendor_extensions
+            .as_ref()
+            .expect("component instantiation should retain vendor extensions")
+            .element[0]
+            .name,
+        "acme:componentInstantiation"
+    );
     let indices = &instantiation
         .whitebox_element_refs
         .as_ref()
@@ -652,6 +956,12 @@ fn file_set_build_metadata_validates_against_official_2014_xsd() {
 
     let mut build_flags = BuildFlags::new("-O2");
     build_flags.append = Some(true);
+    build_flags
+        .extension_attributes
+        .insert("xmlns:irgen", "urn:irgen:test");
+    build_flags
+        .extension_attributes
+        .insert("irgen:flagsSource", "file");
 
     let mut file = File::new("sw/timer.c", FileType::new(FileTypeValue::CSource));
     file.is_present = Some(BitExpression::new("true"));
@@ -659,11 +969,25 @@ fn file_set_build_metadata_validates_against_official_2014_xsd() {
     file.is_include_file = Some(include_file);
     file.logical_name = Some(logical_name);
     file.exported_name.push(ExportedName::new("timer_init"));
+    let mut build_command = StringExpression::new("cc");
+    build_command
+        .extension_attributes
+        .insert("xmlns:irgen", "urn:irgen:test");
+    build_command
+        .extension_attributes
+        .insert("irgen:commandSource", "file");
+    let mut target_name = StringURIExpression::new("build/timer.o");
+    target_name
+        .extension_attributes
+        .insert("xmlns:irgen", "urn:irgen:test");
+    target_name
+        .extension_attributes
+        .insert("irgen:targetSource", "file");
     file.build_command = Some(BuildCommand {
-        command: Some(StringExpression::new("cc")),
+        command: Some(build_command),
         flags: Some(build_flags),
         replace_default_flags: Some(BitExpression::new("false")),
-        target_name: Some(StringURIExpression::new("build/timer.o")),
+        target_name: Some(target_name),
     });
     file.dependency.push(Dependency::new("include"));
     let mut define = NameValuePair::new("TIMER_CHANNELS", "4");
@@ -708,6 +1032,9 @@ fn file_set_build_metadata_validates_against_official_2014_xsd() {
     });
 
     let xml = quick_xml::se::to_string(&component).expect("component should serialize");
+    assert!(xml.contains("irgen:commandSource=\"file\""));
+    assert!(xml.contains("irgen:flagsSource=\"file\""));
+    assert!(xml.contains("irgen:targetSource=\"file\""));
     validate_xml("file-set-build-metadata", &xml);
 
     let parsed = Component::from_xml_str(&xml).expect("component should parse");
@@ -759,6 +1086,43 @@ fn file_set_build_metadata_validates_against_official_2014_xsd() {
             .name,
         "acme:defineMetadata"
     );
+    let build_command = parsed_file_set.file[0]
+        .build_command
+        .as_ref()
+        .expect("file should retain build command");
+    assert_eq!(
+        build_command
+            .command
+            .as_ref()
+            .expect("build command should retain command")
+            .extension_attributes
+            .attributes
+            .get("irgen:commandSource")
+            .map(String::as_str),
+        Some("file")
+    );
+    assert_eq!(
+        build_command
+            .target_name
+            .as_ref()
+            .expect("build command should retain target name")
+            .extension_attributes
+            .attributes
+            .get("irgen:targetSource")
+            .map(String::as_str),
+        Some("file")
+    );
+    assert_eq!(
+        build_command
+            .flags
+            .as_ref()
+            .expect("build command should retain flags")
+            .extension_attributes
+            .attributes
+            .get("irgen:flagsSource")
+            .map(String::as_str),
+        Some("file")
+    );
 }
 
 #[test]
@@ -770,11 +1134,14 @@ fn file_set_function_ref_validates_against_official_2014_xsd() {
     function.replicate = Some(true);
     function.entry_point = Some("timer_init".into());
     function.return_type = Some(FunctionReturnType::Int);
-    function.argument.push(FunctionArgument::new(
-        "channel",
-        "0",
-        FunctionDataType::UnsignedInt,
-    ));
+    let mut argument = FunctionArgument::new("channel", "0", FunctionDataType::UnsignedInt);
+    argument.vendor_extensions = Some(VendorExtensions {
+        element: vec![
+            VendorExtension::new("acme:argumentMetadata")
+                .with_attribute("xmlns:acme", "urn:example:acme"),
+        ],
+    });
+    function.argument.push(argument);
     function.disabled = Some(BitExpression::new("false"));
     function.source_file.push(FunctionSourceFile::new(
         "generated/timer_glue.c",
@@ -790,9 +1157,26 @@ fn file_set_function_ref_validates_against_official_2014_xsd() {
         file_set: vec![file_set],
     });
 
-    validate_xml(
-        "file-set-function-ref",
-        &quick_xml::se::to_string(&component).expect("component should serialize"),
+    let xml = quick_xml::se::to_string(&component).expect("component should serialize");
+    assert!(xml.contains("acme:argumentMetadata"));
+    validate_xml("file-set-function-ref", &xml);
+
+    let parsed = Component::from_xml_str(&xml).expect("component should parse");
+    let argument = &parsed
+        .file_sets
+        .as_ref()
+        .expect("component should retain file sets")
+        .file_set[0]
+        .function[0]
+        .argument[0];
+    assert_eq!(
+        argument
+            .vendor_extensions
+            .as_ref()
+            .expect("argument should retain vendor extensions")
+            .element[0]
+            .name,
+        "acme:argumentMetadata"
     );
 }
 
@@ -1386,6 +1770,7 @@ fn bank_validates_against_official_2014_xsd() {
     let mut banked_block = BankedAddressBlock::new("channel", "4", "32");
     banked_block.access_handles = Some(non_indexed_access_handle("u_regs.channel"));
     banked_block.is_present = Some(BitExpression::new("true"));
+    banked_block.is_volatile = Some(false);
     banked_block.parameters = Some(Parameters {
         parameter: vec![Parameter::new("BANKED_BLOCK", "channel")],
     });
@@ -1400,6 +1785,7 @@ fn bank_validates_against_official_2014_xsd() {
     let mut bank = Bank::new("channels", "0x0", BankAlignment::Serial);
     bank.access_handles = Some(simple_access_handle("u_regs.channels"));
     bank.is_present = Some(BitExpression::new("true"));
+    bank.is_volatile = Some(true);
     bank.parameters = Some(Parameters {
         parameter: vec![Parameter::new("BANK_LAYOUT", "serial")],
     });
@@ -1433,6 +1819,11 @@ fn bank_validates_against_official_2014_xsd() {
     };
     assert_eq!(bank.bank_alignment, BankAlignment::Serial);
     assert_eq!(bank.base_address.value, "0x0");
+    assert_eq!(bank.is_volatile, Some(true));
+    let BankEntry::AddressBlock(banked_block) = &bank.entries[0] else {
+        panic!("expected banked address block");
+    };
+    assert_eq!(banked_block.is_volatile, Some(false));
 }
 
 #[test]
@@ -1440,6 +1831,7 @@ fn nested_bank_validates_against_official_2014_xsd() {
     let mut banked_block = BankedAddressBlock::new("channel", "4", "32");
     banked_block.access_handles = Some(non_indexed_access_handle("u_regs.nested_channel"));
     banked_block.is_present = Some(BitExpression::new("true"));
+    banked_block.is_volatile = Some(false);
     banked_block.parameters = Some(Parameters {
         parameter: vec![Parameter::new("NESTED_BLOCK", "channel")],
     });
@@ -1454,6 +1846,7 @@ fn nested_bank_validates_against_official_2014_xsd() {
     let mut nested_bank = BankedBank::new("nested", BankAlignment::Serial);
     nested_bank.access_handles = Some(simple_access_handle("u_regs.nested"));
     nested_bank.is_present = Some(BitExpression::new("true"));
+    nested_bank.is_volatile = Some(true);
     nested_bank.parameters = Some(Parameters {
         parameter: vec![Parameter::new("NESTED_BANK", "true")],
     });
@@ -1476,10 +1869,27 @@ fn nested_bank_validates_against_official_2014_xsd() {
         memory_map: vec![map],
     });
 
-    validate_xml(
-        "nested-bank",
-        &quick_xml::se::to_string(&component).expect("component should serialize"),
-    );
+    let xml = quick_xml::se::to_string(&component).expect("component should serialize");
+    validate_xml("nested-bank", &xml);
+
+    let parsed = Component::from_xml_str(&xml).expect("component should deserialize");
+    let MemoryMapEntry::Bank(bank) = &parsed
+        .memory_maps
+        .as_ref()
+        .expect("component should retain memory maps")
+        .memory_map[0]
+        .entries[0]
+    else {
+        panic!("expected bank");
+    };
+    let BankEntry::Bank(nested_bank) = &bank.entries[0] else {
+        panic!("expected nested bank");
+    };
+    assert_eq!(nested_bank.is_volatile, Some(true));
+    let BankEntry::AddressBlock(banked_block) = &nested_bank.entries[0] else {
+        panic!("expected nested banked address block");
+    };
+    assert_eq!(banked_block.is_volatile, Some(false));
 }
 
 #[test]
@@ -1524,7 +1934,13 @@ fn subspace_map_and_master_interface_validate_against_official_2014_xsd() {
 
 #[test]
 fn slave_memory_map_ref_validates_against_official_2014_xsd() {
-    let slave = Slave::memory_map_ref("default");
+    let mut slave = Slave::memory_map_ref("default");
+    let mut file_set_ref_group = SlaveFileSetRefGroup::with_group("drivers");
+    file_set_ref_group.id = Some("slave-driver-files".into());
+    let mut file_set_ref = FileSetRef::new("software");
+    file_set_ref.is_present = Some(BitExpression::new("true"));
+    file_set_ref_group.add(file_set_ref);
+    slave.add_file_set_ref_group(file_set_ref_group);
     let slave_interface = BusInterface::new("slave", bus_type(), BusInterfaceMode::Slave(slave));
 
     let mut component = Component::new("example.org", "peripherals", "timer", "1.0");
@@ -1534,8 +1950,13 @@ fn slave_memory_map_ref_validates_against_official_2014_xsd() {
     component.memory_maps = Some(MemoryMaps {
         memory_map: vec![MemoryMap::new("default")],
     });
+    component.file_sets = Some(FileSets {
+        file_set: vec![FileSet::new("software")],
+    });
 
     let xml = quick_xml::se::to_string(&component).expect("component should serialize");
+    assert!(xml.contains("<ipxact:fileSetRefGroup xml:id=\"slave-driver-files\">"));
+    assert!(xml.contains("<ipxact:group>drivers</ipxact:group>"));
     validate_xml("slave-memory-map-ref", &xml);
 
     let parsed = Component::from_xml_str(&xml).expect("component should deserialize");
@@ -1552,6 +1973,18 @@ fn slave_memory_map_ref_validates_against_official_2014_xsd() {
         panic!("slave should retain memory map ref target");
     };
     assert_eq!(memory_map_ref.memory_map_ref, "default");
+    let file_set_ref_group = &slave.file_set_ref_group[0];
+    assert_eq!(file_set_ref_group.id.as_deref(), Some("slave-driver-files"));
+    assert_eq!(file_set_ref_group.group.as_deref(), Some("drivers"));
+    assert_eq!(file_set_ref_group.file_set_ref[0].local_name, "software");
+    assert_eq!(
+        file_set_ref_group.file_set_ref[0]
+            .is_present
+            .as_ref()
+            .expect("fileSetRef should retain isPresent")
+            .value,
+        "true"
+    );
 }
 
 #[test]
@@ -1716,12 +2149,19 @@ fn abstraction_port_map_refs_validate_against_official_2014_xsd() {
         PortMapTarget::PhysicalPort(PhysicalPort::new("paddr")),
     );
     address_port_map.is_present = Some(BitExpression::new("true"));
+    let mut ready_tie_off = UnsignedPositiveIntExpression::new("1");
+    ready_tie_off
+        .extension_attributes
+        .insert("xmlns:irgen", "urn:irgen:test");
+    ready_tie_off
+        .extension_attributes
+        .insert("irgen:tieSource", "default");
     abstraction.port_maps = Some(PortMaps {
         port_map: vec![
             address_port_map,
             PortMap::new(
                 LogicalPort::new("PREADY"),
-                PortMapTarget::LogicalTieOff(UnsignedPositiveIntExpression::new("1")),
+                PortMapTarget::LogicalTieOff(ready_tie_off),
             ),
         ],
     });
@@ -1753,6 +2193,7 @@ fn abstraction_port_map_refs_validate_against_official_2014_xsd() {
     });
 
     let xml = quick_xml::se::to_string(&component).expect("component should serialize");
+    assert!(xml.contains("irgen:tieSource=\"default\""));
     validate_xml("abstraction-port-map-refs", &xml);
 
     let parsed = Component::from_xml_str(&xml).expect("component should deserialize");
@@ -1794,6 +2235,14 @@ fn abstraction_port_map_refs_validate_against_official_2014_xsd() {
         panic!("port map should retain logical tie-off");
     };
     assert_eq!(tie_off.value, "1");
+    assert_eq!(
+        tie_off
+            .extension_attributes
+            .attributes
+            .get("irgen:tieSource")
+            .map(String::as_str),
+        Some("default")
+    );
 }
 
 #[test]
@@ -1829,10 +2278,15 @@ fn mirrored_slave_base_addresses_validate_against_official_2014_xsd() {
 #[test]
 fn channel_interface_refs_validate_against_official_2014_xsd() {
     let mut channel = Channel::new("mirrorConnection");
+    channel.id = Some("mirror-channel".into());
+    channel.display_name = Some("Mirror Connection".into());
+    channel.description = Some("Mirrored master/slave connection".into());
     channel.is_present = Some(BitExpression::new("true"));
     let mut master_ref = ChannelBusInterfaceRef::new("mirroredMaster");
+    master_ref.id = Some("mirror-master-ref".into());
     master_ref.is_present = Some(BitExpression::new("true"));
     let mut slave_ref = ChannelBusInterfaceRef::new("mirroredSlave");
+    slave_ref.id = Some("mirror-slave-ref".into());
     slave_ref.is_present = Some(BitExpression::new("true"));
     channel.add_bus_interface_ref(master_ref);
     channel.add_bus_interface_ref(slave_ref);
@@ -1857,6 +2311,10 @@ fn channel_interface_refs_validate_against_official_2014_xsd() {
     });
 
     let xml = quick_xml::se::to_string(&component).expect("component should serialize");
+    assert!(xml.contains("<ipxact:channel xml:id=\"mirror-channel\">"));
+    assert!(xml.contains("<ipxact:displayName>Mirror Connection</ipxact:displayName>"));
+    assert!(xml.contains("<ipxact:busInterfaceRef xml:id=\"mirror-master-ref\">"));
+    assert!(xml.contains("<ipxact:busInterfaceRef xml:id=\"mirror-slave-ref\">"));
     validate_xml("channel-interface-refs", &xml);
 
     let parsed = Component::from_xml_str(&xml).expect("component should deserialize");
@@ -1865,6 +2323,15 @@ fn channel_interface_refs_validate_against_official_2014_xsd() {
         .as_ref()
         .expect("component should retain channels")
         .channel[0];
+    assert_eq!(parsed_channel.id.as_deref(), Some("mirror-channel"));
+    assert_eq!(
+        parsed_channel.display_name.as_deref(),
+        Some("Mirror Connection")
+    );
+    assert_eq!(
+        parsed_channel.description.as_deref(),
+        Some("Mirrored master/slave connection")
+    );
     assert_eq!(
         parsed_channel
             .is_present
@@ -1872,6 +2339,14 @@ fn channel_interface_refs_validate_against_official_2014_xsd() {
             .expect("channel should retain isPresent")
             .value,
         "true"
+    );
+    assert_eq!(
+        parsed_channel.bus_interface_ref[0].id.as_deref(),
+        Some("mirror-master-ref")
+    );
+    assert_eq!(
+        parsed_channel.bus_interface_ref[1].id.as_deref(),
+        Some("mirror-slave-ref")
     );
     assert_eq!(
         parsed_channel.bus_interface_ref[0]
@@ -2020,7 +2495,14 @@ fn address_space_and_master_ref_validate_against_official_2014_xsd() {
     });
 
     let mut address_space_ref = AddressSpaceRef::new("cpu");
-    address_space_ref.base_address = Some(SignedLongintExpression::new("-0x1000"));
+    let mut base_address = SignedLongintExpression::new("-0x1000");
+    base_address
+        .extension_attributes
+        .insert("xmlns:irgen", "urn:irgen:test");
+    base_address
+        .extension_attributes
+        .insert("irgen:signedSource", "master");
+    address_space_ref.base_address = Some(base_address);
     let master = Master {
         address_space_ref: Some(address_space_ref),
     };
@@ -2038,6 +2520,7 @@ fn address_space_and_master_ref_validate_against_official_2014_xsd() {
     });
 
     let xml = quick_xml::se::to_string(&component).expect("component should serialize");
+    assert!(xml.contains("irgen:signedSource=\"master\""));
     validate_xml("address-space-master-ref", &xml);
 
     let parsed = Component::from_xml_str(&xml).expect("component should deserialize");
@@ -2108,6 +2591,20 @@ fn address_space_and_master_ref_validate_against_official_2014_xsd() {
             .expect("address space ref should retain signed baseAddress")
             .value,
         "-0x1000"
+    );
+    assert_eq!(
+        master
+            .address_space_ref
+            .as_ref()
+            .expect("master should retain address space ref")
+            .base_address
+            .as_ref()
+            .expect("address space ref should retain signed baseAddress")
+            .extension_attributes
+            .attributes
+            .get("irgen:signedSource")
+            .map(String::as_str),
+        Some("master")
     );
 }
 
@@ -2232,6 +2729,12 @@ fn field_enumerations_and_write_constraint_validate_against_official_2014_xsd() 
     field.access = Some(Access::ReadWrite);
     let mut idle = EnumeratedValue::new("IDLE", "0");
     idle.usage = Some(EnumeratedValueUsage::Read);
+    idle.value
+        .extension_attributes
+        .insert("xmlns:irgen", "urn:irgen:test");
+    idle.value
+        .extension_attributes
+        .insert("irgen:enumSource", "manual");
     let mut run = EnumeratedValue::new("RUN", "1");
     run.usage = Some(EnumeratedValueUsage::ReadWrite);
     field.enumerated_values = Some(EnumeratedValues {
@@ -2271,6 +2774,7 @@ fn field_enumerations_and_write_constraint_validate_against_official_2014_xsd() 
     });
 
     let xml = quick_xml::se::to_string(&component).expect("component should serialize");
+    assert!(xml.contains("irgen:enumSource=\"manual\""));
     validate_xml("field-enumerations", &xml);
 
     let parsed = Component::from_xml_str(&xml).expect("component should deserialize");
@@ -2334,6 +2838,15 @@ fn field_enumerations_and_write_constraint_validate_against_official_2014_xsd() 
         .as_ref()
         .expect("field should retain enumerated values");
     assert_eq!(enumerations.enumerated_value[0].value.value, "0");
+    assert_eq!(
+        enumerations.enumerated_value[0]
+            .value
+            .extension_attributes
+            .attributes
+            .get("irgen:enumSource")
+            .map(String::as_str),
+        Some("manual")
+    );
     assert_eq!(enumerations.enumerated_value[1].value.value, "1");
     let constraint = parsed_field
         .write_value_constraint
@@ -2438,7 +2951,14 @@ fn wire_port_and_remap_port_ref_validate_against_official_2014_xsd() {
 
     let mut remap_state = RemapState::new("LOW_POWER");
     let mut remap_port = RemapPort::new("low_power", "1");
-    remap_port.port_index = Some(UnsignedIntExpression::new("0"));
+    let mut port_index = UnsignedIntExpression::new("0");
+    port_index
+        .extension_attributes
+        .insert("xmlns:irgen", "urn:irgen:test");
+    port_index
+        .extension_attributes
+        .insert("irgen:indexSource", "remap");
+    remap_port.port_index = Some(port_index);
     remap_state.remap_ports = Some(RemapPorts {
         remap_port: vec![remap_port],
     });
@@ -2455,6 +2975,7 @@ fn wire_port_and_remap_port_ref_validate_against_official_2014_xsd() {
     });
 
     let xml = quick_xml::se::to_string(&component).expect("component should serialize");
+    assert!(xml.contains("irgen:indexSource=\"remap\""));
     validate_xml("wire-port-remap-ref", &xml);
 
     let parsed = Component::from_xml_str(&xml).expect("component should deserialize");
@@ -2474,6 +2995,17 @@ fn wire_port_and_remap_port_ref_validate_against_official_2014_xsd() {
             .expect("remap port should retain portIndex")
             .value,
         "0"
+    );
+    assert_eq!(
+        parsed_remap_port
+            .port_index
+            .as_ref()
+            .expect("remap port should retain portIndex")
+            .extension_attributes
+            .attributes
+            .get("irgen:indexSource")
+            .map(String::as_str),
+        Some("remap")
     );
     assert_eq!(parsed_remap_port.value.value, "1");
 }
@@ -2557,7 +3089,29 @@ fn port_arrays_and_access_handles_validate_against_official_2014_xsd() {
 #[test]
 fn component_root_clock_reset_and_assertions_validate_against_official_2014_xsd() {
     let mut reset = Reset::new("0");
+    reset.id = Some("soft-reset-value".into());
     reset.reset_type_ref = Some("SOFT".into());
+    reset.mask = Some(UnsignedBitVectorExpression::new("1"));
+    reset
+        .value
+        .extension_attributes
+        .insert("xmlns:irgen", "urn:irgen:test");
+    reset
+        .value
+        .extension_attributes
+        .insert("irgen:resetSource", "spec");
+    reset
+        .mask
+        .as_mut()
+        .expect("reset mask should be present")
+        .extension_attributes
+        .insert("xmlns:irgen", "urn:irgen:test");
+    reset
+        .mask
+        .as_mut()
+        .expect("reset mask should be present")
+        .extension_attributes
+        .insert("irgen:maskSource", "spec");
     let mut field = Field::new("ENABLE", "0", "1");
     field.resets = Some(Resets { reset: vec![reset] });
     let mut register = Register::new("CONTROL", "0x0", "32");
@@ -2568,6 +3122,9 @@ fn component_root_clock_reset_and_assertions_validate_against_official_2014_xsd(
     map.add_address_block(block);
 
     let mut reset_type = ResetType::new("SOFT");
+    reset_type.id = Some("soft-reset-type".into());
+    reset_type.display_name = Some("Software Reset".into());
+    reset_type.description = Some("Reset asserted by software control".into());
     reset_type.vendor_extensions = Some(VendorExtensions {
         element: vec![
             VendorExtension::new("acme:reset").with_attribute("xmlns:acme", "urn:example:acme"),
@@ -2575,8 +3132,19 @@ fn component_root_clock_reset_and_assertions_validate_against_official_2014_xsd(
     });
 
     let mut clock = OtherClockDriver::new("systemClock", "10", "0", "1", "5");
+    clock.id = Some("system-clock-driver".into());
     clock.clock_source = Some("clockGenerator.output".into());
+    clock.clock_period.minimum = Some(1.0);
+    clock.clock_period.maximum = Some(20.0);
     clock.clock_period.units = Some(DelayUnit::Nanoseconds);
+    clock
+        .clock_period
+        .extension_attributes
+        .insert("xmlns:irgen", "urn:irgen:test");
+    clock
+        .clock_period
+        .extension_attributes
+        .insert("irgen:clockDomain", "system");
 
     let mut component = Component::new("example.org", "peripherals", "timer", "1.0");
     component.memory_maps = Some(MemoryMaps {
@@ -2588,28 +3156,131 @@ fn component_root_clock_reset_and_assertions_validate_against_official_2014_xsd(
     component.reset_types = Some(ResetTypes {
         reset_type: vec![reset_type],
     });
+    let mut assertion_expr = BitExpression::new("true");
+    assertion_expr
+        .extension_attributes
+        .insert("xmlns:irgen", "urn:irgen:test");
+    assertion_expr
+        .extension_attributes
+        .insert("irgen:assertSource", "policy");
+    let mut assertion = Assertion::new("validReset", assertion_expr);
+    assertion.id = Some("valid-reset-assertion".into());
+    assertion.display_name = Some("Valid Reset Policy".into());
+    assertion.description = Some("Reset policy must be consistent".into());
     component.assertions = Some(Assertions {
-        assertion: vec![Assertion::new("validReset", "true")],
+        assertion: vec![assertion],
     });
 
     let xml = quick_xml::se::to_string(&component).expect("component should serialize");
     assert!(xml.contains(
-        "<ipxact:otherClockDriver clockName=\"systemClock\" clockSource=\"clockGenerator.output\">"
+        "<ipxact:otherClockDriver clockName=\"systemClock\" clockSource=\"clockGenerator.output\" xml:id=\"system-clock-driver\">"
     ));
-    assert!(xml.contains("<ipxact:reset resetTypeRef=\"SOFT\">"));
-    assert!(xml.contains("<ipxact:resetType><ipxact:name>SOFT</ipxact:name>"));
+    assert!(xml.contains("irgen:clockDomain=\"system\""));
+    assert!(xml.contains("<ipxact:reset resetTypeRef=\"SOFT\" xml:id=\"soft-reset-value\">"));
+    assert!(xml.contains("irgen:resetSource=\"spec\""));
+    assert!(xml.contains("irgen:maskSource=\"spec\""));
+    assert!(xml.contains("<ipxact:resetType xml:id=\"soft-reset-type\">"));
+    assert!(xml.contains("<ipxact:displayName>Software Reset</ipxact:displayName>"));
+    assert!(xml.contains("<ipxact:assertion xml:id=\"valid-reset-assertion\">"));
+    assert!(xml.contains("<ipxact:displayName>Valid Reset Policy</ipxact:displayName>"));
+    assert!(xml.contains("irgen:assertSource=\"policy\""));
     validate_xml("component-root-clock-reset-assertions", &xml);
 
     let parsed = Component::from_xml_str(&xml).expect("component metadata should deserialize");
+    let clock = &parsed
+        .other_clock_drivers
+        .as_ref()
+        .expect("component should retain independent clock drivers")
+        .other_clock_driver[0];
+    assert_eq!(clock.id.as_deref(), Some("system-clock-driver"));
+    assert_eq!(clock.clock_source.as_deref(), Some("clockGenerator.output"));
+    assert_eq!(clock.clock_period.minimum, Some(1.0));
+    assert_eq!(clock.clock_period.maximum, Some(20.0));
+    assert_eq!(clock.clock_period.units, Some(DelayUnit::Nanoseconds));
     assert_eq!(
-        parsed
-            .assertions
+        clock
+            .clock_period
+            .extension_attributes
+            .attributes
+            .get("irgen:clockDomain")
+            .map(String::as_str),
+        Some("system")
+    );
+    let MemoryMapEntry::AddressBlock(block) = &parsed
+        .memory_maps
+        .as_ref()
+        .expect("component should retain memory maps")
+        .memory_map[0]
+        .entries[0]
+    else {
+        panic!("expected address block");
+    };
+    let RegisterData::Register(register) = &block.register_data[0] else {
+        panic!("expected register");
+    };
+    let reset = &register.field[0]
+        .resets
+        .as_ref()
+        .expect("field should retain resets")
+        .reset[0];
+    assert_eq!(reset.id.as_deref(), Some("soft-reset-value"));
+    assert_eq!(reset.reset_type_ref.as_deref(), Some("SOFT"));
+    assert_eq!(
+        reset
+            .value
+            .extension_attributes
+            .attributes
+            .get("irgen:resetSource")
+            .map(String::as_str),
+        Some("spec")
+    );
+    assert_eq!(
+        reset
+            .mask
             .as_ref()
-            .expect("component should retain assertions")
-            .assertion[0]
+            .expect("reset should retain mask")
+            .extension_attributes
+            .attributes
+            .get("irgen:maskSource")
+            .map(String::as_str),
+        Some("spec")
+    );
+    let reset_type = &parsed
+        .reset_types
+        .as_ref()
+        .expect("component should retain reset types")
+        .reset_type[0];
+    assert_eq!(reset_type.id.as_deref(), Some("soft-reset-type"));
+    assert_eq!(reset_type.name, "SOFT");
+    assert_eq!(reset_type.display_name.as_deref(), Some("Software Reset"));
+    assert_eq!(
+        reset_type.description.as_deref(),
+        Some("Reset asserted by software control")
+    );
+    let assertion = &parsed
+        .assertions
+        .as_ref()
+        .expect("component should retain assertions")
+        .assertion[0];
+    assert_eq!(assertion.id.as_deref(), Some("valid-reset-assertion"));
+    assert_eq!(assertion.name, "validReset");
+    assert_eq!(
+        assertion.display_name.as_deref(),
+        Some("Valid Reset Policy")
+    );
+    assert_eq!(
+        assertion.description.as_deref(),
+        Some("Reset policy must be consistent")
+    );
+    assert_eq!(assertion.assert.value, "true");
+    assert_eq!(
+        assertion
             .assert
-            .value,
-        "true"
+            .extension_attributes
+            .attributes
+            .get("irgen:assertSource")
+            .map(String::as_str),
+        Some("policy")
     );
     assert_eq!(parsed, component);
     let roundtrip_xml =
@@ -2643,24 +3314,41 @@ fn transactional_port_validates_against_official_2014_xsd() {
     transactional.protocol = Some(protocol);
 
     let mut type_parameter = ModuleParameter::new("DATA_BYTES", "4");
+    type_parameter.parameter_id = Some("data-bytes-param".into());
     type_parameter.data_type = Some("unsigned".into());
     type_parameter.usage_type = Some(ModuleParameterUsage::Typed);
+    type_parameter
+        .extension_attributes
+        .insert("xmlns:irgen", "urn:irgen:test");
+    type_parameter
+        .extension_attributes
+        .insert("irgen:typeParamSource", "port");
+    type_parameter.is_present = Some(BitExpression::new("true"));
+    type_parameter.vendor_extensions = Some(VendorExtensions {
+        element: vec![
+            VendorExtension::new("acme:typeParameter")
+                .with_attribute("xmlns:acme", "urn:example:acme"),
+        ],
+    });
 
     let mut service_type_name = ServiceTypeName::new("addr_type");
     service_type_name.implicit = Some(true);
     let mut service_type_def = ServiceTypeDef::new(service_type_name);
+    service_type_def.id = Some("addr-service-type".into());
+    let mut service_type_definition = TypeDefinition::new("addr_types.hpp");
+    service_type_definition.id = Some("addr-types-include".into());
     service_type_def
         .type_definition
-        .push(TypeDefinition::new("addr_types.hpp"));
+        .push(service_type_definition);
 
     let mut trans_type_name = TransactionalTypeName::new("tlm_initiator_socket");
     trans_type_name.exact = Some(false);
     let mut trans_type_def = TransTypeDef::new();
     trans_type_def.id = Some("transport-type".into());
     trans_type_def.type_name = Some(trans_type_name);
-    trans_type_def
-        .type_definition
-        .push(TypeDefinition::new("tlm_socket.hpp"));
+    let mut type_definition = TypeDefinition::new("tlm_socket.hpp");
+    type_definition.id = Some("tlm-socket-include".into());
+    trans_type_def.type_definition.push(type_definition);
     trans_type_def.type_parameters = Some(TypeParameters {
         type_parameter: vec![type_parameter],
         service_type_def: vec![service_type_def],
@@ -2702,6 +3390,11 @@ fn transactional_port_validates_against_official_2014_xsd() {
         xml.contains("<ipxact:typeName exact=\"false\">tlm_initiator_socket</ipxact:typeName>")
     );
     assert!(xml.contains("<ipxact:typeName implicit=\"true\">addr_type</ipxact:typeName>"));
+    assert!(xml.contains("irgen:typeParamSource=\"port\""));
+    assert!(xml.contains("<ipxact:isPresent>true</ipxact:isPresent>"));
+    assert!(xml.contains("acme:typeParameter"));
+    assert!(xml.contains("<ipxact:typeDefinition xml:id=\"tlm-socket-include\">"));
+    assert!(xml.contains("<ipxact:serviceTypeDef xml:id=\"addr-service-type\">"));
     assert!(xml.contains("<ipxact:viewRef>rtl</ipxact:viewRef>"));
     validate_xml("transactional-port", &xml);
 
@@ -2745,6 +3438,59 @@ fn transactional_port_validates_against_official_2014_xsd() {
             .expect("transactional port should retain minConnections")
             .value,
         "1"
+    );
+    let type_def = &transactional
+        .trans_type_defs
+        .as_ref()
+        .expect("transactional port should retain type definitions")
+        .trans_type_def[0];
+    assert_eq!(
+        type_def.type_definition[0].id.as_deref(),
+        Some("tlm-socket-include")
+    );
+    let type_parameter = &type_def
+        .type_parameters
+        .as_ref()
+        .expect("transactional type definition should retain type parameters")
+        .type_parameter[0];
+    assert_eq!(
+        type_parameter.parameter_id.as_deref(),
+        Some("data-bytes-param")
+    );
+    assert_eq!(
+        type_parameter
+            .extension_attributes
+            .attributes
+            .get("irgen:typeParamSource")
+            .map(String::as_str),
+        Some("port")
+    );
+    assert_eq!(
+        type_parameter
+            .is_present
+            .as_ref()
+            .expect("type parameter should retain isPresent")
+            .value,
+        "true"
+    );
+    assert_eq!(
+        type_parameter
+            .vendor_extensions
+            .as_ref()
+            .expect("type parameter should retain vendor extensions")
+            .element[0]
+            .name,
+        "acme:typeParameter"
+    );
+    let service_type_def = &type_def
+        .type_parameters
+        .as_ref()
+        .expect("transactional type definition should retain type parameters")
+        .service_type_def[0];
+    assert_eq!(service_type_def.id.as_deref(), Some("addr-service-type"));
+    assert_eq!(
+        service_type_def.type_definition[0].id.as_deref(),
+        Some("addr-types-include")
     );
     let roundtrip_xml =
         quick_xml::se::to_string(&parsed).expect("component protocol should reserialize");
@@ -2940,6 +3686,8 @@ fn structured_vendor_extensions_validate_against_official_2014_xsd() {
     let mut field = Field::new("ENABLE", "0", "1");
     field.access_handles = Some(non_indexed_access_handle("u_regs.enable"));
     field.is_present = Some(BitExpression::new("true"));
+    field.type_identifier = Some("enableField".into());
+    field.is_volatile = Some(false);
     field.enumerated_values = Some(EnumeratedValues {
         enumerated_value: vec![enumerated],
     });
@@ -2951,6 +3699,8 @@ fn structured_vendor_extensions_validate_against_official_2014_xsd() {
     register.access_handles = Some(indexed_access_handle("u_regs.control"));
     register.is_present = Some(BitExpression::new("true"));
     register.dim = vec![RegisterDim::new("1")];
+    register.type_identifier = Some("controlRegister".into());
+    register.is_volatile = Some(true);
     register.parameters = Some(Parameters {
         parameter: vec![Parameter::new("REGISTER_KIND", "control")],
     });
@@ -2960,6 +3710,8 @@ fn structured_vendor_extensions_validate_against_official_2014_xsd() {
         AlternateRegister::new("CONTROL_DEBUG", AlternateGroups::new("DEBUG"));
     alternate_register.access_handles = Some(indexed_access_handle("u_regs.control_debug"));
     alternate_register.is_present = Some(BitExpression::new("true"));
+    alternate_register.type_identifier = Some("controlDebugRegister".into());
+    alternate_register.is_volatile = Some(false);
     alternate_register.parameters = Some(Parameters {
         parameter: vec![Parameter::new("ALTERNATE_KIND", "debug")],
     });
@@ -2981,6 +3733,8 @@ fn structured_vendor_extensions_validate_against_official_2014_xsd() {
     let mut block = AddressBlock::new("registers", "0x0", "4", "32");
     block.access_handles = Some(non_indexed_access_handle("u_regs"));
     block.is_present = Some(BitExpression::new("true"));
+    block.type_identifier = Some("registerBlock".into());
+    block.is_volatile = Some(true);
     block.parameters = Some(Parameters {
         parameter: vec![Parameter::new("BLOCK_KIND", "registers")],
     });
@@ -3145,6 +3899,8 @@ fn structured_vendor_extensions_validate_against_official_2014_xsd() {
     assert_eq!(block.base_address.value, "0x0");
     assert_eq!(block.range.value, "4");
     assert_eq!(block.width.value, "32");
+    assert_eq!(block.type_identifier.as_deref(), Some("registerBlock"));
+    assert_eq!(block.is_volatile, Some(true));
     let metadata = &block
         .vendor_extensions
         .as_ref()
@@ -3228,7 +3984,9 @@ fn structured_vendor_extensions_validate_against_official_2014_xsd() {
     );
     assert_eq!(register.dim[0].value, "1");
     assert_eq!(register.address_offset.value, "0x0");
+    assert_eq!(register.type_identifier.as_deref(), Some("controlRegister"));
     assert_eq!(register.size.value, "32");
+    assert_eq!(register.is_volatile, Some(true));
     let metadata = &register
         .vendor_extensions
         .as_ref()
@@ -3294,6 +4052,25 @@ fn structured_vendor_extensions_validate_against_official_2014_xsd() {
             .value,
         "true"
     );
+    assert_eq!(
+        register
+            .alternate_registers
+            .as_ref()
+            .expect("register should retain alternate registers")
+            .alternate_register[0]
+            .type_identifier
+            .as_deref(),
+        Some("controlDebugRegister")
+    );
+    assert_eq!(
+        register
+            .alternate_registers
+            .as_ref()
+            .expect("register should retain alternate registers")
+            .alternate_register[0]
+            .is_volatile,
+        Some(false)
+    );
     let field = &register.field[0];
     assert_eq!(
         field
@@ -3316,6 +4093,8 @@ fn structured_vendor_extensions_validate_against_official_2014_xsd() {
             .value,
         "true"
     );
+    assert_eq!(field.type_identifier.as_deref(), Some("enableField"));
+    assert_eq!(field.is_volatile, Some(false));
     let metadata = &field
         .vendor_extensions
         .as_ref()

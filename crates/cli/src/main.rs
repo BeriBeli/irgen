@@ -3,13 +3,13 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command as ProcessCommand, ExitCode};
 
-const USAGE: &str = "Usage: irgen <input.xlsx> [-o <output>] [--format ipxact] [--snapsheet-spec <snapsheet.toml>] [--validate <schema.xsd>]\n\
+const USAGE: &str = "Usage: irgen <input.xlsx> [-o <output>] [--format ipxact|ralf|systemrdl] [--snapsheet-spec <snapsheet.toml>] [--validate <schema.xsd>]\n\
                      \n\
                      Convert a register spreadsheet into an output file.\n\
                      \n\
                      Options:\n\
-                       -o, --output <path>           Output path (default: input path with .xml extension)\n\
-                       -f, --format <name>           Output format: ipxact (default)\n\
+                       -o, --output <path>           Output path (default: input path with selected format extension)\n\
+                       -f, --format <name>           Output format: ipxact (default), ralf, systemrdl\n\
                       --snapsheet-spec <snapsheet.toml>  TOML file describing snapsheet sheet names, columns, and parser rules\n\
                       --validate <path>             Validate IP-XACT XML with xmllint and the supplied XSD\n\
                        -h, --help                    Print help";
@@ -17,19 +17,27 @@ const USAGE: &str = "Usage: irgen <input.xlsx> [-o <output>] [--format ipxact] [
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum OutputFormat {
     Ipxact,
+    Ralf,
+    SystemRdl,
 }
 
 impl OutputFormat {
     fn parse(value: &str) -> Result<Self, String> {
         match value {
             "ipxact" => Ok(Self::Ipxact),
-            _ => Err(format!("unknown output format: {value}; expected ipxact")),
+            "ralf" => Ok(Self::Ralf),
+            "systemrdl" => Ok(Self::SystemRdl),
+            _ => Err(format!(
+                "unknown output format: {value}; expected ipxact, ralf, or systemrdl"
+            )),
         }
     }
 
     fn extension(self) -> &'static str {
         match self {
             Self::Ipxact => "xml",
+            Self::Ralf => "ralf",
+            Self::SystemRdl => "rdl",
         }
     }
 }
@@ -92,8 +100,19 @@ fn run(args: impl Iterator<Item = OsString>) -> Result<Option<PathBuf>, CliError
         irgen_snapsheet::load_excel(&args.input)
     }
     .map_err(|error| CliError::Runtime(error.to_string()))?;
-    let output = irgen_model::serialize_ipxact_xml(&loaded.compo)
-        .map_err(|error| CliError::Runtime(error.to_string()))?;
+    if args.format != OutputFormat::Ipxact && args.validate_xsd.is_some() {
+        return Err(CliError::Usage(
+            "--validate can only be used with --format ipxact".into(),
+        ));
+    }
+    let output = match args.format {
+        OutputFormat::Ipxact => irgen_model::serialize_ipxact_xml(&loaded.compo)
+            .map_err(|error| CliError::Runtime(error.to_string()))?,
+        OutputFormat::Ralf => irgen_ralf::serialize_ralf(&loaded.compo)
+            .map_err(|error| CliError::Runtime(error.to_string()))?,
+        OutputFormat::SystemRdl => irgen_systemrdl::serialize_systemrdl(&loaded.compo)
+            .map_err(|error| CliError::Runtime(error.to_string()))?,
+    };
     fs::write(&args.output, output).map_err(|error| {
         CliError::Runtime(format!(
             "failed to write {}: {error}",
@@ -255,6 +274,83 @@ mod tests {
     }
 
     #[test]
+    fn accepts_explicit_ralf_format() {
+        let Command::Convert(parsed) =
+            parse_args(args(&["input.xlsx", "--format", "ralf"])).unwrap()
+        else {
+            panic!("expected conversion command");
+        };
+
+        assert_eq!(parsed.format, OutputFormat::Ralf);
+        assert_eq!(parsed.output, PathBuf::from("input.ralf"));
+    }
+
+    #[test]
+    fn accepts_explicit_systemrdl_format() {
+        let Command::Convert(parsed) =
+            parse_args(args(&["input.xlsx", "--format", "systemrdl"])).unwrap()
+        else {
+            panic!("expected conversion command");
+        };
+
+        assert_eq!(parsed.format, OutputFormat::SystemRdl);
+        assert_eq!(parsed.output, PathBuf::from("input.rdl"));
+    }
+
+    #[test]
+    fn generates_ralf_output() {
+        let input = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../example_simple.xlsx");
+        let output = std::env::temp_dir().join(format!(
+            "irgen-cli-test-{}-example.ralf",
+            std::process::id()
+        ));
+        let _ = fs::remove_file(&output);
+
+        let result = run([
+            OsString::from(input),
+            OsString::from("--format"),
+            OsString::from("ralf"),
+            OsString::from("-o"),
+            OsString::from(&output),
+        ]
+        .into_iter())
+        .unwrap();
+
+        assert_eq!(result.as_deref(), Some(output.as_path()));
+        let ralf = fs::read_to_string(&output).unwrap();
+        assert!(ralf.contains("block regs {"));
+        assert!(ralf.contains("register status @'h0 {"));
+        assert!(ralf.contains("access ro;"));
+        let _ = fs::remove_file(output);
+    }
+
+    #[test]
+    fn generates_systemrdl_output() {
+        let input = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../example_simple.xlsx");
+        let output =
+            std::env::temp_dir().join(format!("irgen-cli-test-{}-example.rdl", std::process::id()));
+        let _ = fs::remove_file(&output);
+
+        let result = run([
+            OsString::from(input),
+            OsString::from("--format"),
+            OsString::from("systemrdl"),
+            OsString::from("-o"),
+            OsString::from(&output),
+        ]
+        .into_iter())
+        .unwrap();
+
+        assert_eq!(result.as_deref(), Some(output.as_path()));
+        let rdl = fs::read_to_string(&output).unwrap();
+        assert!(rdl.contains("addrmap example_simple {"));
+        assert!(rdl.contains("addrmap regs {"));
+        assert!(rdl.contains("reg status {"));
+        assert!(rdl.contains("sw = r;"));
+        let _ = fs::remove_file(output);
+    }
+
+    #[test]
     fn accepts_explicit_xsd_validation() {
         let Command::Convert(parsed) =
             parse_args(args(&["input.xlsx", "--validate", "schema/index.xsd"])).unwrap()
@@ -308,7 +404,7 @@ mod tests {
             parse_args(args(&["input.xlsx", "--format", "regvue"]))
                 .err()
                 .as_deref(),
-            Some("unknown output format: regvue; expected ipxact")
+            Some("unknown output format: regvue; expected ipxact, ralf, or systemrdl")
         );
     }
 
