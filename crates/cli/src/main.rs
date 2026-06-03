@@ -1,0 +1,245 @@
+use std::ffi::OsString;
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::process::{Command as ProcessCommand, ExitCode};
+
+const USAGE: &str = "Usage: irgen <input.xlsx> [-o <output>] [--format ipxact] [--validate <schema.xsd>]\n\
+                     \n\
+                     Convert a register spreadsheet into an output file.\n\
+                     \n\
+                     Options:\n\
+                       -o, --output <path>  Output path (default: input path with .xml extension)\n\
+                       -f, --format <name>  Output format: ipxact (default)\n\
+                      --validate <path>    Validate IP-XACT XML with xmllint and the supplied XSD\n\
+                       -h, --help           Print help";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum OutputFormat {
+    Ipxact,
+}
+
+impl OutputFormat {
+    fn parse(value: &str) -> Result<Self, String> {
+        match value {
+            "ipxact" => Ok(Self::Ipxact),
+            _ => Err(format!("unknown output format: {value}; expected ipxact")),
+        }
+    }
+
+    fn extension(self) -> &'static str {
+        match self {
+            Self::Ipxact => "xml",
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct ConvertArgs {
+    input: PathBuf,
+    output: PathBuf,
+    format: OutputFormat,
+    validate_xsd: Option<PathBuf>,
+}
+
+enum Command {
+    Convert(ConvertArgs),
+    Help,
+}
+
+fn main() -> ExitCode {
+    match run(std::env::args_os().skip(1)) {
+        Ok(Some(output)) => {
+            println!("Generated {}", output.display());
+            ExitCode::SUCCESS
+        }
+        Ok(None) => ExitCode::SUCCESS,
+        Err(message) => {
+            eprintln!("error: {message}\n\n{USAGE}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+fn run(args: impl Iterator<Item = OsString>) -> Result<Option<PathBuf>, String> {
+    let Command::Convert(args) = parse_args(args)? else {
+        println!("{USAGE}");
+        return Ok(None);
+    };
+
+    let loaded = irgen_snapsheet::load_excel(&args.input).map_err(|error| error.to_string())?;
+    let output =
+        irgen_model::serialize_ipxact_xml(&loaded.compo).map_err(|error| error.to_string())?;
+    fs::write(&args.output, output)
+        .map_err(|error| format!("failed to write {}: {error}", args.output.display()))?;
+    if let Some(schema) = args.validate_xsd {
+        validate_ipxact_xml(&schema, &args.output)?;
+    }
+    Ok(Some(args.output))
+}
+
+fn validate_ipxact_xml(schema: &Path, output: &Path) -> Result<(), String> {
+    let result = ProcessCommand::new("xmllint")
+        .arg("--noout")
+        .arg("--schema")
+        .arg(schema)
+        .arg(output)
+        .output()
+        .map_err(|error| {
+            if error.kind() == std::io::ErrorKind::NotFound {
+                "failed to run xmllint: install xmllint or omit --validate".to_string()
+            } else {
+                format!("failed to run xmllint: {error}")
+            }
+        })?;
+
+    if result.status.success() {
+        return Ok(());
+    }
+
+    let stderr = String::from_utf8_lossy(&result.stderr);
+    Err(format!(
+        "IP-XACT validation failed for {} using {}: {}",
+        output.display(),
+        schema.display(),
+        stderr.trim()
+    ))
+}
+
+fn parse_args(args: impl Iterator<Item = OsString>) -> Result<Command, String> {
+    let mut args = args.peekable();
+    let mut input = None;
+    let mut output = None;
+    let mut format = None;
+    let mut validate_xsd = None;
+
+    while let Some(arg) = args.next() {
+        match arg.to_str() {
+            Some("-h" | "--help") => return Ok(Command::Help),
+            Some("-o" | "--output") => {
+                let path = args
+                    .next()
+                    .ok_or_else(|| "missing path after --output".to_string())?;
+                if output.replace(PathBuf::from(path)).is_some() {
+                    return Err("--output may only be specified once".into());
+                }
+            }
+            Some("-f" | "--format") => {
+                let value = args
+                    .next()
+                    .ok_or_else(|| "missing name after --format".to_string())?;
+                let value = value
+                    .to_str()
+                    .ok_or_else(|| "output format must be valid UTF-8".to_string())?;
+                if format.replace(OutputFormat::parse(value)?).is_some() {
+                    return Err("--format may only be specified once".into());
+                }
+            }
+            Some("--validate") => {
+                let path = args
+                    .next()
+                    .ok_or_else(|| "missing path after --validate".to_string())?;
+                if validate_xsd.replace(PathBuf::from(path)).is_some() {
+                    return Err("--validate may only be specified once".into());
+                }
+            }
+            Some(flag) if flag.starts_with('-') => {
+                return Err(format!("unknown option: {flag}"));
+            }
+            _ => {
+                if input.replace(PathBuf::from(arg)).is_some() {
+                    return Err("only one input spreadsheet may be specified".into());
+                }
+            }
+        }
+    }
+
+    let input = input.ok_or_else(|| "missing input spreadsheet".to_string())?;
+    let format = format.unwrap_or(OutputFormat::Ipxact);
+    let output = output.unwrap_or_else(|| input.with_extension(format.extension()));
+    Ok(Command::Convert(ConvertArgs {
+        input,
+        output,
+        format,
+        validate_xsd,
+    }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn args(values: &[&str]) -> impl Iterator<Item = OsString> {
+        values
+            .iter()
+            .map(|value| OsString::from(*value))
+            .collect::<Vec<_>>()
+            .into_iter()
+    }
+
+    #[test]
+    fn rejects_missing_input() {
+        assert_eq!(
+            parse_args(args(&[])).err().as_deref(),
+            Some("missing input spreadsheet")
+        );
+    }
+
+    #[test]
+    fn rejects_unknown_options() {
+        assert_eq!(
+            parse_args(args(&["--wat"])).err().as_deref(),
+            Some("unknown option: --wat")
+        );
+    }
+
+    #[test]
+    fn accepts_explicit_output_path() {
+        let Command::Convert(parsed) =
+            parse_args(args(&["input.xlsx", "-o", "nested/output.xml"])).unwrap()
+        else {
+            panic!("expected conversion command");
+        };
+
+        assert_eq!(parsed.output, PathBuf::from("nested/output.xml"));
+    }
+
+    #[test]
+    fn accepts_explicit_ipxact_format() {
+        let Command::Convert(parsed) =
+            parse_args(args(&["input.xlsx", "--format", "ipxact"])).unwrap()
+        else {
+            panic!("expected conversion command");
+        };
+
+        assert_eq!(parsed.format, OutputFormat::Ipxact);
+        assert_eq!(parsed.output, PathBuf::from("input.xml"));
+    }
+
+    #[test]
+    fn accepts_explicit_xsd_validation() {
+        let Command::Convert(parsed) =
+            parse_args(args(&["input.xlsx", "--validate", "schema/index.xsd"])).unwrap()
+        else {
+            panic!("expected conversion command");
+        };
+
+        assert_eq!(parsed.validate_xsd, Some(PathBuf::from("schema/index.xsd")));
+    }
+
+    #[test]
+    fn rejects_regvue_format() {
+        assert_eq!(
+            parse_args(args(&["input.xlsx", "--format", "regvue"]))
+                .err()
+                .as_deref(),
+            Some("unknown output format: regvue; expected ipxact")
+        );
+    }
+
+    #[test]
+    fn reports_failing_spreadsheet_conversion() {
+        let error = run(args(&["this-file-does-not-exist.xlsx"])).unwrap_err();
+
+        assert!(error.contains("Xlsx error"));
+    }
+}

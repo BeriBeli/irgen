@@ -1,0 +1,10 @@
+[package]
+name = "irgen-model"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+ip-xact = { path = "../ipxact" }
+quick-xml = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }

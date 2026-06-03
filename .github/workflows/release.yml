@@ -1,0 +1,86 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  verify-version:
+    name: Verify Tag Version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify tag matches Cargo.toml version
+        run: |
+          python - <<'PY'
+          import os
+          import tomllib
+          with open("Cargo.toml", "rb") as f:
+              data = tomllib.load(f)
+          version = data["workspace"]["package"]["version"]
+          tag = os.environ["GITHUB_REF_NAME"]
+          expected = f"v{version}"
+          if tag != expected:
+              raise SystemExit(f"Tag {tag} does not match Cargo.toml version {expected}")
+          print(f"Tag matches version: {tag}")
+          PY
+
+  build:
+    name: Build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    needs: verify-version
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            artifact: Irgen-linux.tar.gz
+          - os: macos-latest
+            artifact: Irgen-macos.tar.gz
+          - os: windows-latest
+            artifact: Irgen-windows.zip
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Test
+        run: cargo test --workspace --locked
+      - name: Build CLI
+        run: cargo build --release --locked --bin irgen
+      - name: Package Unix CLI
+        if: runner.os != 'Windows'
+        run: |
+          mkdir -p dist
+          cp target/release/irgen dist/irgen
+          chmod +x dist/irgen
+          tar -C dist -czf "dist/${{ matrix.artifact }}" irgen
+      - name: Package Windows CLI
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Copy-Item target\release\irgen.exe dist\irgen.exe
+          Compress-Archive -Path dist\irgen.exe -DestinationPath "dist\${{ matrix.artifact }}"
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ runner.os }}
+          path: dist/${{ matrix.artifact }}
+
+  release:
+    needs:
+      - build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: dist/**/Irgen-*

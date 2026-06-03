@@ -1,0 +1,9 @@
+[package]
+name = "irgen-snapsheet"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+calamine = { workspace = true }
+irgen-model = { path = "../model" }
+thiserror = { workspace = true }

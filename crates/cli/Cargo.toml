@@ -1,0 +1,12 @@
+[package]
+name = "irgen-cli"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "irgen"
+path = "src/main.rs"
+
+[dependencies]
+irgen-model = { path = "../model" }
+irgen-snapsheet = { path = "../snapsheet" }
