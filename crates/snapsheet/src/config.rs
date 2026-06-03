@@ -6,7 +6,7 @@ use serde::Deserialize;
 use crate::error::Error;
 use crate::number::parse_literal;
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct SnapsheetConfig {
     pub workbook: WorkbookConfig,
@@ -79,30 +79,10 @@ impl SnapsheetConfig {
     }
 }
 
-impl Default for SnapsheetConfig {
-    fn default() -> Self {
-        Self {
-            workbook: WorkbookConfig::default(),
-            columns: ColumnsConfig::default(),
-            register: RegisterConfig::default(),
-            validation: ValidationConfig::default(),
-            reserved: ReservedConfig::default(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct WorkbookConfig {
     pub sheets: WorkbookSheets,
-}
-
-impl Default for WorkbookConfig {
-    fn default() -> Self {
-        Self {
-            sheets: WorkbookSheets::default(),
-        }
-    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -123,22 +103,12 @@ impl Default for WorkbookSheets {
     }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct ColumnsConfig {
     pub version: VersionColumns,
     pub address_block: AddressBlockColumns,
     pub register: RegisterColumns,
-}
-
-impl Default for ColumnsConfig {
-    fn default() -> Self {
-        Self {
-            version: VersionColumns::default(),
-            address_block: AddressBlockColumns::default(),
-            register: RegisterColumns::default(),
-        }
-    }
 }
 
 #[derive(Debug, Clone, Deserialize)]

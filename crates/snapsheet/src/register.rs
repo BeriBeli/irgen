@@ -695,7 +695,7 @@ fn parse_field(
         ));
     }
 
-    extract_access_value(&attribute).map_err(|error| {
+    extract_access_value(attribute).map_err(|error| {
         Error::validation(
             table.sheet(),
             Some(row.number()),
