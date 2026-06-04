@@ -30,7 +30,7 @@ jobs:
           PY
 
   build:
-    name: Build (${{ matrix.os }})
+    name: Build (${{ matrix.package }})
     runs-on: ${{ matrix.os }}
     needs: verify-version
     strategy:
@@ -38,38 +38,58 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
-            artifact: Irgen-linux.tar.gz
+            system: linux
+            arch: x86_64
+            package: linux-x86_64-glibc
+            target: x86_64-unknown-linux-gnu
+          - os: ubuntu-latest
+            system: linux
+            arch: x86_64
+            package: linux-x86_64-musl
+            target: x86_64-unknown-linux-musl
           - os: macos-latest
-            artifact: Irgen-macos.tar.gz
+            system: macos
+            arch: arm64
+            package: macos-arm64
+            target: aarch64-apple-darwin
           - os: windows-latest
-            artifact: Irgen-windows.zip
+            system: windows
+            arch: x86_64
+            package: windows-x86_64
+            target: x86_64-pc-windows-msvc
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
       - uses: Swatinem/rust-cache@v2
+      - name: Install musl tools
+        if: matrix.target == 'x86_64-unknown-linux-musl'
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
       - name: Test
         run: cargo test --workspace --locked
       - name: Build CLI
-        run: cargo build --release --locked --bin irgen
+        run: cargo build --release --locked --bin irgen --target ${{ matrix.target }}
       - name: Package Unix CLI
         if: runner.os != 'Windows'
         run: |
           mkdir -p dist
-          cp target/release/irgen dist/irgen
+          cp "target/${{ matrix.target }}/release/irgen" dist/irgen
           chmod +x dist/irgen
-          tar -C dist -czf "dist/${{ matrix.artifact }}" irgen
+          tar -C dist -czf "dist/irgen-${GITHUB_REF_NAME}-${{ matrix.package }}.tar.gz" irgen
       - name: Package Windows CLI
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path dist | Out-Null
-          Copy-Item target\release\irgen.exe dist\irgen.exe
-          Compress-Archive -Path dist\irgen.exe -DestinationPath "dist\${{ matrix.artifact }}"
+          Copy-Item "target\${{ matrix.target }}\release\irgen.exe" dist\irgen.exe
+          $artifact = "irgen-${env:GITHUB_REF_NAME}-${{ matrix.package }}.zip"
+          Compress-Archive -Path dist\irgen.exe -DestinationPath "dist\$artifact"
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: dist-${{ runner.os }}
-          path: dist/${{ matrix.artifact }}
+          name: dist-${{ matrix.package }}
+          path: dist/irgen-*
 
   release:
     needs:
@@ -83,4 +103,4 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
-          files: dist/**/Irgen-*
+          files: dist/**/irgen-*

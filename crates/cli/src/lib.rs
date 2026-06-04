@@ -146,6 +146,7 @@ fn validate_ipxact_xml(schema: &Path, output: &Path) -> Result<(), String> {
 #[derive(Debug, Parser)]
 #[command(
     name = "irgen",
+    version,
     about = "Convert a register spreadsheet into an output file."
 )]
 struct RawArgs {

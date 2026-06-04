@@ -34,6 +34,24 @@ fn rejects_unknown_options() {
 }
 
 #[test]
+fn accepts_version_flag() {
+    let Command::Help(output) = parse_args(args(&["--version"])).unwrap() else {
+        panic!("expected version output");
+    };
+
+    assert_eq!(output, format!("irgen {}\n", env!("CARGO_PKG_VERSION")));
+}
+
+#[test]
+fn accepts_short_version_flag() {
+    let Command::Help(output) = parse_args(args(&["-V"])).unwrap() else {
+        panic!("expected version output");
+    };
+
+    assert_eq!(output, format!("irgen {}\n", env!("CARGO_PKG_VERSION")));
+}
+
+#[test]
 fn accepts_explicit_output_path() {
     let Command::Convert(parsed) =
         parse_args(args(&["input.xlsx", "-o", "nested/output.xml"])).unwrap()
