@@ -27,8 +27,12 @@ impl OutputFormat {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum IpxactVersion {
+    #[value(name = "2009")]
+    V2009,
     #[value(name = "2014")]
     V2014,
+    #[value(name = "2022")]
+    V2022,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -95,7 +99,11 @@ pub fn run(args: impl Iterator<Item = OsString>) -> Result<Option<PathBuf>, CliE
     .map_err(|error| CliError::Runtime(error.to_string()))?;
     let output = match args.format {
         OutputFormat::Ipxact => match args.ipxact_version {
+            IpxactVersion::V2009 => irgen_model::serialize_ipxact_2009_xml(&loaded.compo)
+                .map_err(|error| CliError::Runtime(error.to_string()))?,
             IpxactVersion::V2014 => irgen_model::serialize_ipxact_xml(&loaded.compo)
+                .map_err(|error| CliError::Runtime(error.to_string()))?,
+            IpxactVersion::V2022 => irgen_model::serialize_ipxact_2022_xml(&loaded.compo)
                 .map_err(|error| CliError::Runtime(error.to_string()))?,
         },
         OutputFormat::Ralf => irgen_ralf::serialize_ralf(&loaded.compo)

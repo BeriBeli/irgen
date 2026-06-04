@@ -98,6 +98,32 @@ fn accepts_explicit_ipxact_2014_version() {
 }
 
 #[test]
+fn accepts_explicit_ipxact_2009_version() {
+    let Command::Convert(parsed) =
+        parse_args(args(&["input.xlsx", "--ipxact-version", "2009"])).unwrap()
+    else {
+        panic!("expected conversion command");
+    };
+
+    assert_eq!(parsed.format, OutputFormat::Ipxact);
+    assert_eq!(parsed.ipxact_version, IpxactVersion::V2009);
+    assert_eq!(parsed.output, PathBuf::from("input.xml"));
+}
+
+#[test]
+fn accepts_explicit_ipxact_2022_version() {
+    let Command::Convert(parsed) =
+        parse_args(args(&["input.xlsx", "--ipxact-version", "2022"])).unwrap()
+    else {
+        panic!("expected conversion command");
+    };
+
+    assert_eq!(parsed.format, OutputFormat::Ipxact);
+    assert_eq!(parsed.ipxact_version, IpxactVersion::V2022);
+    assert_eq!(parsed.output, PathBuf::from("input.xml"));
+}
+
+#[test]
 fn accepts_explicit_ralf_format() {
     let Command::Convert(parsed) = parse_args(args(&["input.xlsx", "--format", "ralf"])).unwrap()
     else {
@@ -215,6 +241,72 @@ fn generates_and_validates_ipxact_output() {
         .expect("generated IP-XACT should contain reg2 after reg1");
     let reg1_xml = &xml[reg1_start..reg1_start + reg2_offset];
     assert_eq!(reg1_xml.matches("<ipxact:field>").count(), 4);
+    let _ = fs::remove_file(output);
+}
+
+#[test]
+fn generates_and_validates_complex_ipxact_2009_output() {
+    generate_and_validate_complex_ipxact(
+        "2009",
+        "crates/ipxact/tests/fixtures/schemas/1685-2009/index.xsd",
+        "http://www.spiritconsortium.org/XMLSchema/SPIRIT/1685-2009",
+        "<spirit:register><spirit:name>reg1</spirit:name>",
+    );
+}
+
+#[test]
+fn generates_and_validates_complex_ipxact_2022_output() {
+    generate_and_validate_complex_ipxact(
+        "2022",
+        "crates/ipxact/tests/fixtures/schemas/1685-2022/index.xsd",
+        "http://www.accellera.org/XMLSchema/IPXACT/1685-2022",
+        "<ipxact:register><ipxact:name>reg1</ipxact:name>",
+    );
+}
+
+fn generate_and_validate_complex_ipxact(
+    version_arg: &str,
+    schema_rel: &str,
+    namespace: &str,
+    register_needle: &str,
+) {
+    if ProcessCommand::new("xmllint")
+        .arg("--version")
+        .output()
+        .is_err()
+    {
+        eprintln!("skipping CLI IP-XACT {version_arg} validation because xmllint is not installed");
+        return;
+    }
+
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let input = root.join("example.xlsx");
+    let spec = root.join("snapsheet.toml");
+    let schema = root.join(schema_rel);
+    let output = std::env::temp_dir().join(format!(
+        "irgen-cli-test-{}-complex-{version_arg}.xml",
+        std::process::id()
+    ));
+    let _ = fs::remove_file(&output);
+
+    let result = run([
+        OsString::from(input),
+        OsString::from("--snapsheet-spec"),
+        OsString::from(spec),
+        OsString::from("--ipxact-version"),
+        OsString::from(version_arg),
+        OsString::from("-o"),
+        OsString::from(&output),
+        OsString::from("--validate"),
+        OsString::from(schema),
+    ]
+    .into_iter())
+    .unwrap();
+
+    assert_eq!(result.as_deref(), Some(output.as_path()));
+    let xml = fs::read_to_string(&output).unwrap();
+    assert!(xml.contains(namespace));
+    assert!(xml.contains(register_needle));
     let _ = fs::remove_file(output);
 }
 
@@ -356,8 +448,8 @@ fn rejects_duplicate_ipxact_version() {
 #[test]
 fn rejects_unsupported_ipxact_version() {
     assert_parse_error_contains(
-        &["input.xlsx", "--ipxact-version", "2022"],
-        &["invalid value", "2022", "2014"],
+        &["input.xlsx", "--ipxact-version", "2020"],
+        &["invalid value", "2020", "2009", "2014", "2022"],
     );
 }
 

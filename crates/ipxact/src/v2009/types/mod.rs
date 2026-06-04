@@ -30,7 +30,7 @@ pub use additional_types::{
     ResolvedLibraryRefType, ServiceType, ServiceTypeDef, ServiceTypeDefs, SingleShotDriver,
     SubspaceRefType, TimingConstraint, TransTypeDef, ValueMaskConfigType, WhiteboxElementRefType,
 };
-pub use address_block::{AddressBlock, BaseAddress, RegisterFile, UsageType};
+pub use address_block::{BaseAddress, UsageType};
 pub use address_space::{AddressSpace, AddressSpaceRef, Bank, BankedAddressSpace, LocalMemoryMap};
 pub use bus_definition::{
     AbstractionDefinition, AbstractionPort, AbstractionPorts, BusDefinition, OnSystem,
@@ -42,12 +42,13 @@ pub use bus_interface::{
     PortMap, PortMaps, SlaveDetails, SlaveMode, SystemDetails, SystemMode, Vector,
 };
 pub use component::{
-    Component, Cpu, Cpus, OtherClockDriver, OtherClocks, WhiteboxElementType, WhiteboxElements,
+    AddressBlock, Component, Cpu, Cpus, Field, MemoryMap, MemoryMaps, OtherClockDriver,
+    OtherClocks, Register, RegisterFile, WhiteboxElementType, WhiteboxElements,
 };
 pub use component_containers::{
-    AddressSpaces, BusInterfaces, Channel, Channels, Driver, MemoryMaps, Model, ModelConnections,
-    Port, Ports, Protocol, ProtocolType, RemapState, RemapStates, TransactionalPort,
-    TransactionalType, View, Views, WirePort, WireTypeDef, WireTypeDefs,
+    AddressSpaces, BusInterfaces, Channel, Channels, Driver, Model, ModelConnections, Port, Ports,
+    Protocol, ProtocolType, RemapState, RemapStates, TransactionalPort, TransactionalType, View,
+    Views, WirePort, WireTypeDef, WireTypeDefs,
 };
 pub use design::{
     AdHocConnection, AdHocConnections, ComponentInstance, ComponentInstances, ComponentRef,
@@ -57,11 +58,11 @@ pub use design::{
 pub use file_set::{
     Choice, Choices, ComponentGenerators, File, FileSet, FileSets, Generator, GeneratorTypeRef,
 };
-pub use memory_map::{Bank as MemoryBank, MemoryMap, MemoryMapEntry, SubspaceMap};
+pub use memory_map::{Bank as MemoryBank, MemoryMapEntry, SubspaceMap};
 pub use name_value_pair::{NameValuePair, ParameterValue};
 pub use parameters::Parameters;
 pub use register::{
-    BitWidth, EnumeratedValue, EnumeratedValues, Field, ModifiedWriteValue, ReadAction, Register,
+    BitWidth, EnumeratedValue, EnumeratedValues, ModifiedWriteValue, ReadAction,
     WriteValueConstraint,
 };
 pub use vendor_extensions::VendorExtensions;

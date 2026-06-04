@@ -5,168 +5,9 @@ use serde::{Deserialize, Serialize};
 use super::vendor_extensions::ExtensionAttributes;
 
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
-pub struct LegacyAbstractionDefinition {
-    #[serde(rename = "vendor", skip_serializing_if = "Option::is_none")]
-    pub vendor: Option<String>,
-
-    #[serde(rename = "library", skip_serializing_if = "Option::is_none")]
-    pub library: Option<String>,
-
-    #[serde(rename = "name", skip_serializing_if = "Option::is_none")]
-    pub name: Option<String>,
-
-    #[serde(rename = "version", skip_serializing_if = "Option::is_none")]
-    pub version: Option<String>,
-
-    #[serde(rename = "busType", skip_serializing_if = "Option::is_none")]
-    pub bus_type: Option<Box<super::LibraryRefType>>,
-
-    #[serde(rename = "_extends", skip_serializing_if = "Option::is_none")]
-    pub _extends: Option<Box<super::LibraryRefType>>,
-
-    #[serde(rename = "ports", skip_serializing_if = "Option::is_none")]
-    pub ports: Option<Box<super::Ports>>,
-
-    #[serde(rename = "description", skip_serializing_if = "Option::is_none")]
-    pub description: Option<String>,
-
-    #[serde(rename = "parameters", skip_serializing_if = "Option::is_none")]
-    pub parameters: Option<Box<Parameters>>,
-
-    #[serde(rename = "assertions", skip_serializing_if = "Option::is_none")]
-    pub assertions: Option<Box<super::Assertions>>,
-
-    #[serde(rename = "vendorExtensions", skip_serializing_if = "Option::is_none")]
-    pub vendor_extensions: Option<Box<super::vendor_extensions::VendorExtensions>>,
-
-    #[serde(rename = "id", skip_serializing_if = "Option::is_none")]
-    pub id: Option<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct AbstractionDefPortConstraintsType {
     #[serde(rename = "content")]
     pub content: Vec<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
-pub struct LegacyAbstractionTypes {
-    #[serde(rename = "abstractionType")]
-    pub abstraction_type: Vec<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
-pub struct LegacyAbstractorBusInterfaceType {
-    #[serde(rename = "name", skip_serializing_if = "Option::is_none")]
-    pub name: Option<String>,
-
-    #[serde(rename = "displayName", skip_serializing_if = "Option::is_none")]
-    pub display_name: Option<String>,
-
-    #[serde(rename = "description", skip_serializing_if = "Option::is_none")]
-    pub description: Option<String>,
-
-    #[serde(rename = "abstractionTypes", skip_serializing_if = "Option::is_none")]
-    pub abstraction_types: Option<Box<LegacyAbstractionTypes>>,
-
-    #[serde(rename = "parameters", skip_serializing_if = "Option::is_none")]
-    pub parameters: Option<Box<Parameters>>,
-
-    #[serde(rename = "vendorExtensions", skip_serializing_if = "Option::is_none")]
-    pub vendor_extensions: Option<Box<super::vendor_extensions::VendorExtensions>>,
-}
-
-#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
-pub struct LegacyAbstractorGenerators {
-    #[serde(rename = "abstractorGenerator")]
-    pub abstractor_generator: Vec<InstanceGeneratorType>,
-}
-
-#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
-pub struct LegacyAbstractorModelType {
-    #[serde(rename = "views", skip_serializing_if = "Option::is_none")]
-    pub views: Option<Box<super::Views>>,
-
-    #[serde(rename = "instantiations", skip_serializing_if = "Option::is_none")]
-    pub instantiations: Option<String>,
-
-    #[serde(rename = "ports", skip_serializing_if = "Option::is_none")]
-    pub ports: Option<Box<super::Ports>>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub enum LegacyAbstractorModeType {
-    #[serde(rename = "master")]
-    Master,
-    #[serde(rename = "slave")]
-    Slave,
-    #[serde(rename = "direct")]
-    Direct,
-    #[serde(rename = "system")]
-    System,
-}
-
-#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
-pub struct LegacyAbstractorPortType {}
-
-#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
-pub struct LegacyAbstractorPortWireType {}
-
-#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
-pub struct LegacyAbstractorType {
-    #[serde(rename = "vendor", skip_serializing_if = "Option::is_none")]
-    pub vendor: Option<String>,
-
-    #[serde(rename = "library", skip_serializing_if = "Option::is_none")]
-    pub library: Option<String>,
-
-    #[serde(rename = "name", skip_serializing_if = "Option::is_none")]
-    pub name: Option<String>,
-
-    #[serde(rename = "version", skip_serializing_if = "Option::is_none")]
-    pub version: Option<String>,
-
-    #[serde(rename = "abstractorMode", skip_serializing_if = "Option::is_none")]
-    pub abstractor_mode: Option<String>,
-
-    #[serde(rename = "busType", skip_serializing_if = "Option::is_none")]
-    pub bus_type: Option<Box<super::LibraryRefType>>,
-
-    #[serde(
-        rename = "abstractorInterfaces",
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub abstractor_interfaces: Option<String>,
-
-    #[serde(rename = "model", skip_serializing_if = "Option::is_none")]
-    pub model: Option<Box<LegacyAbstractorModelType>>,
-
-    #[serde(
-        rename = "abstractorGenerators",
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub abstractor_generators: Option<Box<LegacyAbstractorGenerators>>,
-
-    #[serde(rename = "choices", skip_serializing_if = "Option::is_none")]
-    pub choices: Option<Box<Choices>>,
-
-    #[serde(rename = "fileSets", skip_serializing_if = "Option::is_none")]
-    pub file_sets: Option<Box<FileSets>>,
-
-    #[serde(rename = "description", skip_serializing_if = "Option::is_none")]
-    pub description: Option<String>,
-
-    #[serde(rename = "parameters", skip_serializing_if = "Option::is_none")]
-    pub parameters: Option<Box<Parameters>>,
-
-    #[serde(rename = "assertions", skip_serializing_if = "Option::is_none")]
-    pub assertions: Option<Box<super::Assertions>>,
-
-    #[serde(rename = "vendorExtensions", skip_serializing_if = "Option::is_none")]
-    pub vendor_extensions: Option<Box<super::vendor_extensions::VendorExtensions>>,
-
-    #[serde(rename = "id", skip_serializing_if = "Option::is_none")]
-    pub id: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -474,57 +315,6 @@ pub struct BankedSubspaceType {
 }
 
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
-pub struct LegacyBusDefinition {
-    #[serde(rename = "vendor", skip_serializing_if = "Option::is_none")]
-    pub vendor: Option<String>,
-
-    #[serde(rename = "library", skip_serializing_if = "Option::is_none")]
-    pub library: Option<String>,
-
-    #[serde(rename = "name", skip_serializing_if = "Option::is_none")]
-    pub name: Option<String>,
-
-    #[serde(rename = "version", skip_serializing_if = "Option::is_none")]
-    pub version: Option<String>,
-
-    #[serde(rename = "directConnection", skip_serializing_if = "Option::is_none")]
-    pub direct_connection: Option<bool>,
-
-    #[serde(rename = "broadcast", skip_serializing_if = "Option::is_none")]
-    pub broadcast: Option<bool>,
-
-    #[serde(rename = "isAddressable", skip_serializing_if = "Option::is_none")]
-    pub is_addressable: Option<bool>,
-
-    #[serde(rename = "_extends", skip_serializing_if = "Option::is_none")]
-    pub _extends: Option<Box<super::LibraryRefType>>,
-
-    #[serde(rename = "maxMasters", skip_serializing_if = "Option::is_none")]
-    pub max_masters: Option<Box<UnsignedIntExpression>>,
-
-    #[serde(rename = "maxSlaves", skip_serializing_if = "Option::is_none")]
-    pub max_slaves: Option<Box<UnsignedIntExpression>>,
-
-    #[serde(rename = "systemGroupNames", skip_serializing_if = "Option::is_none")]
-    pub system_group_names: Option<String>,
-
-    #[serde(rename = "description", skip_serializing_if = "Option::is_none")]
-    pub description: Option<String>,
-
-    #[serde(rename = "parameters", skip_serializing_if = "Option::is_none")]
-    pub parameters: Option<Box<Parameters>>,
-
-    #[serde(rename = "assertions", skip_serializing_if = "Option::is_none")]
-    pub assertions: Option<Box<super::Assertions>>,
-
-    #[serde(rename = "vendorExtensions", skip_serializing_if = "Option::is_none")]
-    pub vendor_extensions: Option<Box<super::vendor_extensions::VendorExtensions>>,
-
-    #[serde(rename = "id", skip_serializing_if = "Option::is_none")]
-    pub id: Option<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct BusInterfaces {
     #[serde(rename = "busInterface")]
     pub bus_interface: Vec<BusInterfaceType>,
@@ -548,7 +338,7 @@ pub struct BusInterfaceType {
     pub bus_type: Option<Box<ConfigurableLibraryRefType>>,
 
     #[serde(rename = "abstractionTypes", skip_serializing_if = "Option::is_none")]
-    pub abstraction_types: Option<Box<LegacyAbstractionTypes>>,
+    pub abstraction_types: Option<Box<super::component::AbstractionTypes>>,
 
     #[serde(rename = "master", skip_serializing_if = "Option::is_none")]
     pub master: Option<String>,
@@ -638,12 +428,6 @@ pub enum CellStrengthValueType {
     Median,
     #[serde(rename = "high")]
     High,
-}
-
-#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
-pub struct LegacyChannels {
-    #[serde(rename = "channel")]
-    pub channel: Vec<super::Channel>,
 }
 
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
@@ -766,10 +550,10 @@ pub struct ComponentType {
     pub bus_interfaces: Option<Box<BusInterfaces>>,
 
     #[serde(rename = "indirectInterfaces", skip_serializing_if = "Option::is_none")]
-    pub indirect_interfaces: Option<Box<LegacyIndirectInterfaces>>,
+    pub indirect_interfaces: Option<Box<super::component::IndirectInterfaces>>,
 
     #[serde(rename = "channels", skip_serializing_if = "Option::is_none")]
-    pub channels: Option<Box<LegacyChannels>>,
+    pub channels: Option<Box<super::component::Channels>>,
 
     #[serde(rename = "remapStates", skip_serializing_if = "Option::is_none")]
     pub remap_states: Option<Box<RemapStates>>,
@@ -945,87 +729,6 @@ pub enum DelayValueUnitType {
 
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct Dependency {
-    #[serde(rename = "id", skip_serializing_if = "Option::is_none")]
-    pub id: Option<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
-pub struct LegacyDesign {
-    #[serde(rename = "vendor", skip_serializing_if = "Option::is_none")]
-    pub vendor: Option<String>,
-
-    #[serde(rename = "library", skip_serializing_if = "Option::is_none")]
-    pub library: Option<String>,
-
-    #[serde(rename = "name", skip_serializing_if = "Option::is_none")]
-    pub name: Option<String>,
-
-    #[serde(rename = "version", skip_serializing_if = "Option::is_none")]
-    pub version: Option<String>,
-
-    #[serde(rename = "componentInstances", skip_serializing_if = "Option::is_none")]
-    pub component_instances: Option<Box<ComponentInstances>>,
-
-    #[serde(rename = "interconnections", skip_serializing_if = "Option::is_none")]
-    pub interconnections: Option<Box<Interconnections>>,
-
-    #[serde(rename = "adHocConnections", skip_serializing_if = "Option::is_none")]
-    pub ad_hoc_connections: Option<Box<AdHocConnections>>,
-
-    #[serde(rename = "description", skip_serializing_if = "Option::is_none")]
-    pub description: Option<String>,
-
-    #[serde(rename = "parameters", skip_serializing_if = "Option::is_none")]
-    pub parameters: Option<Box<Parameters>>,
-
-    #[serde(rename = "assertions", skip_serializing_if = "Option::is_none")]
-    pub assertions: Option<Box<super::Assertions>>,
-
-    #[serde(rename = "vendorExtensions", skip_serializing_if = "Option::is_none")]
-    pub vendor_extensions: Option<Box<super::vendor_extensions::VendorExtensions>>,
-
-    #[serde(rename = "id", skip_serializing_if = "Option::is_none")]
-    pub id: Option<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
-pub struct LegacyDesignConfiguration {
-    #[serde(rename = "vendor", skip_serializing_if = "Option::is_none")]
-    pub vendor: Option<String>,
-
-    #[serde(rename = "library", skip_serializing_if = "Option::is_none")]
-    pub library: Option<String>,
-
-    #[serde(rename = "name", skip_serializing_if = "Option::is_none")]
-    pub name: Option<String>,
-
-    #[serde(rename = "version", skip_serializing_if = "Option::is_none")]
-    pub version: Option<String>,
-
-    #[serde(rename = "designRef", skip_serializing_if = "Option::is_none")]
-    pub design_ref: Option<Box<super::LibraryRefType>>,
-
-    #[serde(rename = "generatorChainConfiguration")]
-    pub generator_chain_configuration: Vec<ConfigurableLibraryRefType>,
-
-    #[serde(rename = "interconnectionConfiguration")]
-    pub interconnection_configuration: Vec<String>,
-
-    #[serde(rename = "viewConfiguration")]
-    pub view_configuration: Vec<String>,
-
-    #[serde(rename = "description", skip_serializing_if = "Option::is_none")]
-    pub description: Option<String>,
-
-    #[serde(rename = "parameters", skip_serializing_if = "Option::is_none")]
-    pub parameters: Option<Box<Parameters>>,
-
-    #[serde(rename = "assertions", skip_serializing_if = "Option::is_none")]
-    pub assertions: Option<Box<super::Assertions>>,
-
-    #[serde(rename = "vendorExtensions", skip_serializing_if = "Option::is_none")]
-    pub vendor_extensions: Option<Box<super::vendor_extensions::VendorExtensions>>,
-
     #[serde(rename = "id", skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
 }
@@ -1413,51 +1116,6 @@ pub enum FormatType {
 pub struct Generator {}
 
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
-pub struct LegacyGeneratorChain {
-    #[serde(rename = "vendor", skip_serializing_if = "Option::is_none")]
-    pub vendor: Option<String>,
-
-    #[serde(rename = "library", skip_serializing_if = "Option::is_none")]
-    pub library: Option<String>,
-
-    #[serde(rename = "name", skip_serializing_if = "Option::is_none")]
-    pub name: Option<String>,
-
-    #[serde(rename = "version", skip_serializing_if = "Option::is_none")]
-    pub version: Option<String>,
-
-    #[serde(rename = "generatorChainSelectorOrComponentGeneratorSelectorOrGenerator")]
-    pub generator_chain_selector_or_component_generator_selector_or_generator: Vec<String>,
-
-    #[serde(rename = "chainGroup")]
-    pub chain_group: Vec<String>,
-
-    #[serde(rename = "displayName", skip_serializing_if = "Option::is_none")]
-    pub display_name: Option<String>,
-
-    #[serde(rename = "description", skip_serializing_if = "Option::is_none")]
-    pub description: Option<String>,
-
-    #[serde(rename = "choices", skip_serializing_if = "Option::is_none")]
-    pub choices: Option<Box<Choices>>,
-
-    #[serde(rename = "parameters", skip_serializing_if = "Option::is_none")]
-    pub parameters: Option<Box<Parameters>>,
-
-    #[serde(rename = "assertions", skip_serializing_if = "Option::is_none")]
-    pub assertions: Option<Box<super::Assertions>>,
-
-    #[serde(rename = "vendorExtensions", skip_serializing_if = "Option::is_none")]
-    pub vendor_extensions: Option<Box<super::vendor_extensions::VendorExtensions>>,
-
-    #[serde(rename = "hidden", skip_serializing_if = "Option::is_none")]
-    pub hidden: Option<bool>,
-
-    #[serde(rename = "id", skip_serializing_if = "Option::is_none")]
-    pub id: Option<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct GeneratorRef {
     #[serde(rename = "value", skip_serializing_if = "Option::is_none")]
     pub value: Option<String>,
@@ -1569,12 +1227,6 @@ pub struct IndexedAccessHandle {
 pub struct IndicesType {
     #[serde(rename = "index")]
     pub index: Vec<UnsignedIntExpression>,
-}
-
-#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
-pub struct LegacyIndirectInterfaces {
-    #[serde(rename = "indirectInterface")]
-    pub indirect_interface: Vec<IndirectInterfaceType>,
 }
 
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]

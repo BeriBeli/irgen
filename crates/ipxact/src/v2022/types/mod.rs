@@ -9,6 +9,7 @@ mod access_restrictions;
 mod additional_types;
 mod arrays;
 mod bit_stride;
+mod component;
 mod domain_type;
 mod field_access_policies;
 mod field_definitions;
@@ -23,20 +24,19 @@ pub mod vendor_extensions;
 // Re-export from v2009 and v2014 for compatibility
 pub use crate::v2009::types::{
     AbstractionDefinition, AbstractionPort, AbstractionPorts, AdHocConnection, AdHocConnections,
-    AddressBlock, AddressSpace, AddressSpaceRef, AddressSpaces, Bank as AddressSpaceBank,
-    Bank as MemoryBank, BankedAddressSpace, BaseAddress, BitWidth, BusDefinition, BusInterface,
-    BusInterfaces, Channel, Channels, Choice, Choices, Component, ComponentGenerators,
-    ComponentInstance, ComponentInstances, ComponentRef, ConfigurableElementValue,
-    ConfigurableElementValues, Design, Driver, EnumeratedValue, EnumeratedValues, Field, File,
-    FileSet, Generator, GeneratorTypeRef, HierConnection, HierConnections, Interconnection,
-    Interconnections, InterfaceMode, LibraryRef, LocalMemoryMap, LogicalPort, MasterDetails,
-    MasterMode, MemoryMap, MemoryMapEntry, MemoryMaps, Model, ModelConnections, ModifiedWriteValue,
-    NameValuePair, OnSystem, ParameterValue, Parameters, PhysicalPort, Port, PortMap, PortMaps,
-    PortReference, Ports, Protocol, ProtocolType, ProtocolTypeDef, Qualifier, ReadAction, Register,
-    RemapState, RemapStates, SlaveDetails, SlaveMode, SubspaceMap, SystemDetails, SystemMode,
-    TransactionTypeDef, TransactionalAbstraction, TransactionalPort, TransactionalProtocol,
-    TransactionalType, UsageType, Vector, View, Views, WireAbstraction, WirePort, WireTypeDef,
-    WireTypeDefs, WriteValueConstraint,
+    AddressSpace, AddressSpaceRef, AddressSpaces, Bank as AddressSpaceBank, Bank as MemoryBank,
+    BankedAddressSpace, BaseAddress, BitWidth, BusDefinition, BusInterface, BusInterfaces, Channel,
+    Channels, Choice, Choices, ComponentGenerators, ComponentInstance, ComponentInstances,
+    ComponentRef, ConfigurableElementValue, ConfigurableElementValues, Design, Driver,
+    EnumeratedValue, EnumeratedValues, File, FileSet, Generator, GeneratorTypeRef, HierConnection,
+    HierConnections, Interconnection, Interconnections, InterfaceMode, LibraryRef, LocalMemoryMap,
+    LogicalPort, MasterDetails, MasterMode, MemoryMapEntry, Model, ModelConnections,
+    ModifiedWriteValue, NameValuePair, OnSystem, ParameterValue, Parameters, PhysicalPort, Port,
+    PortMap, PortMaps, PortReference, Ports, Protocol, ProtocolType, ProtocolTypeDef, Qualifier,
+    ReadAction, RemapState, RemapStates, SlaveDetails, SlaveMode, SubspaceMap, SystemDetails,
+    SystemMode, TransactionTypeDef, TransactionalAbstraction, TransactionalPort,
+    TransactionalProtocol, TransactionalType, UsageType, Vector, View, Views, WireAbstraction,
+    WirePort, WireTypeDef, WireTypeDefs, WriteValueConstraint,
 };
 
 // Re-export v2014 types
@@ -52,8 +52,12 @@ pub use access_restrictions::AccessRestrictions;
 pub use additional_types::*;
 pub use arrays::{Array, Arrays};
 pub use bit_stride::BitStride;
+pub use component::{
+    AddressBlock, Component, Field, FieldAccessPolicies, FieldAccessPolicy, MemoryMap, MemoryMaps,
+    Register, RegisterFile, RegisterFileArray, Reset, Resets,
+};
 pub use domain_type::{DomainType, DomainTypes};
-pub use field_access_policies::FieldAccessPolicies;
+pub use field_access_policies::FieldAccessPolicies as FieldAccessPolicyDefinitions;
 pub use field_definitions::FieldDefinitions;
 pub use memory_map_definitions::MemoryMapDefinitions;
 pub use port_packets::{PortPacket, PortPackets};

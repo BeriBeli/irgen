@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use serde::{Deserialize, Serialize};
 
 use crate::v2009::types::memory_map::MemoryMap;

@@ -1,8 +1,8 @@
 # irgen
 
 `irgen` is a CLI-first register spreadsheet converter. It reads structured
-Excel snapsheets and emits IEEE 1685-2014 IP-XACT XML, Synopsys RALF, or
-SystemRDL.
+Excel snapsheets and emits register-oriented IEEE 1685 IP-XACT XML, Synopsys
+RALF, or SystemRDL.
 
 ## Quick Start
 
@@ -12,12 +12,19 @@ Generate IP-XACT XML:
 cargo run -p irgen-cli -- example_simple.xlsx
 ```
 
-IP-XACT output defaults to IEEE 1685-2014. The version can also be specified
-explicitly:
+IP-XACT output defaults to IEEE 1685-2014. IEEE 1685-2009 and IEEE 1685-2022
+can also be specified explicitly for the current register-oriented subset:
 
 ```sh
+cargo run -p irgen-cli -- example_simple.xlsx --ipxact-version 2009
 cargo run -p irgen-cli -- example_simple.xlsx --ipxact-version 2014
+cargo run -p irgen-cli -- example_simple.xlsx --ipxact-version 2022
 ```
+
+2009 and 2022 support is intentionally narrower than the 2014 path today: the
+CLI emits the component, memory map, register, register-file, field, reset, and
+access-policy structures needed by snapsheet register tables, but it is not yet
+a complete model for every IP-XACT root document or schema feature.
 
 Generate RALF or SystemRDL:
 

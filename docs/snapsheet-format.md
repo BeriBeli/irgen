@@ -211,4 +211,10 @@ Configured mode can reject common workbook issues before output generation:
 
 IP-XACT XSD validation is a separate CLI step enabled with `--validate` and is
 only available for `--format ipxact`. IP-XACT output defaults to version 2014;
-the same version can be made explicit with `--ipxact-version 2014`.
+versions 2009, 2014, and 2022 can be selected with `--ipxact-version`.
+
+The 2009 and 2022 emitters currently cover the register-oriented component
+subset produced from snapsheets: memory maps, address blocks, registers,
+register-file arrays, fields, resets where supported by the target schema, and
+field access metadata. They are not yet complete implementations of every
+IEEE 1685-2009 or IEEE 1685-2022 document type or schema feature.
