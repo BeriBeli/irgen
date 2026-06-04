@@ -309,7 +309,7 @@ pub struct FieldAccessPolicies {
     pub field_access_policy: Vec<FieldAccessPolicy>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct FieldAccessPolicy {
     #[serde(
         rename(serialize = "ipxact:access", deserialize = "access"),
@@ -335,10 +335,6 @@ pub struct FieldAccessPolicy {
 
 impl FieldAccessPolicy {
     pub fn new() -> Self {
-        Self {
-            access: None,
-            modified_write_value: None,
-            read_action: None,
-        }
+        Self::default()
     }
 }
