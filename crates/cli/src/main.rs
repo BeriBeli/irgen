@@ -351,6 +351,51 @@ mod tests {
     }
 
     #[test]
+    fn generates_and_validates_ipxact_output() {
+        if ProcessCommand::new("xmllint")
+            .arg("--version")
+            .output()
+            .is_err()
+        {
+            eprintln!("skipping CLI IP-XACT validation because xmllint is not installed");
+            return;
+        }
+
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let input = root.join("example.xlsx");
+        let spec = root.join("snapsheet.toml");
+        let schema = root.join("crates/model/tests/fixtures/ipxact-1685-2014/index.xsd");
+        let output =
+            std::env::temp_dir().join(format!("irgen-cli-test-{}-example.xml", std::process::id()));
+        let _ = fs::remove_file(&output);
+
+        let result = run([
+            OsString::from(input),
+            OsString::from("--snapsheet-spec"),
+            OsString::from(spec),
+            OsString::from("-o"),
+            OsString::from(&output),
+            OsString::from("--validate"),
+            OsString::from(schema),
+        ]
+        .into_iter())
+        .unwrap();
+
+        assert_eq!(result.as_deref(), Some(output.as_path()));
+        let xml = fs::read_to_string(&output).unwrap();
+        assert!(xml.contains("http://www.accellera.org/XMLSchema/IPXACT/1685-2014"));
+        let reg1_start = xml
+            .find("<ipxact:register><ipxact:name>reg1</ipxact:name>")
+            .expect("generated IP-XACT should contain reg1");
+        let reg2_offset = xml[reg1_start..]
+            .find("<ipxact:register><ipxact:name>reg2</ipxact:name>")
+            .expect("generated IP-XACT should contain reg2 after reg1");
+        let reg1_xml = &xml[reg1_start..reg1_start + reg2_offset];
+        assert_eq!(reg1_xml.matches("<ipxact:field>").count(), 4);
+        let _ = fs::remove_file(output);
+    }
+
+    #[test]
     fn accepts_explicit_xsd_validation() {
         let Command::Convert(parsed) =
             parse_args(args(&["input.xlsx", "--validate", "schema/index.xsd"])).unwrap()

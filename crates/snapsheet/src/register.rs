@@ -93,6 +93,14 @@ impl RegisterFileGroup {
             .checked_add(self.array.stride)
             .is_some_and(|end| offset >= self.offset && offset < end)
     }
+
+    fn child_range(&self) -> u64 {
+        self.ranges
+            .iter()
+            .map(|(_, end, _, _)| *end)
+            .max()
+            .unwrap_or(0)
+    }
 }
 
 pub(crate) fn parse_registers(
@@ -395,7 +403,26 @@ pub(crate) fn parse_registers(
     let mut register_files = Vec::new();
 
     for file in register_file_groups {
-        let Some(total_range) = file.array.dim().checked_mul(file.array.stride) else {
+        let Some(last_element_offset) = file
+            .array
+            .dim()
+            .checked_sub(1)
+            .and_then(|last_index| last_index.checked_mul(file.array.stride))
+        else {
+            collect_validation(
+                &mut issues,
+                Error::validation(
+                    table.sheet(),
+                    Some(file.source_row),
+                    Some(&columns.register),
+                    Some(block),
+                    Some(&file.spec),
+                    "register file range overflows u64",
+                ),
+            )?;
+            continue;
+        };
+        let Some(total_range) = last_element_offset.checked_add(file.child_range()) else {
             collect_validation(
                 &mut issues,
                 Error::validation(
@@ -1099,6 +1126,27 @@ mod tests {
         assert_eq!(register_files[0].offset(), "0x100");
         assert_eq!(register_files[0].range(), "0x10");
         assert_eq!(register_files[0].dim(), "2");
+    }
+
+    #[test]
+    fn validates_sparse_array_by_last_child_range() {
+        let table = table(&[&[
+            "0x10",
+            "reg{n}, n=range(0, 512, 0x100)",
+            "value",
+            "[31:0]",
+            "32",
+            "RW",
+            "0",
+            "",
+        ]]);
+
+        let (registers, register_files) = parse_registers(&table, "regs", 0x20000).unwrap();
+
+        assert!(registers.is_empty());
+        assert_eq!(register_files[0].offset(), "0x10");
+        assert_eq!(register_files[0].range(), "0x100");
+        assert_eq!(register_files[0].dim(), "512");
     }
 
     #[test]

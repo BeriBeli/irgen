@@ -2249,6 +2249,7 @@ fn abstraction_port_map_refs_validate_against_official_2014_xsd() {
 fn mirrored_slave_base_addresses_validate_against_official_2014_xsd() {
     let mut remap_address = RemapAddress::new("0x1000");
     remap_address.state = Some("LOW_POWER".into());
+    remap_address.id = Some("low-power-base".into());
 
     let mirrored_slave = MirroredSlave {
         base_addresses: Some(MirroredSlaveBaseAddresses {
@@ -2269,10 +2270,37 @@ fn mirrored_slave_base_addresses_validate_against_official_2014_xsd() {
         remap_state: vec![RemapState::new("LOW_POWER")],
     });
 
-    validate_xml(
-        "mirrored-slave-base-addresses",
-        &quick_xml::se::to_string(&component).expect("component should serialize"),
+    let xml = quick_xml::se::to_string(&component).expect("component should serialize");
+    assert!(xml.contains(
+        "<ipxact:remapAddress state=\"LOW_POWER\" xml:id=\"low-power-base\">0x1000</ipxact:remapAddress>"
+    ));
+    assert!(xml.contains("<ipxact:range>0x100</ipxact:range>"));
+    validate_xml("mirrored-slave-base-addresses", &xml);
+
+    let parsed = Component::from_xml_str(&xml).expect("component should deserialize");
+    let BusInterfaceMode::MirroredSlave(parsed_slave) = &parsed
+        .bus_interfaces
+        .as_ref()
+        .expect("component should retain bus interfaces")
+        .bus_interface[0]
+        .mode
+    else {
+        panic!("bus interface should retain mirrored-slave mode");
+    };
+    let parsed_bases = parsed_slave
+        .base_addresses
+        .as_ref()
+        .expect("mirrored slave should retain base addresses");
+    assert_eq!(parsed_bases.remap_address[0].value, "0x1000");
+    assert_eq!(
+        parsed_bases.remap_address[0].state.as_deref(),
+        Some("LOW_POWER")
     );
+    assert_eq!(
+        parsed_bases.remap_address[0].id.as_deref(),
+        Some("low-power-base")
+    );
+    assert_eq!(parsed_bases.range.value, "0x100");
 }
 
 #[test]
@@ -2901,6 +2929,9 @@ fn memory_remap_validates_against_official_2014_xsd() {
     remapped_block.add_register(simple_register("STATUS", "0x0"));
 
     let mut memory_remap = MemoryRemap::new("lowPower", "LOW_POWER");
+    memory_remap.id = Some("low-power-remap".into());
+    memory_remap.display_name = Some("Low Power Remap".into());
+    memory_remap.description = Some("Alternate map selected in low-power state".into());
     memory_remap.is_present = Some(BitExpression::new("true"));
     memory_remap.add_address_block(remapped_block);
 
@@ -2917,6 +2948,8 @@ fn memory_remap_validates_against_official_2014_xsd() {
     });
 
     let xml = quick_xml::se::to_string(&component).expect("component should serialize");
+    assert!(xml.contains("<ipxact:memoryRemap state=\"LOW_POWER\" xml:id=\"low-power-remap\">"));
+    assert!(xml.contains("<ipxact:displayName>Low Power Remap</ipxact:displayName>"));
     validate_xml("memory-remap", &xml);
 
     let parsed = Component::from_xml_str(&xml).expect("component should deserialize");
@@ -2931,6 +2964,15 @@ fn memory_remap_validates_against_official_2014_xsd() {
             .expect("memory map should retain isPresent")
             .value,
         "true"
+    );
+    assert_eq!(map.memory_remap[0].id.as_deref(), Some("low-power-remap"));
+    assert_eq!(
+        map.memory_remap[0].display_name.as_deref(),
+        Some("Low Power Remap")
+    );
+    assert_eq!(
+        map.memory_remap[0].description.as_deref(),
+        Some("Alternate map selected in low-power state")
     );
     assert_eq!(
         map.memory_remap[0]
@@ -2950,6 +2992,8 @@ fn wire_port_and_remap_port_ref_validate_against_official_2014_xsd() {
     });
 
     let mut remap_state = RemapState::new("LOW_POWER");
+    remap_state.display_name = Some("Low Power".into());
+    remap_state.description = Some("Low-power remap selected by control port".into());
     let mut remap_port = RemapPort::new("low_power", "1");
     let mut port_index = UnsignedIntExpression::new("0");
     port_index
@@ -2959,6 +3003,14 @@ fn wire_port_and_remap_port_ref_validate_against_official_2014_xsd() {
         .extension_attributes
         .insert("irgen:indexSource", "remap");
     remap_port.port_index = Some(port_index);
+    remap_port
+        .value
+        .extension_attributes
+        .insert("xmlns:irgen", "urn:irgen:test");
+    remap_port
+        .value
+        .extension_attributes
+        .insert("irgen:valueSource", "remap");
     remap_state.remap_ports = Some(RemapPorts {
         remap_port: vec![remap_port],
     });
@@ -2976,9 +3028,21 @@ fn wire_port_and_remap_port_ref_validate_against_official_2014_xsd() {
 
     let xml = quick_xml::se::to_string(&component).expect("component should serialize");
     assert!(xml.contains("irgen:indexSource=\"remap\""));
+    assert!(xml.contains("<ipxact:displayName>Low Power</ipxact:displayName>"));
+    assert!(xml.contains("irgen:valueSource=\"remap\""));
     validate_xml("wire-port-remap-ref", &xml);
 
     let parsed = Component::from_xml_str(&xml).expect("component should deserialize");
+    let remap_state = &parsed
+        .remap_states
+        .as_ref()
+        .expect("component should retain remap states")
+        .remap_state[0];
+    assert_eq!(remap_state.display_name.as_deref(), Some("Low Power"));
+    assert_eq!(
+        remap_state.description.as_deref(),
+        Some("Low-power remap selected by control port")
+    );
     let parsed_remap_port = &parsed
         .remap_states
         .as_ref()
@@ -3008,6 +3072,15 @@ fn wire_port_and_remap_port_ref_validate_against_official_2014_xsd() {
         Some("remap")
     );
     assert_eq!(parsed_remap_port.value.value, "1");
+    assert_eq!(
+        parsed_remap_port
+            .value
+            .extension_attributes
+            .attributes
+            .get("irgen:valueSource")
+            .map(String::as_str),
+        Some("remap")
+    );
 }
 
 #[test]

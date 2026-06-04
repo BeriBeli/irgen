@@ -144,6 +144,10 @@ emitted IP-XACT 2014 model for the current snapsheet-to-IP-XACT workflow.
   official XSD validation.
 - A `v2014::Catalog` containing an `ipxactFile`, attribute-based VLNV, and URI
   expression passes official XSD validation.
+- The CLI test path converts the complex `example.xlsx` workbook with
+  `snapsheet.toml`, validates the emitted IP-XACT against the official 2014
+  XSD when `xmllint` is installed, and asserts that repeated `REG` rows are
+  aggregated into one register containing multiple fields.
 - Linux CI runs the `v2014_test` schema checks after installing `xmllint`.
 
 ## Completed: 2014 Component Slice
@@ -152,7 +156,9 @@ emitted IP-XACT 2014 model for the current snapsheet-to-IP-XACT workflow.
   `MemoryMap`, remap-state, memory-remap, `AddressBlock`, nested-bank, subspace-map,
   `RegisterFile`, `Register`, alternate-register, `Field`, field-data, reset,
   and expression types. Remap-port `portIndex` and `value` now use the schema's
-  unsigned integer-expression shape.
+  unsigned integer-expression shape. Remap states now retain display metadata,
+  and remap-port value extension attributes roundtrip through official XSD
+  coverage. Memory remaps now retain `xml:id` and display metadata.
 - Added dedicated 2014 `AddressSpaces`, `AddressSpace`, segment,
   master-address-space-reference, local-memory-map, and recursive local-bank
   types.
@@ -164,6 +170,8 @@ emitted IP-XACT 2014 model for the current snapsheet-to-IP-XACT workflow.
   view-reference keyrefs.
 - Added dedicated system, mirrored-slave, mirrored-master, mirrored-system,
   and monitor bus-interface modes, including mirrored-slave remap addresses.
+  Mirrored-slave base-address remaps now validate and roundtrip `state`,
+  `xml:id`, value, and range through official 2014 XSD coverage.
 - Added dedicated abstraction types and logical-to-physical port maps.
   Validated abstraction view references and physical-port keyrefs.
 - Added dedicated mirrored-interface channels. Validated channel interface
@@ -437,8 +445,9 @@ emitted IP-XACT 2014 model for the current snapsheet-to-IP-XACT workflow.
   interfaces, abstractor bus interfaces, bus-interface `bitSteering`, design
   ad-hoc tied values, component parameters, module parameters, parameter values,
   configurable element values, choice enumerations, unsigned bit expressions,
-  unsigned bit-vector expressions, unsigned integer expressions, unsigned
-  positive integer expressions, signed long integer expressions, unsigned long
+  unsigned bit-vector expressions, unsigned integer expressions including
+  remap-port values, unsigned positive integer expressions, signed long integer
+  expressions, unsigned long
   integer expressions, unsigned positive long integer expressions, real
   expressions, clock time expressions, string expressions, URI string
   expressions, file build flags, and files with roundtrip and official XSD

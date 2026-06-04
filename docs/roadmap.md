@@ -75,7 +75,9 @@ Grouping remains intentional.
   through the public loader.
 - Added `--validate <xsd>` support for explicitly supplied IEEE 1685-2014
   schemas. The CLI invokes an installed `xmllint` only when validation is
-  requested.
+  requested. CLI tests now cover the complex `example.xlsx` conversion with
+  `snapsheet.toml`, official XSD validation, and `REG` aggregation into one
+  register with multiple fields.
 - Vendored an unmodified copy of the official Accellera IEEE 1685-2014 XSD for
   repeatable CI validation on Linux.
 - Added schema-valid IEEE 1685-2014 component, basic bus-interface,
@@ -84,10 +86,15 @@ Grouping remains intentional.
   alternate-register, field-data, model/ports-core, remap-port-reference, and
   model-view presence/instantiation-reference, and catalog models to `crates/ipxact`,
   with Linux CI validation against the official XSD. Remap-port index/value
-  expressions now use the schema's unsigned integer-expression shape.
+  expressions now use the schema's unsigned integer-expression shape. Remap
+  states now retain display metadata, and remap-port value extension attributes
+  roundtrip through XSD coverage. Memory remaps now retain `xml:id` and display
+  metadata.
 - Added schema-valid IEEE 1685-2014 system, mirrored-slave, mirrored-master,
   mirrored-system, and monitor bus-interface modes. Bus-interface `bitsInLau`
-  now uses the schema's unsigned positive longint-expression shape.
+  now uses the schema's unsigned positive longint-expression shape. Mirrored-slave
+  remap base addresses now roundtrip `state`, `xml:id`, value, and range through
+  official XSD coverage.
 - Added schema-valid IEEE 1685-2014 bus-interface abstraction types and
   logical-to-physical port maps, including view and physical-port keyref
   validation.
@@ -334,8 +341,9 @@ Grouping remains intentional.
   passes.
 - `cargo test --workspace --offline` passes.
 - `cargo build --release --locked --bin irgen --offline` passes.
-- `target/release/irgen example.xlsx -o /tmp/irgen-example.xml` generates XML.
-- `target/release/irgen example.xlsx --validate
+- `target/release/irgen example.xlsx --snapsheet-spec snapsheet.toml -o
+  /tmp/irgen-example.xml` generates XML.
+- `target/release/irgen example.xlsx --snapsheet-spec snapsheet.toml --validate
   crates/model/tests/fixtures/ipxact-1685-2014/index.xsd` generates and
   validates XML when `xmllint` is installed.
 - The generated sample validates against the official Accellera IEEE 1685-2014
