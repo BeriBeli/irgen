@@ -482,9 +482,9 @@ fn address_space_executable_image_validates_against_official_2014_xsd() {
         ],
     });
     let mut linker_command_file = LinkerCommandFile::new("link/timer.ld", "-T", "true");
-    linker_command_file
-        .generator_ref
-        .push(GeneratorRef::new("firmwareGenerator"));
+    let mut generator_ref = GeneratorRef::new("firmwareGenerator");
+    generator_ref.id = Some("firmware-generator-ref".into());
+    linker_command_file.generator_ref.push(generator_ref);
     linker_command_file.vendor_extensions = Some(VendorExtensions {
         element: vec![
             VendorExtension::new("acme:linkerCommandFile")
@@ -531,7 +531,9 @@ fn address_space_executable_image_validates_against_official_2014_xsd() {
     });
     generator.api_type = Some(GeneratorApi::new(GeneratorApiType::Tgi2014Base));
     generator.transport_methods = Some(TransportMethods::file());
-    generator.group.push(GeneratorGroup::new("firmware"));
+    let mut generator_group = GeneratorGroup::new("firmware");
+    generator_group.id = Some("firmware-generator-group".into());
+    generator.group.push(generator_group);
     component.component_generators = Some(ComponentGenerators {
         component_generator: vec![generator],
     });
@@ -539,6 +541,12 @@ fn address_space_executable_image_validates_against_official_2014_xsd() {
     let xml = quick_xml::se::to_string(&component).expect("component should serialize");
     assert!(xml.contains("irgen:stringSource=\"image-builder\""));
     assert!(xml.contains("irgen:phaseSource=\"firmware\""));
+    assert!(xml.contains(
+        "<ipxact:generatorRef xml:id=\"firmware-generator-ref\">firmwareGenerator</ipxact:generatorRef>"
+    ));
+    assert!(
+        xml.contains("<ipxact:group xml:id=\"firmware-generator-group\">firmware</ipxact:group>")
+    );
     validate_xml("address-space-executable-image", &xml);
 
     let parsed = Component::from_xml_str(&xml).expect("component should deserialize");
@@ -592,6 +600,14 @@ fn address_space_executable_image_validates_against_official_2014_xsd() {
     assert_eq!(linker.value, "ld");
     assert_eq!(linker_flags.value, "-nostdlib");
     assert_eq!(
+        linker_command_file.generator_ref[0].id.as_deref(),
+        Some("firmware-generator-ref")
+    );
+    assert_eq!(
+        linker_command_file.generator_ref[0].value,
+        "firmwareGenerator"
+    );
+    assert_eq!(
         linker_command_file
             .vendor_extensions
             .as_ref()
@@ -615,6 +631,16 @@ fn address_space_executable_image_validates_against_official_2014_xsd() {
             .map(String::as_str),
         Some("firmware")
     );
+    let parsed_generator = &parsed
+        .component_generators
+        .as_ref()
+        .expect("component should retain generators")
+        .component_generator[0];
+    assert_eq!(
+        parsed_generator.group[0].id.as_deref(),
+        Some("firmware-generator-group")
+    );
+    assert_eq!(parsed_generator.group[0].value, "firmware");
 }
 
 #[test]

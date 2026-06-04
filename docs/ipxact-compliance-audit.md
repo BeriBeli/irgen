@@ -18,8 +18,9 @@ along with field-ID and memory-map keyref validation.
 Component file sets, build metadata, functions, file/file-set vendor
 extensions, and instantiation file-set references pass file-set and
 file-reference keyref validation. Component CPUs and address-space executable
-images pass address-space and file-set keyref validation, with CPU presence,
-parameters, and vendor extensions covered by roundtrip tests. Wire-port
+images pass address-space, file-set, and component-generator keyref validation,
+with CPU presence, parameters, vendor extensions, generator-reference `xml:id`,
+and component-generator group `xml:id` covered by roundtrip tests. Wire-port
 constraint sets, drive/load/timing constraint details,
 component-instantiation constraint references, indexed whitebox HDL paths,
 wire type definitions, whitebox-element presence/driveability/parameters/vendor
@@ -349,7 +350,9 @@ emitted IP-XACT 2014 model for the current snapsheet-to-IP-XACT workflow.
   address spaces and segments.
 - Added dedicated executable-image build metadata extension points. Validated
   QName-preserving vendor extensions on executable images, language file
-  builders, and linker command files.
+  builders, and linker command files. Linker command-file generator references
+  and component-generator groups now retain `xml:id` values on the same
+  validated component-generator keyref path.
 - Added dedicated file-set extension points. Validated QName-preserving vendor
   extensions on files and file sets, plus schema-ordered vendor extensions on
   typed file-set function arguments.

@@ -59,6 +59,9 @@ Grouping remains intentional.
   name, and block name where available.
 - Added CLI tests for missing input, unknown options, output path handling,
   explicit IP-XACT/RALF selection, and failing spreadsheet conversion.
+  `--validate` is rejected for non-IP-XACT formats before any workbook is
+  loaded, and missing validation schemas are reported before conversion starts
+  or output XML is written.
 - Added row-level invalid input tests for duplicate registers, duplicate
   fields, overlapping fields, invalid attributes, malformed ranges,
   out-of-range offsets, and trailing empty rows.
@@ -89,7 +92,9 @@ Grouping remains intentional.
   expressions now use the schema's unsigned integer-expression shape. Remap
   states now retain display metadata, and remap-port value extension attributes
   roundtrip through XSD coverage. Memory remaps now retain `xml:id` and display
-  metadata.
+  metadata. Linker command-file generator references and component-generator
+  groups now retain `xml:id` values while validating component-generator
+  keyrefs.
 - Added schema-valid IEEE 1685-2014 system, mirrored-slave, mirrored-master,
   mirrored-system, and monitor bus-interface modes. Bus-interface `bitsInLau`
   now uses the schema's unsigned positive longint-expression shape. Mirrored-slave

@@ -76,6 +76,40 @@ impl ParsedField {
     }
 }
 
+fn is_field_identifier(name: &str) -> bool {
+    let mut chars = name.chars();
+    let Some(first) = chars.next() else {
+        return false;
+    };
+    if first != '_' && !first.is_ascii_alphabetic() {
+        return false;
+    }
+
+    chars.all(|ch| ch == '_' || ch.is_ascii_alphanumeric())
+}
+
+fn validate_field_identifier(
+    config: &SnapsheetConfig,
+    table: &Table,
+    row: usize,
+    block: &str,
+    register: &str,
+    field: &str,
+) -> Result<(), Error> {
+    if is_field_identifier(field) {
+        return Ok(());
+    }
+
+    Err(Error::validation(
+        table.sheet(),
+        Some(row),
+        Some(&config.columns.register.field),
+        Some(block),
+        Some(register),
+        format!("field name `{field}` must match `[A-Za-z_][A-Za-z0-9_]*`"),
+    ))
+}
+
 #[derive(Debug)]
 struct RegisterFileGroup {
     name: String,
@@ -848,6 +882,14 @@ fn fields_for_register(
 
     for parsed in &group.fields {
         let field = parsed.for_register(register);
+        validate_field_identifier(
+            config,
+            table,
+            parsed.source_row,
+            block,
+            register,
+            field.name(),
+        )?;
         if config.validation.reject_duplicate_fields
             && let Some(previous_row) = names.insert(field.name().into(), parsed.source_row)
         {
@@ -1340,6 +1382,32 @@ mod tests {
         assert!(message.contains("2 validation errors"));
         assert!(message.contains("invalid attribute: BAD"));
         assert!(message.contains("reset value does not fit in 8 bits"));
+    }
+
+    #[test]
+    fn rejects_invalid_field_identifiers() {
+        let table = table(&[&["0", "reg", "tc_vld[7:0]", "[31:0]", "32", "RW", "0", ""]]);
+
+        let error = parse_registers(&table, "regs", 4).unwrap_err();
+
+        assert!(
+            error
+                .to_string()
+                .contains("field name `tc_vld[7:0]` must match `[A-Za-z_][A-Za-z0-9_]*`")
+        );
+    }
+
+    #[test]
+    fn rejects_blank_field_defaulting_to_invalid_register_name() {
+        let table = table(&[&["0", "bad-register", "", "[31:0]", "32", "RW", "0", ""]]);
+
+        let error = parse_registers(&table, "regs", 4).unwrap_err();
+
+        assert!(
+            error
+                .to_string()
+                .contains("field name `bad-register` must match `[A-Za-z_][A-Za-z0-9_]*`")
+        );
     }
 
     #[test]

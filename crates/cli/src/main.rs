@@ -94,17 +94,27 @@ fn run(args: impl Iterator<Item = OsString>) -> Result<Option<PathBuf>, CliError
         return Ok(None);
     };
 
+    if args.format != OutputFormat::Ipxact && args.validate_xsd.is_some() {
+        return Err(CliError::Usage(
+            "--validate can only be used with --format ipxact".into(),
+        ));
+    }
+
+    if let Some(schema) = &args.validate_xsd
+        && !schema.is_file()
+    {
+        return Err(CliError::Runtime(format!(
+            "validation schema not found: {}",
+            schema.display()
+        )));
+    }
+
     let loaded = if let Some(spec) = &args.snapsheet_spec {
         irgen_snapsheet::load_excel_with_config_file(&args.input, spec)
     } else {
         irgen_snapsheet::load_excel(&args.input)
     }
     .map_err(|error| CliError::Runtime(error.to_string()))?;
-    if args.format != OutputFormat::Ipxact && args.validate_xsd.is_some() {
-        return Err(CliError::Usage(
-            "--validate can only be used with --format ipxact".into(),
-        ));
-    }
     let output = match args.format {
         OutputFormat::Ipxact => irgen_model::serialize_ipxact_xml(&loaded.compo)
             .map_err(|error| CliError::Runtime(error.to_string()))?,
@@ -404,6 +414,67 @@ mod tests {
         };
 
         assert_eq!(parsed.validate_xsd, Some(PathBuf::from("schema/index.xsd")));
+    }
+
+    #[test]
+    fn rejects_validation_for_non_ipxact_before_loading_workbook() {
+        let error = run(args(&[
+            "this-file-does-not-exist.xlsx",
+            "--format",
+            "ralf",
+            "--validate",
+            "schema/index.xsd",
+        ]))
+        .unwrap_err();
+
+        assert_eq!(
+            error.to_string(),
+            "--validate can only be used with --format ipxact"
+        );
+    }
+
+    #[test]
+    fn rejects_missing_validation_schema_before_loading_workbook() {
+        let missing_schema = PathBuf::from("schema/does-not-exist.xsd");
+        let error = run([
+            OsString::from("this-file-does-not-exist.xlsx"),
+            OsString::from("--validate"),
+            OsString::from(&missing_schema),
+        ]
+        .into_iter())
+        .unwrap_err();
+
+        assert_eq!(
+            error.to_string(),
+            format!("validation schema not found: {}", missing_schema.display())
+        );
+    }
+
+    #[test]
+    fn rejects_missing_validation_schema_before_writing_output() {
+        let input = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../example_simple.xlsx");
+        let output = std::env::temp_dir().join(format!(
+            "irgen-cli-test-{}-missing-schema.xml",
+            std::process::id()
+        ));
+        let missing_schema = PathBuf::from("schema/does-not-exist.xsd");
+        let _ = fs::remove_file(&output);
+
+        let error = run([
+            OsString::from(input),
+            OsString::from("-o"),
+            OsString::from(&output),
+            OsString::from("--validate"),
+            OsString::from(&missing_schema),
+        ]
+        .into_iter())
+        .unwrap_err();
+
+        assert_eq!(
+            error.to_string(),
+            format!("validation schema not found: {}", missing_schema.display())
+        );
+        assert!(!output.exists());
     }
 
     #[test]
