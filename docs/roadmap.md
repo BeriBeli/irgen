@@ -45,6 +45,8 @@ model. This behavior is required for correct IP-XACT field emission.
 
 - Converts `.xlsx` input into IP-XACT 2014 XML, RALF, and SystemRDL.
 - Supports `--format ipxact|ralf|systemrdl`.
+- Supports `--ipxact-version 2014`, with 2014 as the default for IP-XACT
+  output.
 - Supports `--snapsheet-spec <snapsheet.toml>`.
 - Supports opt-in `--validate <schema.xsd>` for IP-XACT XML via `xmllint`.
 - Validates common workbook failures before conversion, including duplicate

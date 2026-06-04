@@ -210,4 +210,5 @@ Configured mode can reject common workbook issues before output generation:
 - register arrays that exceed `max_array_elements`
 
 IP-XACT XSD validation is a separate CLI step enabled with `--validate` and is
-only available for `--format ipxact`.
+only available for `--format ipxact`. IP-XACT output defaults to version 2014;
+the same version can be made explicit with `--ipxact-version 2014`.

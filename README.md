@@ -12,6 +12,13 @@ Generate IP-XACT XML:
 cargo run -p irgen-cli -- example_simple.xlsx
 ```
 
+IP-XACT output defaults to IEEE 1685-2014. The version can also be specified
+explicitly:
+
+```sh
+cargo run -p irgen-cli -- example_simple.xlsx --ipxact-version 2014
+```
+
 Generate RALF or SystemRDL:
 
 ```sh
@@ -38,7 +45,7 @@ Validate generated IP-XACT XML with `xmllint` and an explicit XSD:
 cargo run -p irgen-cli -- example_simple.xlsx --validate path/to/index.xsd
 ```
 
-`--validate` is only available with `--format ipxact`.
+`--validate` and `--ipxact-version` are only available with `--format ipxact`.
 
 ## Documentation
 

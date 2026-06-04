@@ -8,6 +8,7 @@ name = "irgen"
 path = "src/main.rs"
 
 [dependencies]
+clap = { version = "4.5.40", features = ["derive"] }
 irgen-model = { path = "../model" }
 irgen-ralf = { path = "../ralf" }
 irgen-snapsheet = { path = "../snapsheet" }
