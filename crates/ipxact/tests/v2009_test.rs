@@ -1,5 +1,19 @@
 //! Integration tests for IP-XACT 2009
 
+use std::fs;
+use std::path::PathBuf;
+use std::process::Command;
+
+const MINIMAL_2009_COMPONENT_XML: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+<component xmlns="http://www.spiritconsortium.org/XMLSchema/SPIRIT/1685-2009"
+           xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+           xsi:schemaLocation="http://www.spiritconsortium.org/XMLSchema/SPIRIT/1685-2009 http://www.spiritconsortium.org/XMLSchema/SPIRIT/1685-2009/index.xsd">
+  <vendor>example.org</vendor>
+  <library>peripherals</library>
+  <name>timer</name>
+  <version>1.0</version>
+</component>"#;
+
 #[test]
 fn test_parse_component_from_xml() {
     use ip_xact::v2009::Component;
@@ -83,4 +97,42 @@ fn test_roundtrip_component() {
     assert_eq!(parsed.name, "component");
     assert_eq!(parsed.version, "1.0");
     assert_eq!(parsed.description, Some("Test component".to_string()));
+}
+
+#[test]
+fn minimal_component_validates_against_official_2009_xsd() {
+    validate_xml("minimal-component", MINIMAL_2009_COMPONENT_XML);
+}
+
+fn validate_xml(name: &str, xml: &str) {
+    if Command::new("xmllint").arg("--version").output().is_err() {
+        eprintln!("skipping official 2009 XSD validation because xmllint is not installed");
+        return;
+    }
+
+    let output = temp_xml_path(name);
+    fs::write(&output, xml).expect("temporary XML should be writable");
+
+    let validation = Command::new("xmllint")
+        .args(["--noout", "--schema"])
+        .arg(schema_path())
+        .arg(&output)
+        .output()
+        .expect("xmllint should run");
+
+    fs::remove_file(&output).expect("temporary XML should be removable");
+
+    assert!(
+        validation.status.success(),
+        "official 2009 schema validation failed:\n{}",
+        String::from_utf8_lossy(&validation.stderr)
+    );
+}
+
+fn schema_path() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/schemas/1685-2009/index.xsd")
+}
+
+fn temp_xml_path(name: &str) -> PathBuf {
+    std::env::temp_dir().join(format!("ip-xact-v2009-{name}-{}.xml", std::process::id()))
 }

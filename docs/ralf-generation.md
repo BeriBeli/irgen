@@ -1,6 +1,6 @@
 # RALF Generation Support
 
-## Conclusion
+## Status
 
 `crates/ralf` provides a native RALF model and serializer. The crate now has a
 public RALF AST instead of a direct string printer, so future input sources can
@@ -21,7 +21,7 @@ The default output extension for `--format ralf` is `.ralf`. IP-XACT XSD
 validation remains scoped to `--format ipxact`; `--validate` is rejected for
 RALF output.
 
-## RALF Model Coverage
+## Model Coverage
 
 The public model in `crates/ralf/src/ast.rs` covers the core RALF construct
 summary:
@@ -43,7 +43,7 @@ summary:
 - `add_reg_cb` attachments, including external callback class references
 - single-domain block `default_map_name`
 
-The serializer is split across focused modules:
+The crate is split across focused modules:
 
 - `ast.rs`: RALF model types
 - `convert.rs`: current `irgen_model::base` to RALF model conversion
@@ -79,23 +79,18 @@ emitted as RALF hexadecimal literals using the `'h...` form. Register and block
 sizes must be byte-aligned because RALF `bytes` is the natural representation
 for those widths.
 
-## Completed
+## Implementation Notes
 
-- Added the `crates/ralf` workspace member.
-- Added a public RALF AST/model with separate modules for model types,
-  conversion, serialization, helpers, writer, errors, and tests.
-- Added `irgen_ralf::serialize_ralf(&irgen_model::base::Component)` through the
-  AST conversion path.
-- Added RALF model and serializer tests for simple registers, fields, resets,
-  access mapping, register-file arrays, memories, virtual registers, systems,
-  domains, attributes, enums, constraints, cover directives, and cross
-  coverage.
-- Added typed RALF model coverage for `user_code`, callback class definitions,
+- `crates/ralf` is a workspace member.
+- `irgen_ralf::serialize_ralf(&irgen_model::base::Component)` converts through
+  the RALF AST before serialization.
+- Serializer tests cover simple registers, fields, resets, access mapping,
+  register-file arrays, memories, virtual registers, systems, domains,
+  attributes, enums, constraints, cover directives, and cross coverage.
+- Typed model coverage includes `user_code`, callback class definitions,
   `add_reg_cb`, external callback references, and `default_map_name`.
-- Added `--format ralf` CLI support and `.ralf` default output extension.
-- Added CLI coverage for explicit RALF format parsing.
-- Documented RALF model coverage, current snapsheet mapping, numeric handling,
-  and limitations.
+- CLI coverage includes explicit `--format ralf` parsing and `.ralf` default
+  output extension behavior.
 
 ## Current Limitations
 

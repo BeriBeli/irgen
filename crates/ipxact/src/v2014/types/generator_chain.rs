@@ -7,7 +7,6 @@ use super::component::{
     Choices, ConfigurableLibraryRef, GeneratorApi, GeneratorGroup, NAMESPACE, Parameters,
     RealExpression, SCHEMA_LOCATION, TransportMethods, XSI_NAMESPACE,
 };
-use super::string_expression::StringURIExpression;
 use super::vendor_extensions::{VendorExtensions, protect_qnames};
 
 fn namespace() -> String {
@@ -340,7 +339,7 @@ pub struct ChainGenerator {
     pub transport_methods: Option<TransportMethods>,
 
     #[serde(rename(serialize = "ipxact:generatorExe", deserialize = "generatorExe"))]
-    pub generator_exe: StringURIExpression,
+    pub generator_exe: String,
 
     #[serde(
         rename(
@@ -364,7 +363,7 @@ impl ChainGenerator {
             parameters: None,
             api_type: None,
             transport_methods: None,
-            generator_exe: StringURIExpression::new(generator_exe),
+            generator_exe: generator_exe.into(),
             vendor_extensions: None,
         }
     }

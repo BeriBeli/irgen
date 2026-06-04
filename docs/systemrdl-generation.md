@@ -1,6 +1,6 @@
 # SystemRDL Generation Support
 
-## Conclusion
+## Status
 
 `crates/systemrdl` provides a native SystemRDL model and serializer. It is a
 typed model layer, not a string-only exporter, so future input sources can build
@@ -37,7 +37,7 @@ register-description surface:
   references, arrays, structs, and raw expressions
 - typed software and hardware access helpers for the current snapsheet mapping
 
-The crate is split into focused modules:
+The crate is split across focused modules:
 
 - `ast.rs`: SystemRDL model types
 - `convert.rs`: current `irgen_model::base` to SystemRDL model conversion
@@ -58,16 +58,15 @@ The crate is split into focused modules:
   `onwrite` properties.
 - Field descriptions map to `desc`.
 
-## Completed
+## Implementation Notes
 
-- Added the `crates/systemrdl` workspace member.
-- Added a public SystemRDL AST/model with separate modules for model types,
-  conversion, serialization, helpers, writer, errors, and tests.
-- Added `irgen_systemrdl::serialize_systemrdl(&irgen_model::base::Component)`.
-- Added serializer tests for core SystemRDL declarations, components,
-  constraints, arrays, bit ranges, register-file arrays, and base conversion.
-- Added `--format systemrdl` CLI support and `.rdl` default output extension.
-- Added CLI coverage for explicit SystemRDL format parsing and example export.
+- `crates/systemrdl` is a workspace member.
+- `irgen_systemrdl::serialize_systemrdl(&irgen_model::base::Component)`
+  converts through the SystemRDL AST before serialization.
+- Serializer tests cover core SystemRDL declarations, components, constraints,
+  arrays, bit ranges, register-file arrays, and base conversion.
+- CLI coverage includes explicit `--format systemrdl` parsing, example export,
+  and `.rdl` default output extension behavior.
 
 ## Current Limitations
 

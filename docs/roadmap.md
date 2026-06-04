@@ -1,355 +1,117 @@
-# irgen CLI Roadmap
+# irgen Roadmap
 
-This document tracks follow-up work after splitting the CLI, snapsheet parser,
-and lightweight model crates.
+## Direction
 
-## Current Structure
+The current product goal is a CLI-first register spreadsheet converter that
+emits IEEE 1685-2014 IP-XACT and related text formats. UI work and UI
+dependencies have been removed from the active path.
 
-- `crates/cli`: command-line entry point for spreadsheet to IP-XACT conversion.
-- `crates/snapsheet`: spreadsheet loading, register expansion, and model
-  assembly.
-- `crates/model`: lightweight register IR and conversion into the IP-XACT 2014
-  model.
-- `crates/ralf`: native RALF model and serializer, plus conversion from the
-  current lightweight register IR.
-- `crates/systemrdl`: native SystemRDL model and serializer, plus conversion
-  from the current lightweight register IR.
-- `crates/ipxact`: broader IP-XACT model library; its IEEE 1685-2014 types now
-  back the CLI's emitted model.
+IEEE 1685-2014 compliance is the active milestone. IEEE 1685-2009 and IEEE
+1685-2022 are P2 multi-version work.
 
-The active dependency direction is `cli -> snapsheet -> model -> ipxact`, with
-`cli` also depending on `model`, `ralf`, and `systemrdl` for serialization. The
-RALF and SystemRDL crates depend on `model` and do not depend on the IP-XACT
-model.
+## Crate Boundaries
 
-The CLI can convert `example.xlsx` into IEEE 1685-2014 XML, RALF, and
-SystemRDL. The generated XML has been validated against the official Accellera
-IEEE 1685-2014 XSD.
+- `crates/cli`: command-line entry point.
+- `crates/snapsheet`: spreadsheet loading, row validation, array expansion, and
+  register aggregation.
+- `crates/model`: lightweight register IR plus conversion into
+  `ip_xact::v2014`.
+- `crates/ipxact`: broader IP-XACT schema model, currently focused on 2014
+  compliance.
+- `crates/ralf`: RALF model and serializer.
+- `crates/systemrdl`: SystemRDL model and serializer.
+
+Active dependency direction:
+
+```text
+cli -> snapsheet -> model -> ipxact
+cli -> ralf
+cli -> systemrdl
+ralf/systemrdl -> model
+```
+
+Do not restore a generic `core` facade unless there is a concrete shared API
+that needs it.
 
 ## Register Grouping
 
-`crates/snapsheet/src/register.rs` intentionally groups rows by `REG`. A register
-may contain multiple fields, with one spreadsheet row per field, so these rows
-must be aggregated into one register model.
+`crates/snapsheet/src/register.rs` intentionally groups rows by `REG`.
 
-The parser validates ambiguous inputs before expansion and aggregation.
-Grouping remains intentional.
+A single register may contain multiple fields, with one spreadsheet row per
+field, so rows with the same register identity must aggregate into one register
+model. This behavior is required for correct IP-XACT field emission.
 
-## Completed
+## Current Capability
 
-- Replaced the Polars expression pipeline with an explicit row parser. Only
-  `ADDR` and `REG` are inherited across merged cells; empty rows are ignored.
-- Added validation for conflicting register definitions, duplicate fields,
-  overlapping bit ranges, `BIT` / `WIDTH` mismatches, invalid attributes,
-  reset values that do not fit their field, IP-XACT-style byte-aligned register
-  sizes inferred from field extents, out-of-range registers, duplicate address
-  block names, and overlapping address blocks.
-- Replaced `UInt32` address arithmetic with checked `u64` arithmetic.
-- Standardized numeric input: addresses, ranges, reset values, and
-  `range(...)` arguments accept decimal or `0x`-prefixed hexadecimal values.
-- Added array validation for malformed expressions, invalid argument counts,
-  zero steps, empty expansions, overflow, excessive expansion size, registerFile
-  name collisions, and generated address collisions.
-- Changed `{n}, n=range(start?, end, step?)` register arrays to emit IP-XACT
-  `registerFile` arrays instead of expanded top-level registers. The
-  registerFile `dim` is `end - start`.
-- Changed the optional third `range(...)` argument to the registerFile
-  `range`/byte stride between adjacent elements. The default offset is `0x4`.
-- Added parser diagnostics with sheet name, row number, column name, register
-  name, and block name where available.
-- Added CLI tests for missing input, unknown options, output path handling,
-  explicit IP-XACT/RALF selection, and failing spreadsheet conversion.
-  `--validate` is rejected for non-IP-XACT formats before any workbook is
-  loaded, and missing validation schemas are reported before conversion starts
-  or output XML is written.
-- Added row-level invalid input tests for duplicate registers, duplicate
-  fields, overlapping fields, invalid attributes, malformed ranges,
-  out-of-range offsets, and trailing empty rows.
-- Removed RegVue output support while keeping the output format enum narrow and
-  explicit.
-- Added native RALF output support through `--format ralf`, backed by the
-  dedicated `crates/ralf` model and serializer crate. The crate now models the
-  core RALF constructs separately from the current snapsheet conversion path.
-- Added native SystemRDL output support through `--format systemrdl`, backed by
-  the dedicated `crates/systemrdl` model and serializer crate. The crate models
-  core SystemRDL declarations, components, instances, properties, arrays, bit
-  ranges, constraints, and current snapsheet-to-addrmap conversion.
-- Added generated `.xlsx` fixtures that exercise invalid workbook handling
-  through the public loader.
-- Added `--validate <xsd>` support for explicitly supplied IEEE 1685-2014
-  schemas. The CLI invokes an installed `xmllint` only when validation is
-  requested. CLI tests now cover the complex `example.xlsx` conversion with
-  `snapsheet.toml`, official XSD validation, and `REG` aggregation into one
-  register with multiple fields.
-- Vendored an unmodified copy of the official Accellera IEEE 1685-2014 XSD for
-  repeatable CI validation on Linux.
-- Added schema-valid IEEE 1685-2014 component, basic bus-interface,
-  register-oriented memory-map, remap-state, memory-remap, nested-bank, subspace-map,
-  address-space, segment, local-memory-map, local-bank, register-file,
-  alternate-register, field-data, model/ports-core, remap-port-reference, and
-  model-view presence/instantiation-reference, and catalog models to `crates/ipxact`,
-  with Linux CI validation against the official XSD. Remap-port index/value
-  expressions now use the schema's unsigned integer-expression shape. Remap
-  states now retain display metadata, and remap-port value extension attributes
-  roundtrip through XSD coverage. Memory remaps now retain `xml:id` and display
-  metadata. Linker command-file generator references and component-generator
-  groups now retain `xml:id` values while validating component-generator
-  keyrefs.
-- Added schema-valid IEEE 1685-2014 system, mirrored-slave, mirrored-master,
-  mirrored-system, and monitor bus-interface modes. Bus-interface `bitsInLau`
-  now uses the schema's unsigned positive longint-expression shape. Mirrored-slave
-  remap base addresses now roundtrip `state`, `xml:id`, value, and range through
-  official XSD coverage.
-- Added schema-valid IEEE 1685-2014 bus-interface abstraction types and
-  logical-to-physical port maps, including view and physical-port keyref
-  validation.
-- Added schema-valid IEEE 1685-2014 mirrored-interface channels with
-  bus-interface keyref validation. Channel and channel bus-interface-reference
-  presence expressions now use the schema's unsigned bit-expression shape.
-  Channel `xml:id`/display metadata and channel bus-interface-reference
-  `xml:id` values now roundtrip through official XSD coverage.
-- Added schema-valid IEEE 1685-2014 indirect interfaces with field-ID and
-  memory-map keyref validation, plus schema-ordered parameters and
-  QName-preserving vendor extensions. Indirect-interface endianness now uses
-  the schema enum instead of a stringly typed value, and `bitsInLau` uses the
-  schema's unsigned positive longint-expression shape.
-- Added schema-valid IEEE 1685-2014 component-level parameters and choices
-  with choice-reference keyref validation.
-- Added schema-valid IEEE 1685-2014 basic component file sets and
-  instantiation file-set references with keyref validation. File and file-set
-  reference presence expressions now use the schema's unsigned bit-expression
-  shape.
-- Added schema-valid IEEE 1685-2014 file and file-set build metadata,
-  dependencies, include metadata, logical and exported names, image types,
-  file-level and file-set-level QName-preserving vendor extensions, and
-  file-set functions with `fileRef` keyref validation.
-- Added schema-valid IEEE 1685-2014 file defines and typed file-set function
-  arguments using dedicated name-value-pair models. File defines now retain
-  schema-ordered vendor extensions, and function arguments now retain the
-  same `nameValuePairType` vendor-extension slot.
-- Added schema-valid IEEE 1685-2014 component CPUs and address-space
-  executable images with address-space and file-set keyref validation. CPU
-  presence controls, parameters, and vendor extensions now have roundtrip
+- Converts `.xlsx` input into IP-XACT 2014 XML, RALF, and SystemRDL.
+- Supports `--format ipxact|ralf|systemrdl`.
+- Supports `--snapsheet-spec <snapsheet.toml>`.
+- Supports opt-in `--validate <schema.xsd>` for IP-XACT XML via `xmllint`.
+- Validates common workbook failures before conversion, including duplicate
+  fields, overlapping bit ranges, malformed arrays, invalid attributes,
+  address collisions, out-of-range registers, and reset values that do not fit.
+- Emits register arrays as IP-XACT `registerFile` arrays.
+- Uses checked `u64` arithmetic for addresses and array expansion.
+
+## Documentation Map
+
+- `docs/snapsheet-format.md`: workbook layout, TOML configuration, array
+  rules, and parser validation behavior.
+- `docs/ralf-generation.md`: RALF model coverage, snapsheet mapping, and
+  limitations.
+- `docs/systemrdl-generation.md`: SystemRDL model coverage, snapsheet mapping,
+  and limitations.
+- `docs/ipxact-2014-compliance.md`: IEEE 1685-2014 compliance status and
+  verification evidence.
+
+## P0: 2014 IP-XACT Compliance
+
+Closed for the current component milestone.
+
+Current state:
+
+- All eight IEEE 1685-2014 root documents listed by the vendored `index.xsd`
+  have official-XSD validation coverage.
+- The `componentType` top-level sequence has no known omitted optional
+  structure.
+- Included-schema nested attachment points have representative official-XSD
   coverage.
-- Added schema-valid IEEE 1685-2014 executable-image language tools with
-  builders, linker flags, and linker command-file configuration.
-- Added schema-valid IEEE 1685-2014 component generators with linker-command
-  `generatorRef` keyref validation.
-- Expanded schema-valid IEEE 1685-2014 component instantiations with strict
-  language matching, module parameters, builders, file-set references, and
-  parameters. Component instantiation default builders, file-set references,
-  and vendor extensions now have roundtrip coverage. Added
-  design-configuration-instantiation parameters.
-- Added schema-valid IEEE 1685-2014 wire-port constraint sets,
-  component-instantiation constraint-set references, component whitebox
-  elements, and instantiation whitebox HDL paths. The schema-valid structure is
-  covered without claiming whitebox keyref enforcement because the vendored
-  schema selector and model placement differ. Whitebox-element presence,
-  driveability, parameters, and vendor extensions now have roundtrip coverage.
-- Expanded schema-valid wire-port constraint sets with vector slices, typed
-  drive/load cell specifications, and timing constraints. Added
-  multi-dimensional indices to whitebox HDL path segments.
-- Added schema-valid wire type definitions with constrained type names,
-  definition paths, per-view references, and `xml:id` roundtrip coverage for
-  wire type definitions, type-definition paths, and view references. Added
-  default-value, clock, and single-shot wire driver choices, including clock
-  units.
-- Expanded schema-valid bus interfaces with presence expressions,
-  required-connection flags, LAU widths, bit steering, endianness, and
-  parameters.
-- Replaced the placeholder configurable-array model with schema-shaped
-  multi-dimensional bounds. Added schema-valid port presence expressions,
-  arrays, pointer/reference access selection, and indexed HDL access handles.
-  Configurable-array `left`/`right` bounds now use the schema's unsigned
-  integer expression shape.
-- Expanded schema-valid component and module parameters with vector and
-  multi-dimensional array metadata.
-- Replaced the text-only 2014 vendor-extension placeholder with a structured
-  recursive tree. Namespaced elements, attributes, text, and nested children
-  now serialize without raw XML injection and pass official XSD validation on
-  representative component, bus-interface, parameter, module-parameter, and
-  port paths.
-- Split 2014 Serde mappings into prefixed serialization names and local-name
-  deserialization aliases. Register-oriented components and catalogs now
-  roundtrip through generated 2014 XML. Added an explicit QName-preserving
-  parser for isolated vendor-extension containers.
-- Added QName-preserving `Component::from_xml_str` and `Catalog::from_xml_str`
-  entry points for full-document imports. A component read-modify-write cycle
-  retains vendor-extension QNames across root, bus-interface, parameter,
-  module-parameter, and port attachment points and revalidates against the
-  official XSD.
-- Replaced the public 2009 `BusDefinition` re-export with a dedicated 2014 root
-  model. Required connection flags, inheritance, capacity expressions, system
-  groups, parameters, assertions, QName-preserving vendor extensions, and
-  read-modify-write behavior pass official XSD validation.
-- Replaced the public 2009 `Design` re-export with a dedicated 2014 root model.
-  Component instances with configurable overrides, active and monitor
-  interconnections, ad-hoc internal and external port references, range
-  selections, parameters, assertions, QName-preserving vendor extensions, and
-  read-modify-write behavior pass official XSD validation.
-- Replaced the generated `DesignConfiguration` placeholder with a dedicated
-  2014 root model. Design references, generator-chain overrides,
-  interconnection abstractor chains, broadcast endpoint selection, active-view
-  overrides, parameters, assertions, QName-preserving vendor extensions, and
-  read-modify-write behavior pass official XSD validation.
-- Replaced the public 2009 `AbstractionDefinition` re-export with a dedicated
-  2014 root model. Wire and transactional logical ports, qualifiers,
-  system/master/slave mode constraints, driver requirements, timing and cell
-  constraints, protocols, payloads, parameters, assertions, QName-preserving
-  vendor extensions, and read-modify-write behavior pass official XSD
-  validation.
-- Replaced the generated `GeneratorChain` placeholder with a dedicated 2014
-  root model. Ordered group, VLNV, and component-generator selectors, embedded
-  generators, chain groups, phase/API/transport metadata, executable URIs,
-  choices, parameters, assertions, QName-preserving vendor extensions, and
-  read-modify-write behavior pass official XSD validation.
-- Replaced the generated `Abstractor` placeholder with a dedicated 2014 root
-  model. Exactly-two interface construction, abstraction port maps, restricted
-  model views and instantiations, restricted physical ports, generators,
-  parameters, assertions, QName-preserving vendor extensions, and
-  read-modify-write behavior pass official XSD validation. Added the missing
-  generator-level vendor-extension attachment point shared by component and
-  abstractor generators.
-- Removed the remaining IEEE 1685-2009 re-exports and direct dependencies from
-  the 2014 module. The generated compatibility layer now uses 2014 whitebox,
-  CPU, and transactional-port protocol types instead of silently importing
-  older schema models.
-- Expanded dedicated transactional component ports with protocol, payload, and
-  type-definition metadata, including custom protocol names, mandatory payload
-  extensions, nested service types, typed parameters, type-parameter presence
-  controls and extension points, view references, QName-preserving vendor
-  extensions, and read-modify-write validation.
-- Added dedicated component-root clock drivers, reset types, and assertions.
-  Independent clock waveforms, clock-driver `xml:id`, clock time-expression
-  bounds/units/extension attributes, field-reset policy keyrefs,
-  reset-type `xml:id`/display metadata, QName-preserving reset-type vendor
-  extensions, assertion `xml:id`/display metadata and assert-expression
-  extension attributes, and read-modify-write behavior pass official XSD
-  validation.
-- Added dedicated vendor-extension attachment points across the
-  memory-map/register path. Memory maps, address blocks, banks, local banks,
-  nested banks, banked subspace maps, register files, registers, alternate
-  registers, fields, and enumerated values now preserve QName-based extensions
-  and pass official XSD validation on representative paths.
-- Added dedicated register-path parameter attachment points. Address blocks,
-  banks, local banks, nested banks, subspace maps, banked subspace maps,
-  register files, registers, alternate registers, and fields now serialize
-  schema-ordered `parameters` and pass official XSD validation on representative
-  paths.
-- Added register-path access/presence/array surface. Address blocks and fields
-  now carry non-indexed HDL access handles; banks and local banks carry simple
-  HDL access handles; register files, registers, and alternate registers carry
-  indexed access handles. Address blocks, banks, local banks, subspace maps,
-  register files, registers, alternate registers, and fields now serialize
-  schema-ordered `isPresent`, while register files and registers also serialize
-  schema-ordered `dim` arrays. Address blocks, banks, nested banks, banked
-  address blocks, registers, alternate registers, and fields now retain
-  schema-ordered `volatile` values. Memory maps and memory remaps now serialize
-  schema-ordered `isPresent`. Address spaces, segments, and local memory maps
-  now serialize schema-ordered `isPresent`; address spaces and segments also
-  retain QName-based vendor extensions. Address-space, address-block, and
-  banked-address-block `range`/`width` block-size fields now use the schema's
-  unsigned positive long integer and unsigned integer expression shapes.
-  Memory-map and address-space `addressUnitBits` now use the schema's unsigned
-  positive long integer expression shape. Address-block, bank, subspace-map,
-  and local-bank `baseAddress` now use the schema's unsigned long integer
-  expression shape. Master address-space-reference `baseAddress` now uses the
-  schema's signed long integer expression shape. Segment and register-file
-  `addressOffset`/`range`, plus register `addressOffset`/`size`, now use their
-  schema-specific unsigned expression shapes. Field `bitOffset`, `bitWidth`,
-  and `reserved` now use the schema's unsigned integer, unsigned positive
-  integer, and unsigned bit-expression shapes. Enumerated field values, field
-  reset values and masks, and field write-constraint bounds now use the
-  schema's unsigned bit-vector expression shape. Field resets now retain
-  `xml:id` plus reset value/mask extension attributes. Address blocks, register
-  files, registers, alternate registers, and fields now retain
-  `typeIdentifier`.
-- Normalized schema-specific port width/count expressions. Abstraction
-  wire-mode `width`, abstraction transactional-mode `busWidth`, load
-  constraint `count`, component transactional-port `busWidth`, and component
-  transactional connection bounds now use the corresponding unsigned integer
-  expression shapes. Component port vectors, driver/constraint-set ranges,
-  design `partSelect` ranges, and HDL path segment indices now use the
-  schema's unsigned integer expression shape as well. Component wire driver
-  default, clock-pulse, and single-shot values, plus abstraction wire default
-  values, now use the schema's unsigned bit-vector expression shape.
-  Bus-interface port-map `logicalTieOff` values now use the schema's unsigned
-  positive integer expression shape, and bus-interface port-map `isPresent`
-  attachment points now serialize in schema order and roundtrip through XSD
-  coverage. Assertion `assert` expressions now use the schema's unsigned
-  bit-expression shape. Memory-map and local-memory-map
-  bank `bankAlignment` attributes now use the schema enum instead of raw
-  strings. Field `modifiedWriteValue`, `readAction`, and
-  `testable@testConstraint` now use schema enums instead of raw strings.
-  Memory-map/register/field `access` values now use the schema `accessType`
-  enum instead of raw strings. Memory-map bank/address-block `usage` values
-  and enumerated-value `usage` attributes now use dedicated schema enums
-  instead of raw strings. Memory-map `shared` values now use the schema
-  `sharedType` enum instead of raw strings. Field `writeValueConstraint` now
-  uses a schema-choice model instead of independent optional child fields.
-  Indirect-interface targets now use a schema-choice model for either a
-  memory-map reference or one-or-more transparent bridges. Slave bus-interface
-  targets now use the optional schema choice for either a memory-map reference
-  or one-or-more transparent bridges, and now retain schema-ordered
-  `fileSetRefGroup` entries for slave-associated file sets. Executable-image
-  `languageTools` now models the linker `linkerFlags`/`linkerCommandFile`
-  choice and rejects linker-only configurations. Component bus interfaces,
-  abstractor bus interfaces, bus-interface `bitSteering`, design ad-hoc tied
-  values, component parameters, module parameters, parameter values,
-  configurable element values, choice enumerations, unsigned bit expressions,
-  unsigned bit-vector expressions, unsigned integer expressions, unsigned
-  positive integer expressions, signed long integer expressions, unsigned long
-  integer expressions, unsigned positive long integer expressions, real expressions,
-  clock time expressions, string expressions, URI string expressions, file build
-  flags, and files now retain QName-preserving `any.att` extension attributes,
-  while file defines and file-set function arguments retain schema-ordered
-  vendor extensions. These paths pass official XSD validation.
-- Added executable-image build metadata extension points. Executable images,
-  language file builders, and linker command files now retain QName-based
-  vendor extensions and pass official XSD validation on the address-space
-  executable-image path.
-- Added file-set extension points. Files and file sets now retain QName-based
-  vendor extensions and pass official XSD validation and roundtrip coverage on
-  the file-set build metadata path.
-- Added model instantiation extension points. Component, design, and
-  design-configuration instantiations now retain QName-based vendor extensions
-  and pass official XSD validation and roundtrip coverage on the model-view
-  instantiation path.
-- Added model-view presence expressions. Component model views now serialize
-  schema-ordered `isPresent` and pass official XSD validation and roundtrip
-  coverage on the model-view instantiation path.
-- Added official-XSD validation and roundtrip coverage for all eight IEEE
-  1685-2014 root documents listed by the vendored `index.xsd`: component,
-  catalog, bus definition, abstraction definition, abstractor, design,
-  design configuration, and generator chain.
 
-## P1: Remaining Validation
+## P1: Cleanup
 
-- Add more `.xlsx` fixtures as new workbook-level failure modes are discovered.
+- Replace remaining placeholder or stringly typed 2014 nested structures that
+  are still on active paths.
+- Continue auditing overbroad expression wrapper types where the schema
+  disallows extension attributes.
+- Add new `.xlsx` fixtures as parser failure modes are discovered.
+- Decide whether XML schema validation should remain opt-in CLI behavior or
+  become part of release verification only.
 
-## P2: Architecture
+## P2: Multi-Version And Future Formats
 
-- Keep `crates/model` focused on snapsheet conversion while using
-  `ip_xact::v2014` as the emitted IP-XACT model. The previous lightweight
-  IP-XACT and RegVue model files have been removed rather than retained as
-  inactive reference code.
-- If C header, UVM RAL, SystemVerilog RTL, or HTML exports return, add them as
-  explicit CLI formats backed by dedicated output crates instead of restoring
-  a generic `core` facade.
-- Decide whether XML schema validation should remain an opt-in CLI feature or
-  become the default for release verification workflows.
+- Expand official schema validation and namespace-aware serializers before
+  claiming IEEE 1685-2009 or IEEE 1685-2022 compliance.
+- Review generated 2022 serde names before promoting 2022 support.
+- If C header, UVM RAL, SystemVerilog RTL, or HTML outputs return, add
+  them as explicit CLI formats or separate crates rather than broadening the
+  current register IR prematurely.
 
-## Verification Notes
+## Verification
 
-- `cargo check --workspace --offline` passes.
-- `cargo clippy --workspace --all-targets --all-features --offline -- -D warnings`
-  passes.
-- `cargo test --workspace --offline` passes.
-- `cargo build --release --locked --bin irgen --offline` passes.
-- `target/release/irgen example.xlsx --snapsheet-spec snapsheet.toml -o
-  /tmp/irgen-example.xml` generates XML.
-- `target/release/irgen example.xlsx --snapsheet-spec snapsheet.toml --validate
-  crates/model/tests/fixtures/ipxact-1685-2014/index.xsd` generates and
-  validates XML when `xmllint` is installed.
-- The generated sample validates against the official Accellera IEEE 1685-2014
-  XSD.
+Useful gates:
+
+```text
+cargo fmt --all
+cargo test -p ip-xact --test v2014_test --offline -- --nocapture
+cargo test --workspace --offline --lib --tests
+cargo clippy --workspace --all-targets --all-features --offline -- -D warnings
+git diff --check
+```
+
+Release-oriented smoke checks:
+
+```text
+cargo build --release --locked --bin irgen --offline
+target/release/irgen example.xlsx --snapsheet-spec snapsheet.toml -o /tmp/irgen-example.xml
+target/release/irgen example.xlsx --snapsheet-spec snapsheet.toml --validate crates/ipxact/tests/fixtures/schemas/1685-2014/index.xsd
+```

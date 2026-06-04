@@ -374,7 +374,7 @@ mod tests {
         let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
         let input = root.join("example.xlsx");
         let spec = root.join("snapsheet.toml");
-        let schema = root.join("crates/model/tests/fixtures/ipxact-1685-2014/index.xsd");
+        let schema = root.join("crates/ipxact/tests/fixtures/schemas/1685-2014/index.xsd");
         let output =
             std::env::temp_dir().join(format!("irgen-cli-test-{}-example.xml", std::process::id()));
         let _ = fs::remove_file(&output);

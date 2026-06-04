@@ -4,9 +4,9 @@ use serde::{Deserialize, Serialize};
 
 use super::assertions::Assertions;
 use super::component::{
-    AbstractionTypes, Choices, ComponentGenerator, Drivers, FileSets, NAMESPACE, Parameters,
-    PortAccess, PortDirection, PortVectors, SCHEMA_LOCATION, TransactionalPort, WireTypeDefs,
-    XSI_NAMESPACE,
+    AbstractionTypes, BitExpression, Choices, ComponentGenerator, Drivers, FileSets, NAMESPACE,
+    Parameters, PortAccess, PortDirection, PortVectors, SCHEMA_LOCATION, TransactionalPort,
+    WireTypeDefs, XSI_NAMESPACE,
 };
 use super::component_instantiation::ComponentInstantiation;
 use super::library_ref::LibraryRefType;
@@ -334,6 +334,12 @@ pub struct AbstractorView {
     pub description: Option<String>,
 
     #[serde(
+        rename(serialize = "ipxact:isPresent", deserialize = "isPresent"),
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub is_present: Option<BitExpression>,
+
+    #[serde(
         rename(serialize = "ipxact:envIdentifier", deserialize = "envIdentifier"),
         default
     )]
@@ -355,6 +361,7 @@ impl AbstractorView {
             name: name.into(),
             display_name: None,
             description: None,
+            is_present: None,
             env_identifier: Vec::new(),
             component_instantiation_ref: None,
         }

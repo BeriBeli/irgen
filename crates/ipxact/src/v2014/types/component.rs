@@ -15,6 +15,7 @@ use super::assertions::Assertions;
 use super::bus_definition::UnsignedIntExpression;
 use super::component_instantiation::{ComponentInstantiation, ModuleParameter};
 use super::configurable_arrays::ConfigurableArrays;
+use super::design::PartSelect;
 use super::string_expression::{StringExpression, StringURIExpression};
 use super::vendor_extensions::{ExtensionAttributes, VendorExtensions, protect_qnames};
 
@@ -1935,6 +1936,8 @@ impl IndirectInterfaces {
 pub struct IndirectInterface {
     pub id: Option<String>,
 
+    pub extension_attributes: ExtensionAttributes,
+
     pub name: String,
 
     pub display_name: Option<String>,
@@ -1965,6 +1968,7 @@ impl IndirectInterface {
     ) -> Self {
         Self {
             id: None,
+            extension_attributes: ExtensionAttributes::default(),
             name: name.into(),
             display_name: None,
             description: None,
@@ -1992,6 +1996,9 @@ impl Serialize for IndirectInterface {
         struct Helper {
             #[serde(rename = "@xml:id", skip_serializing_if = "Option::is_none")]
             id: Option<String>,
+
+            #[serde(flatten)]
+            extension_attributes: ExtensionAttributes,
 
             #[serde(rename(serialize = "ipxact:name", deserialize = "name"))]
             name: String,
@@ -2080,6 +2087,7 @@ impl Serialize for IndirectInterface {
 
         Helper {
             id: self.id.clone(),
+            extension_attributes: self.extension_attributes.clone(),
             name: self.name.clone(),
             display_name: self.display_name.clone(),
             description: self.description.clone(),
@@ -2105,6 +2113,9 @@ impl<'de> Deserialize<'de> for IndirectInterface {
         struct Helper {
             #[serde(rename = "@xml:id", default)]
             id: Option<String>,
+
+            #[serde(flatten)]
+            extension_attributes: ExtensionAttributes,
 
             #[serde(rename(serialize = "ipxact:name", deserialize = "name"))]
             name: String,
@@ -2193,6 +2204,7 @@ impl<'de> Deserialize<'de> for IndirectInterface {
 
         Ok(Self {
             id: helper.id,
+            extension_attributes: helper.extension_attributes,
             name: helper.name,
             display_name: helper.display_name,
             description: helper.description,
@@ -2310,7 +2322,7 @@ impl<'de> Deserialize<'de> for IndirectInterfaceTarget {
 }
 
 /// Bus interface exposed by a component.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct BusInterface {
     #[serde(rename(serialize = "ipxact:name", deserialize = "name"))]
     pub name: String,
@@ -2416,6 +2428,174 @@ impl BusInterface {
             vendor_extensions: None,
             extension_attributes: ExtensionAttributes::default(),
         }
+    }
+}
+
+impl<'de> Deserialize<'de> for BusInterface {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct Helper {
+            #[serde(rename(serialize = "ipxact:name", deserialize = "name"))]
+            name: String,
+
+            #[serde(
+                rename(serialize = "ipxact:displayName", deserialize = "displayName"),
+                default
+            )]
+            display_name: Option<String>,
+
+            #[serde(
+                rename(serialize = "ipxact:description", deserialize = "description"),
+                default
+            )]
+            description: Option<String>,
+
+            #[serde(
+                rename(serialize = "ipxact:isPresent", deserialize = "isPresent"),
+                default
+            )]
+            is_present: Option<BitExpression>,
+
+            #[serde(rename(serialize = "ipxact:busType", deserialize = "busType"))]
+            bus_type: ConfigurableLibraryRef,
+
+            #[serde(
+                rename(
+                    serialize = "ipxact:abstractionTypes",
+                    deserialize = "abstractionTypes"
+                ),
+                default
+            )]
+            abstraction_types: Option<AbstractionTypes>,
+
+            #[serde(rename(serialize = "ipxact:master", deserialize = "master"), default)]
+            master: Option<Master>,
+
+            #[serde(rename(serialize = "ipxact:slave", deserialize = "slave"), default)]
+            slave: Option<Slave>,
+
+            #[serde(rename(serialize = "ipxact:system", deserialize = "system"), default)]
+            system: Option<System>,
+
+            #[serde(
+                rename(serialize = "ipxact:mirroredSlave", deserialize = "mirroredSlave"),
+                default
+            )]
+            mirrored_slave: Option<MirroredSlave>,
+
+            #[serde(
+                rename(serialize = "ipxact:mirroredMaster", deserialize = "mirroredMaster"),
+                default
+            )]
+            mirrored_master: Option<MirroredMaster>,
+
+            #[serde(
+                rename(serialize = "ipxact:mirroredSystem", deserialize = "mirroredSystem"),
+                default
+            )]
+            mirrored_system: Option<MirroredSystem>,
+
+            #[serde(rename(serialize = "ipxact:monitor", deserialize = "monitor"), default)]
+            monitor: Option<Monitor>,
+
+            #[serde(
+                rename(
+                    serialize = "ipxact:connectionRequired",
+                    deserialize = "connectionRequired"
+                ),
+                default
+            )]
+            connection_required: Option<bool>,
+
+            #[serde(
+                rename(serialize = "ipxact:bitsInLau", deserialize = "bitsInLau"),
+                default
+            )]
+            bits_in_lau: Option<UnsignedPositiveLongintExpression>,
+
+            #[serde(
+                rename(serialize = "ipxact:bitSteering", deserialize = "bitSteering"),
+                default
+            )]
+            bit_steering: Option<BitSteeringExpression>,
+
+            #[serde(
+                rename(serialize = "ipxact:endianness", deserialize = "endianness"),
+                default
+            )]
+            endianness: Option<Endianness>,
+
+            #[serde(
+                rename(serialize = "ipxact:parameters", deserialize = "parameters"),
+                default
+            )]
+            parameters: Option<Parameters>,
+
+            #[serde(
+                rename(
+                    serialize = "ipxact:vendorExtensions",
+                    deserialize = "vendorExtensions"
+                ),
+                default
+            )]
+            vendor_extensions: Option<VendorExtensions>,
+
+            #[serde(flatten)]
+            extension_attributes: ExtensionAttributes,
+        }
+
+        let helper = Helper::deserialize(deserializer)?;
+        let mode_count = usize::from(helper.master.is_some())
+            + usize::from(helper.slave.is_some())
+            + usize::from(helper.system.is_some())
+            + usize::from(helper.mirrored_slave.is_some())
+            + usize::from(helper.mirrored_master.is_some())
+            + usize::from(helper.mirrored_system.is_some())
+            + usize::from(helper.monitor.is_some());
+
+        if mode_count != 1 {
+            return Err(D::Error::custom(
+                "busInterface must contain exactly one interface mode",
+            ));
+        }
+
+        let mode = if let Some(master) = helper.master {
+            BusInterfaceMode::Master(master)
+        } else if let Some(slave) = helper.slave {
+            BusInterfaceMode::Slave(slave)
+        } else if let Some(system) = helper.system {
+            BusInterfaceMode::System(system)
+        } else if let Some(mirrored_slave) = helper.mirrored_slave {
+            BusInterfaceMode::MirroredSlave(mirrored_slave)
+        } else if let Some(mirrored_master) = helper.mirrored_master {
+            BusInterfaceMode::MirroredMaster(mirrored_master)
+        } else if let Some(mirrored_system) = helper.mirrored_system {
+            BusInterfaceMode::MirroredSystem(mirrored_system)
+        } else if let Some(monitor) = helper.monitor {
+            BusInterfaceMode::Monitor(monitor)
+        } else {
+            unreachable!("mode_count verified exactly one mode")
+        };
+
+        Ok(Self {
+            name: helper.name,
+            display_name: helper.display_name,
+            description: helper.description,
+            is_present: helper.is_present,
+            bus_type: helper.bus_type,
+            abstraction_types: helper.abstraction_types,
+            mode,
+            connection_required: helper.connection_required,
+            bits_in_lau: helper.bits_in_lau,
+            bit_steering: helper.bit_steering,
+            endianness: helper.endianness,
+            parameters: helper.parameters,
+            vendor_extensions: helper.vendor_extensions,
+            extension_attributes: helper.extension_attributes,
+        })
     }
 }
 
@@ -2687,15 +2867,24 @@ impl LogicalPort {
 }
 
 /// Physical port from this component.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PhysicalPort {
     #[serde(rename(serialize = "ipxact:name", deserialize = "name"))]
     pub name: String,
+
+    #[serde(
+        rename(serialize = "ipxact:partSelect", deserialize = "partSelect"),
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub part_select: Option<PartSelect>,
 }
 
 impl PhysicalPort {
     pub fn new(name: impl Into<String>) -> Self {
-        Self { name: name.into() }
+        Self {
+            name: name.into(),
+            part_select: None,
+        }
     }
 }
 
@@ -2766,6 +2955,12 @@ pub struct AddressSpaceRef {
     pub id: Option<String>,
 
     #[serde(
+        rename(serialize = "ipxact:isPresent", deserialize = "isPresent"),
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub is_present: Option<BitExpression>,
+
+    #[serde(
         rename(serialize = "ipxact:baseAddress", deserialize = "baseAddress"),
         skip_serializing_if = "Option::is_none"
     )]
@@ -2777,6 +2972,7 @@ impl AddressSpaceRef {
         Self {
             address_space_ref: address_space_ref.into(),
             id: None,
+            is_present: None,
             base_address: None,
         }
     }
@@ -3119,6 +3315,12 @@ pub struct TransparentBridge {
 
     #[serde(rename = "@xml:id", skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
+
+    #[serde(
+        rename(serialize = "ipxact:isPresent", deserialize = "isPresent"),
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub is_present: Option<BitExpression>,
 }
 
 /// Container for component remap states.
