@@ -91,6 +91,7 @@ fn register_file_to_ipxact_2009(
 fn register_to_ipxact_2009(register: &base::Register) -> Result<ipxact2009::Register, Error> {
     let mut ipxact_register =
         ipxact2009::Register::new(register.name(), register.offset(), register.size());
+    ipxact_register.description = non_empty_string(register.desc());
 
     for field in register.fields() {
         ipxact_register.field.push(field_to_ipxact_2009(field)?);
@@ -169,6 +170,7 @@ fn register_file_to_ipxact_2022(
 fn register_to_ipxact_2022(register: &base::Register) -> Result<ipxact2022::Register, Error> {
     let mut ipxact_register =
         ipxact2022::Register::new(register.name(), register.offset(), register.size());
+    ipxact_register.description = non_empty_string(register.desc());
 
     for field in register.fields() {
         ipxact_register.field.push(field_to_ipxact_2022(field)?);
@@ -248,6 +250,7 @@ impl TryFrom<&base::Component> for ipxact::Component {
 
 fn register_to_ipxact(reg: &base::Register) -> Result<ipxact::Register, Error> {
     let mut register = ipxact::Register::new(reg.name(), reg.offset(), reg.size());
+    register.description = non_empty_string(reg.desc());
 
     for field in reg.fields() {
         // .filter(|field| {

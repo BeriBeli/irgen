@@ -6,7 +6,7 @@ from xml.sax.saxutils import escape
 from zipfile import ZIP_DEFLATED, ZipFile, ZipInfo
 
 FIXTURE_DIR = Path(__file__).parent
-HEADERS = ["ADDR", "REG", "FIELD", "BIT", "WIDTH", "ATTRIBUTE", "DEFAULT", "DESCRIPTION"]
+HEADERS = ["ADDR", "REG", "REG_DESC", "FIELD", "BIT", "ATTRIBUTE", "DEFAULT", "FIELD_DESC"]
 FIXED_TIMESTAMP = (1980, 1, 1, 0, 0, 0)
 
 CONTENT_TYPES = """<?xml version="1.0" encoding="UTF-8"?>
@@ -58,30 +58,30 @@ ADDRESS_MAP_ROWS = [
 FIXTURES = {
     "conflicting_registers.xlsx": [
         HEADERS,
-        ["0", "reg", "value", "[31:0]", "32", "RW", "0", ""],
-        ["4", "reg", "value", "[31:0]", "32", "RW", "0", ""],
+        ["0", "reg", "", "value", "[31:0]", "RW", "0", ""],
+        ["4", "reg", "", "value", "[31:0]", "RW", "0", ""],
     ],
     "duplicate_fields.xlsx": [
         HEADERS,
-        ["0", "reg", "value", "[31:16]", "16", "RW", "0", ""],
-        ["", "", "value", "[15:0]", "16", "RW", "0", ""],
+        ["0", "reg", "", "value", "[31:16]", "RW", "0", ""],
+        ["", "", "", "value", "[15:0]", "RW", "0", ""],
     ],
     "overlapping_fields.xlsx": [
         HEADERS,
-        ["0", "reg", "high", "[31:8]", "24", "RW", "0", ""],
-        ["", "", "low", "[15:0]", "16", "RW", "0", ""],
+        ["0", "reg", "", "high", "[31:8]", "RW", "0", ""],
+        ["", "", "", "low", "[15:0]", "RW", "0", ""],
     ],
     "invalid_attribute.xlsx": [
         HEADERS,
-        ["0", "reg", "value", "[31:0]", "32", "BAD", "0", ""],
+        ["0", "reg", "", "value", "[31:0]", "BAD", "0", ""],
     ],
     "malformed_range.xlsx": [
         HEADERS,
-        ["0", "reg{n}, n=range(0, nope)", "value", "[31:0]", "32", "RW", "0", ""],
+        ["0", "reg{n}, n=range(0, nope)", "", "value", "[31:0]", "RW", "0", ""],
     ],
     "out_of_range_register.xlsx": [
         HEADERS,
-        ["4", "reg", "value", "[31:0]", "32", "RW", "0", ""],
+        ["4", "reg", "", "value", "[31:0]", "RW", "0", ""],
     ],
 }
 

@@ -17,13 +17,14 @@ const REGISTER_COLUMNS: &[&str] = &[
     "WIDTH",
     "ATTRIBUTE",
     "DEFAULT",
-    "DESCRIPTION",
+    "FIELD_DESC",
 ];
 
 #[derive(Debug)]
 struct RegisterGroup {
     source_row: usize,
     spec: String,
+    description: String,
     offset: u64,
     fields: Vec<ParsedField>,
     ranges: Vec<(u64, u64, String)>,
@@ -222,6 +223,9 @@ pub(crate) fn parse_registers(
             .position(|group| group.spec == spec && group.offset == offset);
 
         if let Some(index) = group_index {
+            if groups[index].description.is_empty() {
+                groups[index].description = register_description(columns, row);
+            }
             if let Err(error) = add_field(config, table, row, block, &mut groups[index], field) {
                 collect_validation(&mut issues, error)?;
             }
@@ -229,6 +233,7 @@ pub(crate) fn parse_registers(
             let mut group = RegisterGroup {
                 source_row: row.number(),
                 spec: spec.into(),
+                description: register_description(columns, row),
                 offset,
                 fields: Vec::new(),
                 ranges: Vec::new(),
@@ -253,7 +258,7 @@ pub(crate) fn parse_registers(
                 Error::validation(
                     table.sheet(),
                     Some(group.source_row),
-                    Some(&columns.width),
+                    Some(&columns.bit),
                     Some(block),
                     Some(&group.spec),
                     "register width must be byte-aligned",
@@ -424,10 +429,11 @@ pub(crate) fn parse_registers(
                     continue;
                 }
             };
-            registers.push(Register::new(
+            registers.push(Register::new_with_description(
                 name,
                 format_address(group.offset),
                 group.width.to_string(),
+                group.description,
                 fields,
             ));
         }
@@ -662,10 +668,11 @@ fn add_register_to_file(
         name.clone(),
         group.source_row,
     ));
-    file.registers.push(Register::new(
+    file.registers.push(Register::new_with_description(
         name,
         format_address(relative_offset),
         group.width.to_string(),
+        group.description.clone(),
         fields,
     ));
 
@@ -705,34 +712,14 @@ fn parse_field(
         ));
     }
     let bit = table.require(row, &columns.bit, Some(block), Some(register))?;
-    let width_text = table.require(row, &columns.width, Some(block), Some(register))?;
     let attribute = table.require(row, &columns.access, Some(block), Some(register))?;
     let reset = table.require(row, &columns.reset, Some(block), Some(register))?;
     let description = row
         .get(&columns.description)
         .unwrap_or(&config.register.default_description);
 
-    let width = parse_u64(
-        table,
-        row,
-        &columns.width,
-        width_text,
-        Some(block),
-        Some(register),
-    )?;
-    if width == 0 {
-        return Err(Error::validation(
-            table.sheet(),
-            Some(row.number()),
-            Some(&columns.width),
-            Some(block),
-            Some(register),
-            "field width must be greater than zero",
-        ));
-    }
-
     let (msb, lsb) = parse_bit_range(config, table, row, block, register, bit)?;
-    let bit_width = msb
+    let width = msb
         .checked_sub(lsb)
         .and_then(|width| width.checked_add(1))
         .ok_or_else(|| {
@@ -745,15 +732,35 @@ fn parse_field(
                 "bit range width overflows u64",
             )
         })?;
-    if config.validation.check_bit_range_matches_width && bit_width != width {
-        return Err(Error::validation(
-            table.sheet(),
-            Some(row.number()),
-            Some(&columns.bit),
+    if let Some(width_text) = row.get(&columns.width) {
+        let explicit_width = parse_u64(
+            table,
+            row,
+            &columns.width,
+            width_text,
             Some(block),
             Some(register),
-            format!("bit range width is {bit_width}, but WIDTH is {width}"),
-        ));
+        )?;
+        if explicit_width == 0 {
+            return Err(Error::validation(
+                table.sheet(),
+                Some(row.number()),
+                Some(&columns.width),
+                Some(block),
+                Some(register),
+                "field width must be greater than zero",
+            ));
+        }
+        if config.validation.check_bit_range_matches_width && explicit_width != width {
+            return Err(Error::validation(
+                table.sheet(),
+                Some(row.number()),
+                Some(&columns.bit),
+                Some(block),
+                Some(register),
+                format!("bit range width is {width}, but WIDTH is {explicit_width}"),
+            ));
+        }
     }
 
     extract_access_value(attribute).map_err(|error| {
@@ -802,6 +809,12 @@ fn parse_field(
         ),
         uses_register_name,
     })
+}
+
+fn register_description(columns: &crate::config::RegisterColumns, row: &Row) -> String {
+    row.get(&columns.register_description)
+        .map(str::to_owned)
+        .unwrap_or_default()
 }
 
 fn add_field(
@@ -1071,6 +1084,22 @@ mod tests {
         Table::for_test("regs", REGISTER_COLUMNS, rows)
     }
 
+    fn table_without_width(rows: &[&[&str]]) -> Table {
+        Table::for_test(
+            "regs",
+            &[
+                "ADDR",
+                "REG",
+                "FIELD",
+                "BIT",
+                "ATTRIBUTE",
+                "DEFAULT",
+                "FIELD_DESC",
+            ],
+            rows,
+        )
+    }
+
     fn parse_registers(
         table: &Table,
         block: &str,
@@ -1252,6 +1281,23 @@ mod tests {
     }
 
     #[test]
+    fn infers_field_width_when_width_column_is_absent() {
+        let table = table_without_width(&[
+            &["0", "reg", "high", "[31:16]", "RW", "0", ""],
+            &["", "", "low", "[15:0]", "RW", "0", ""],
+        ]);
+
+        let (registers, register_files) = parse_registers(&table, "regs", 4).unwrap();
+
+        assert!(register_files.is_empty());
+        assert_eq!(registers[0].size(), "32");
+        assert_eq!(registers[0].fields()[0].offset(), "16");
+        assert_eq!(registers[0].fields()[0].width(), "16");
+        assert_eq!(registers[0].fields()[1].offset(), "0");
+        assert_eq!(registers[0].fields()[1].width(), "16");
+    }
+
+    #[test]
     fn infers_register_size_from_sparse_field_extent() {
         let table = table(&[
             &["0", "reg", "high", "[63:32]", "32", "RW", "0", ""],
@@ -1262,6 +1308,54 @@ mod tests {
 
         assert!(register_files.is_empty());
         assert_eq!(registers[0].size(), "64");
+    }
+
+    #[test]
+    fn reads_optional_register_description_column() {
+        let table = Table::for_test(
+            "regs",
+            &[
+                "ADDR",
+                "REG",
+                "REG_DESC",
+                "FIELD",
+                "BIT",
+                "WIDTH",
+                "ATTRIBUTE",
+                "DEFAULT",
+                "FIELD_DESC",
+            ],
+            &[
+                &[
+                    "0",
+                    "reg",
+                    "",
+                    "high",
+                    "[31:16]",
+                    "16",
+                    "RW",
+                    "0",
+                    "High field",
+                ],
+                &[
+                    "",
+                    "",
+                    "Register level description",
+                    "low",
+                    "[15:0]",
+                    "16",
+                    "RW",
+                    "0",
+                    "Low field",
+                ],
+            ],
+        );
+
+        let (registers, register_files) = parse_registers(&table, "regs", 4).unwrap();
+
+        assert!(register_files.is_empty());
+        assert_eq!(registers[0].desc(), "Register level description");
+        assert_eq!(registers[0].fields()[0].desc(), "High field");
     }
 
     #[test]
@@ -1303,22 +1397,31 @@ mod tests {
         config.columns.register.width = "BitWidth".into();
         config.columns.register.access = "Access".into();
         config.columns.register.reset = "Reset".into();
-        config.columns.register.description = "Desc".into();
+        config.columns.register.description = "FieldDesc".into();
+        config.columns.register.register_description = "RegDesc".into();
         config.register.inherit_address = true;
         config.register.inherit_register = true;
         config.register.blank_field_name = "register_name".into();
         config.register.array.enabled = true;
-        config.register.default_description = "N/A".into();
         config.register.default_array_step_bytes = "0x8".into();
 
         let table = Table::for_test(
             "regs",
             &[
-                "Address", "Register", "Field", "Bits", "BitWidth", "Access", "Reset", "Desc",
+                "Address",
+                "Register",
+                "RegDesc",
+                "Field",
+                "Bits",
+                "BitWidth",
+                "Access",
+                "Reset",
+                "FieldDesc",
             ],
             &[&[
                 "0",
                 "reg{n}, n=range(2)",
+                "",
                 "value",
                 "[31:0]",
                 "32",
@@ -1333,7 +1436,7 @@ mod tests {
 
         assert!(registers.is_empty());
         assert_eq!(register_files[0].range(), "0x8");
-        assert_eq!(register_files[0].regs()[0].fields()[0].desc(), "N/A");
+        assert_eq!(register_files[0].regs()[0].fields()[0].desc(), "");
     }
 
     #[test]

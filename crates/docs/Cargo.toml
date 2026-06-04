@@ -1,0 +1,9 @@
+[package]
+name = "irgen-docs"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+askama = "0.14"
+irgen-model = { path = "../model" }
+thiserror = { workspace = true }

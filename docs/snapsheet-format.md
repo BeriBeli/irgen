@@ -48,7 +48,7 @@ renaming or parser options.
 
 Default configured sheet name: `version`.
 
-| VENDOR | LIBRARY | NAME | VERSION | DESCRIPTION |
+| VENDOR | LIBRARY | NAME | VERSION | DESC |
 | --- | --- | --- | --- | --- |
 | example.com | example | example | 1.0.0 | initial |
 
@@ -58,13 +58,13 @@ Columns:
 - `LIBRARY`: maps to `component.library` in IP-XACT.
 - `NAME`: maps to `component.name` in IP-XACT.
 - `VERSION`: maps to `component.version` in IP-XACT.
-- `DESCRIPTION`: reserved for version update notes.
+- `DESC`: reserved for version update notes.
 
 ## Address-Map Sheet
 
 Default configured sheet name: `address_map`.
 
-| BLOCK | OFFSET | RANGE | DESCRIPTION |
+| BLOCK | OFFSET | RANGE | DESC |
 | --- | --- | --- | --- |
 | noc_reg | 0x8000 | 0x8000 | reg block of noc |
 
@@ -74,20 +74,20 @@ Columns:
   match one address-block name.
 - `OFFSET`: address-block base offset.
 - `RANGE`: address-block size in bytes.
-- `DESCRIPTION`: optional block description.
+- `DESC`: optional block description.
 
 ## Register Sheets
 
 Each register sheet describes the registers under one address block.
 
-| ADDR | REG | FIELD | BIT | WIDTH | ATTRIBUTE | DEFAULT | DESCRIPTION |
+| ADDR | REG | REG_DESC | FIELD | BIT | ATTRIBUTE | DEFAULT | FIELD_DESC |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 0x0 | noc_version | version | [31:0] | 32 | RO | 0x20250101 | noc_version |
-| 0x4 | noc_config | config | [31:0] | 32 | RW | 0x1 | noc_config |
-| 0x1000 | reg{n}, n=range(0, 10, 0x4) | field1 | [31:24] | 8 | RW | 0x0 | example |
-| | | rsvd1 | [23:16] | 8 | RO | 0x0 | |
-| | | field0 | [15:8] | 8 | RW | 0x0 | |
-| | | rsvd0 | [7:0] | 8 | RO | 0x0 | |
+| 0x0 | noc_version | Version information register | version | [31:0] | RO | 0x20250101 | noc_version |
+| 0x4 | noc_config | Configuration register | config | [31:0] | RW | 0x1 | noc_config |
+| 0x1000 | reg{n}, n=range(0, 10, 0x4) | Repeated example register | field1 | [31:24] | RW | 0x0 | example |
+| | | | rsvd1 | [23:16] | RO | 0x0 | |
+| | | | field0 | [15:8] | RW | 0x0 | |
+| | | | rsvd0 | [7:0] | RO | 0x0 | |
 
 Columns:
 
@@ -96,14 +96,19 @@ Columns:
   the generated register-file array.
 - `REG`: register name. It must be unique within the address block unless
   multiple rows describe fields in the same register.
+- `REG_DESC`: optional register-level description. If multiple rows
+  describe the same register, the first non-empty value is used.
 - `FIELD`: field name. It must be unique within the register. In configured
   mode, a blank field name can default to the register name.
-- `BIT`: field bit range, such as `[31:0]` or `[20]`.
-- `WIDTH`: field width in bits.
+- `BIT`: field bit range, such as `[31:0]` or `[20]`. Field width is inferred
+  from this range.
 - `ATTRIBUTE`: field access type, such as `RW`, `RO`, or `W1C`.
 - `DEFAULT`: field reset value.
-- `DESCRIPTION`: field description. Configured mode can fill blank values with
-  the configured default description.
+- `FIELD_DESC`: optional field description. Blank values remain blank unless a
+  non-empty default description is configured.
+
+For backwards compatibility, workbooks may still include the old `WIDTH` field
+size column. If present, it is optional and can be checked against `BIT`.
 
 ## Number And Array Rules
 
@@ -161,15 +166,15 @@ address = "ADDR"
 register = "REG"
 field = "FIELD"
 bit = "BIT"
-width = "WIDTH"
 access = "ATTRIBUTE"
 reset = "DEFAULT"
-description = "DESCRIPTION"
+register_description = "REG_DESC"
+description = "FIELD_DESC"
 
 [register]
 inherit_address = true
 inherit_register = true
-default_description = "No Description"
+default_description = ""
 default_array_step_bytes = "0x4"
 max_array_elements = 1000000
 register_size = "infer_from_fields"
@@ -188,7 +193,6 @@ reject_duplicate_registers = true
 reject_overlapping_registers = true
 reject_duplicate_fields = true
 reject_overlapping_fields = true
-check_bit_range_matches_width = true
 check_reset_fits_width = true
 
 [reserved]
@@ -205,7 +209,7 @@ Configured mode can reject common workbook issues before output generation:
 - duplicate or overlapping fields
 - malformed array syntax
 - invalid access attributes
-- bit ranges that do not match `WIDTH`
+- legacy `WIDTH` values that do not match bit ranges, when the column is present
 - reset values that do not fit inside the field width
 - register arrays that exceed `max_array_elements`
 

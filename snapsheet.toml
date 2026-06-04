@@ -19,15 +19,15 @@ address = "ADDR"
 register = "REG"
 field = "FIELD"
 bit = "BIT"
-width = "WIDTH"
 access = "ATTRIBUTE"
 reset = "DEFAULT"
-description = "DESCRIPTION"
+register_description = "REG_DESC"
+description = "FIELD_DESC"
 
 [register]
 inherit_address = true
 inherit_register = true
-default_description = "No Description"
+default_description = ""
 default_array_step_bytes = "0x4"
 max_array_elements = 1000000
 register_size = "infer_from_fields"
@@ -47,7 +47,6 @@ reject_overlapping_registers = true
 reject_duplicate_fields = true
 reject_overlapping_fields = true
 check_reset_fits_width = true
-check_bit_range_matches_width = true
 
 [reserved]
 enabled = true

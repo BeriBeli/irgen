@@ -24,6 +24,8 @@ pub struct Register {
     name: String,
     offset: String,
     size: String,
+    #[serde(default)]
+    desc: String,
     fields: Vec<Field>,
 }
 
@@ -138,10 +140,21 @@ impl Block {
 
 impl Register {
     pub fn new(name: String, offset: String, size: String, fields: Vec<Field>) -> Self {
+        Self::new_with_description(name, offset, size, String::new(), fields)
+    }
+
+    pub fn new_with_description(
+        name: String,
+        offset: String,
+        size: String,
+        desc: String,
+        fields: Vec<Field>,
+    ) -> Self {
         Self {
             name,
             offset,
             size,
+            desc,
             fields,
         }
     }
@@ -154,6 +167,9 @@ impl Register {
     }
     pub fn size(&self) -> &str {
         &self.size
+    }
+    pub fn desc(&self) -> &str {
+        &self.desc
     }
     pub fn fields(&self) -> &[Field] {
         &self.fields

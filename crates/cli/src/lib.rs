@@ -7,6 +7,8 @@ use clap::{Parser, ValueEnum, error::ErrorKind};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum OutputFormat {
+    #[value(name = "html")]
+    Html,
     #[value(name = "ipxact")]
     Ipxact,
     #[value(name = "ralf")]
@@ -18,6 +20,7 @@ pub enum OutputFormat {
 impl OutputFormat {
     fn extension(self) -> &'static str {
         match self {
+            Self::Html => "html",
             Self::Ipxact => "xml",
             Self::Ralf => "ralf",
             Self::SystemRdl => "rdl",
@@ -98,6 +101,8 @@ pub fn run(args: impl Iterator<Item = OsString>) -> Result<Option<PathBuf>, CliE
     }
     .map_err(|error| CliError::Runtime(error.to_string()))?;
     let output = match args.format {
+        OutputFormat::Html => irgen_docs::serialize_html(&loaded.compo)
+            .map_err(|error| CliError::Runtime(error.to_string()))?,
         OutputFormat::Ipxact => match args.ipxact_version {
             IpxactVersion::V2009 => irgen_model::serialize_ipxact_2009_xml(&loaded.compo)
                 .map_err(|error| CliError::Runtime(error.to_string()))?,

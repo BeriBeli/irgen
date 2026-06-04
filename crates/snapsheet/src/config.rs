@@ -175,6 +175,7 @@ impl Default for AddressBlockColumns {
 pub struct RegisterColumns {
     pub address: String,
     pub register: String,
+    pub register_description: String,
     pub field: String,
     pub bit: String,
     pub width: String,
@@ -184,13 +185,12 @@ pub struct RegisterColumns {
 }
 
 impl RegisterColumns {
-    pub(crate) fn required(&self) -> [&str; 8] {
+    pub(crate) fn required(&self) -> [&str; 7] {
         [
             self.address.as_str(),
             self.register.as_str(),
             self.field.as_str(),
             self.bit.as_str(),
-            self.width.as_str(),
             self.access.as_str(),
             self.reset.as_str(),
             self.description.as_str(),
@@ -203,12 +203,13 @@ impl Default for RegisterColumns {
         Self {
             address: "ADDR".into(),
             register: "REG".into(),
+            register_description: "REG_DESC".into(),
             field: "FIELD".into(),
             bit: "BIT".into(),
             width: "WIDTH".into(),
             access: "ATTRIBUTE".into(),
             reset: "DEFAULT".into(),
-            description: "DESCRIPTION".into(),
+            description: "FIELD_DESC".into(),
         }
     }
 }
@@ -242,7 +243,7 @@ impl Default for RegisterConfig {
         Self {
             inherit_address: false,
             inherit_register: false,
-            default_description: "No Description".into(),
+            default_description: String::new(),
             default_array_step_bytes: "0x4".into(),
             max_array_elements: 1_000_000,
             register_size: "infer_from_fields".into(),
@@ -396,6 +397,7 @@ width = "BitWidth"
 access = "Access"
 reset = "Reset"
 description = "Desc"
+register_description = "RegisterDesc"
 
 [register]
 default_array_step_bytes = "0x8"
@@ -424,6 +426,7 @@ patterns = ["^reserved[0-9]+$", "^rsvd[0-9]+$"]
         assert_eq!(config.workbook.sheets.address_map, "map");
         assert_eq!(config.workbook.sheets.register_sheet, "block_name");
         assert_eq!(config.columns.register.address, "Address");
+        assert_eq!(config.columns.register.register_description, "RegisterDesc");
         assert_eq!(config.register.parse_default_array_step_bytes(), Ok(0x8));
         assert_eq!(config.register.default_description, "N/A");
         assert!(config.register.blank_field_name_uses_register());

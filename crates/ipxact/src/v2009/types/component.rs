@@ -286,6 +286,12 @@ pub struct Register {
     #[serde(rename(serialize = "spirit:name", deserialize = "name"))]
     pub name: String,
 
+    #[serde(
+        rename(serialize = "spirit:description", deserialize = "description"),
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub description: Option<String>,
+
     #[serde(rename(serialize = "spirit:addressOffset", deserialize = "addressOffset"))]
     pub address_offset: String,
 
@@ -304,6 +310,7 @@ impl Register {
     ) -> Self {
         Self {
             name: name.into(),
+            description: None,
             address_offset: address_offset.into(),
             size: size.into(),
             field: Vec::new(),

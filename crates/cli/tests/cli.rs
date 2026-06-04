@@ -75,6 +75,17 @@ fn accepts_explicit_ipxact_format() {
 }
 
 #[test]
+fn accepts_explicit_html_format() {
+    let Command::Convert(parsed) = parse_args(args(&["input.xlsx", "--format", "html"])).unwrap()
+    else {
+        panic!("expected conversion command");
+    };
+
+    assert_eq!(parsed.format, OutputFormat::Html);
+    assert_eq!(parsed.output, PathBuf::from("input.html"));
+}
+
+#[test]
 fn defaults_ipxact_version_to_2014() {
     let Command::Convert(parsed) = parse_args(args(&["input.xlsx"])).unwrap() else {
         panic!("expected conversion command");
@@ -196,6 +207,34 @@ fn generates_systemrdl_output() {
     assert!(rdl.contains("addrmap regs {"));
     assert!(rdl.contains("reg status {"));
     assert!(rdl.contains("sw = r;"));
+    let _ = fs::remove_file(output);
+}
+
+#[test]
+fn generates_html_output() {
+    let input = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../example_simple.xlsx");
+    let output = std::env::temp_dir().join(format!(
+        "irgen-cli-test-{}-example.html",
+        std::process::id()
+    ));
+    let _ = fs::remove_file(&output);
+
+    let result = run([
+        OsString::from(input),
+        OsString::from("--format"),
+        OsString::from("html"),
+        OsString::from("-o"),
+        OsString::from(&output),
+    ]
+    .into_iter())
+    .unwrap();
+
+    assert_eq!(result.as_deref(), Some(output.as_path()));
+    let html = fs::read_to_string(&output).unwrap();
+    assert!(html.contains("<!doctype html>"));
+    assert!(!html.contains("Print or Save PDF"));
+    assert!(html.contains("Fields for Register: status"));
+    assert!(html.contains("<strong>Value After Reset:</strong> 0"));
     let _ = fs::remove_file(output);
 }
 

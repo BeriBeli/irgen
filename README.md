@@ -2,7 +2,7 @@
 
 `irgen` is a CLI-first register spreadsheet converter. It reads structured
 Excel snapsheets and emits register-oriented IEEE 1685 IP-XACT XML, Synopsys
-RALF, or SystemRDL.
+RALF, SystemRDL, or HTML register documentation.
 
 ## Quick Start
 
@@ -31,6 +31,13 @@ Generate RALF or SystemRDL:
 ```sh
 cargo run -p irgen-cli -- example_simple.xlsx --format ralf
 cargo run -p irgen-cli -- example_simple.xlsx --format systemrdl
+```
+
+Generate DWC-style HTML register documentation. The generated page is
+self-contained and can be opened directly in a browser:
+
+```sh
+cargo run -p irgen-cli -- example_simple.xlsx --format html
 ```
 
 Write to a specific output path:
