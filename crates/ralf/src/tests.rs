@@ -34,7 +34,7 @@ fn serializes_block_registers_and_fields_from_base_model() {
 
     assert_eq!(
         ralf,
-        "block regs {\n  bytes 4;\n  register status @'h4 {\n    bytes 4;\n    field ready @0 {\n      bits 1;\n      access ro;\n      hard_reset 'h1;\n      doc { ready flag }\n    }\n  }\n}\n"
+        "block regs {\n  bytes 4;\n  register status @'h4 {\n    bytes 4;\n    field ready (ready) @0 {\n      bits 1;\n      access ro;\n      hard_reset 'h1;\n      doc { ready flag }\n    }\n  }\n}\n"
     );
 }
 
@@ -77,8 +77,54 @@ fn serializes_register_file_arrays_from_base_model() {
 
     assert!(ralf.contains("regfile lane[4] @'h10 +'h20 {"));
     assert!(ralf.contains("register control @'h0 {"));
-    assert!(ralf.contains("field enable @0 {"));
+    assert!(ralf.contains("field enable (enable) @0 {"));
     assert!(ralf.contains("access rw;"));
+}
+
+#[test]
+fn maps_base_field_hdl_paths_to_ralf_instances() {
+    let component = Component::new(
+        "example.com".into(),
+        "IP".into(),
+        "example".into(),
+        "1.0".into(),
+        vec![BaseBlock::new(
+            "regs".into(),
+            "0x0".into(),
+            "0x20".into(),
+            "32".into(),
+            vec![BaseRegister::new(
+                "status".into(),
+                "0x4".into(),
+                "32".into(),
+                vec![
+                    BaseField::new_with_hdl_path(
+                        "ready".into(),
+                        "0".into(),
+                        "1".into(),
+                        "RO".into(),
+                        "0".into(),
+                        "".into(),
+                        Some("u_status.ready_q".into()),
+                    ),
+                    BaseField::new(
+                        "reserved0".into(),
+                        "1".into(),
+                        "1".into(),
+                        "RO".into(),
+                        "0".into(),
+                        "".into(),
+                    ),
+                ],
+            )],
+        )],
+    );
+
+    let ralf = serialize_ralf(&component).unwrap();
+
+    assert!(ralf.contains("field ready (u_status.ready_q) @0 {"));
+    assert!(ralf.contains("field reserved0 @1 {"));
+    assert!(!ralf.contains("field reserved0 (reserved0)"));
 }
 
 #[test]

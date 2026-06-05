@@ -186,6 +186,8 @@ pub struct RegisterColumns {
     pub access: String,
     pub reset: String,
     pub description: String,
+    pub path: String,
+    pub setting: String,
 }
 
 impl RegisterColumns {
@@ -214,6 +216,8 @@ impl Default for RegisterColumns {
             access: "ATTR".into(),
             reset: "RESET".into(),
             description: "FIELD_DESC".into(),
+            path: "PATH".into(),
+            setting: "SETTING".into(),
         }
     }
 }

@@ -26,6 +26,8 @@ pub struct Register {
     size: String,
     #[serde(default)]
     desc: String,
+    #[serde(default)]
+    csr_setting: Option<String>,
     fields: Vec<Field>,
 }
 
@@ -46,6 +48,8 @@ pub struct Field {
     attr: String,
     reset: String,
     desc: String,
+    #[serde(default)]
+    hdl_path: Option<String>,
 }
 
 impl Component {
@@ -150,11 +154,23 @@ impl Register {
         desc: String,
         fields: Vec<Field>,
     ) -> Self {
+        Self::new_with_description_and_csr_setting(name, offset, size, desc, None, fields)
+    }
+
+    pub fn new_with_description_and_csr_setting(
+        name: String,
+        offset: String,
+        size: String,
+        desc: String,
+        csr_setting: Option<String>,
+        fields: Vec<Field>,
+    ) -> Self {
         Self {
             name,
             offset,
             size,
             desc,
+            csr_setting,
             fields,
         }
     }
@@ -170,6 +186,9 @@ impl Register {
     }
     pub fn desc(&self) -> &str {
         &self.desc
+    }
+    pub fn csr_setting(&self) -> Option<&str> {
+        self.csr_setting.as_deref()
     }
     pub fn fields(&self) -> &[Field] {
         &self.fields
@@ -219,6 +238,18 @@ impl Field {
         reset: String,
         desc: String,
     ) -> Self {
+        Self::new_with_hdl_path(name.clone(), offset, width, attr, reset, desc, Some(name))
+    }
+
+    pub fn new_with_hdl_path(
+        name: String,
+        offset: String,
+        width: String,
+        attr: String,
+        reset: String,
+        desc: String,
+        hdl_path: Option<String>,
+    ) -> Self {
         Self {
             name,
             offset,
@@ -226,6 +257,7 @@ impl Field {
             attr,
             reset,
             desc,
+            hdl_path,
         }
     }
 
@@ -246,5 +278,8 @@ impl Field {
     }
     pub fn desc(&self) -> &str {
         &self.desc
+    }
+    pub fn hdl_path(&self) -> Option<&str> {
+        self.hdl_path.as_deref()
     }
 }

@@ -66,6 +66,9 @@ The crate is split across focused modules:
   The `range` value is treated as the byte stride between register-file array
   elements, matching the snapsheet array semantics.
 - `Field` maps to `field <name> @<bitOffset> { ... }`.
+- `Field::hdl_path` maps to the RALF field instance HDL path, emitted as
+  `field <name> (<hdl_path>) @<bitOffset> { ... }`. Reserved fields do not emit
+  HDL paths.
 - `Field::width` maps to `bits`.
 - `Field::attr` maps to RALF access mnemonics such as `rw`, `ro`, `w1c`,
   `wsrc`, and `wo1`.
@@ -100,7 +103,6 @@ populate. The snapsheet-to-RALF conversion still does not populate:
 - multiple physical-interface domains
 - memories and virtual registers
 - nested sub-block or subsystem composition
-- HDL backdoor paths
 - volatile flags
 - soft reset types
 - enum values

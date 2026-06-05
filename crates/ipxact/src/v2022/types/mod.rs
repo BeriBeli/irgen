@@ -54,7 +54,8 @@ pub use arrays::{Array, Arrays};
 pub use bit_stride::BitStride;
 pub use component::{
     AddressBlock, Component, Field, FieldAccessPolicies, FieldAccessPolicy, MemoryMap, MemoryMaps,
-    Register, RegisterFile, RegisterFileArray, Reset, Resets,
+    Register, RegisterFile, RegisterFileArray, Reset, Resets, SimpleAccessHandles,
+    SlicedAccessHandles,
 };
 pub use domain_type::{DomainType, DomainTypes};
 pub use field_access_policies::FieldAccessPolicies as FieldAccessPolicyDefinitions;

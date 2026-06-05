@@ -10,6 +10,8 @@ use ip_xact::v2009::types as ipxact2009;
 use ip_xact::v2014::types as ipxact;
 use ip_xact::v2022::types as ipxact2022;
 
+const SNPS_NAMESPACE: &str = "http://www.synopsys.com";
+
 pub fn serialize_ipxact_xml(base: &base::Component) -> Result<String, Error> {
     Ok(quick_xml::se::to_string(&ipxact::Component::try_from(
         base,
@@ -51,6 +53,7 @@ impl TryFrom<&base::Component> for ipxact2009::Component {
 fn block_to_ipxact_2009(block: &base::Block) -> Result<ipxact2009::AddressBlock, Error> {
     let mut address_block =
         ipxact2009::AddressBlock::new(block.name(), block.offset(), block.range(), block.size());
+    address_block.vendor_extensions = Some(block_hdl_path_vendor_extensions_2009(block.name()));
 
     for register in block.regs() {
         address_block
@@ -92,6 +95,7 @@ fn register_to_ipxact_2009(register: &base::Register) -> Result<ipxact2009::Regi
     let mut ipxact_register =
         ipxact2009::Register::new(register.name(), register.offset(), register.size());
     ipxact_register.description = non_empty_string(register.desc());
+    ipxact_register.vendor_extensions = register_vendor_extensions(register);
 
     for field in register.fields() {
         ipxact_register.field.push(field_to_ipxact_2009(field)?);
@@ -106,6 +110,7 @@ fn field_to_ipxact_2009(field: &base::Field) -> Result<ipxact2009::Field, Error>
     ipxact_field.access = Some(access_value(field)?);
     ipxact_field.modified_write_value = modified_write_value(field)?;
     ipxact_field.read_action = read_action_value(field)?;
+    ipxact_field.vendor_extensions = hdl_path_vendor_extensions_2009(field);
     Ok(ipxact_field)
 }
 
@@ -132,6 +137,7 @@ impl TryFrom<&base::Component> for ipxact2022::Component {
 fn block_to_ipxact_2022(block: &base::Block) -> Result<ipxact2022::AddressBlock, Error> {
     let mut address_block =
         ipxact2022::AddressBlock::new(block.name(), block.offset(), block.range(), block.size());
+    address_block.access_handles = Some(block_hdl_path_access_handles_2022(block.name()));
 
     for register in block.regs() {
         address_block
@@ -171,6 +177,7 @@ fn register_to_ipxact_2022(register: &base::Register) -> Result<ipxact2022::Regi
     let mut ipxact_register =
         ipxact2022::Register::new(register.name(), register.offset(), register.size());
     ipxact_register.description = non_empty_string(register.desc());
+    ipxact_register.vendor_extensions = register_vendor_extensions(register);
 
     for field in register.fields() {
         ipxact_register.field.push(field_to_ipxact_2022(field)?);
@@ -182,6 +189,7 @@ fn register_to_ipxact_2022(register: &base::Register) -> Result<ipxact2022::Regi
 fn field_to_ipxact_2022(field: &base::Field) -> Result<ipxact2022::Field, Error> {
     let mut ipxact_field = ipxact2022::Field::new(field.name(), field.offset(), field.width());
     ipxact_field.description = non_empty_string(field.desc());
+    ipxact_field.access_handles = hdl_path_access_handles_2022(field);
     if !field.reset().is_empty() {
         ipxact_field.resets = Some(ipxact2022::Resets {
             reset: vec![ipxact2022::Reset::new(field.reset())],
@@ -210,6 +218,7 @@ impl TryFrom<&base::Component> for ipxact::Component {
         for blk in base.blks() {
             let mut address_block =
                 ipxact::AddressBlock::new(blk.name(), blk.offset(), blk.range(), blk.size());
+            address_block.access_handles = Some(block_hdl_path_access_handles_2014(blk.name()));
 
             for reg in blk.regs() {
                 address_block.add_register(register_to_ipxact(reg)?);
@@ -251,6 +260,7 @@ impl TryFrom<&base::Component> for ipxact::Component {
 fn register_to_ipxact(reg: &base::Register) -> Result<ipxact::Register, Error> {
     let mut register = ipxact::Register::new(reg.name(), reg.offset(), reg.size());
     register.description = non_empty_string(reg.desc());
+    register.vendor_extensions = register_vendor_extensions(reg);
 
     for field in reg.fields() {
         // .filter(|field| {
@@ -268,11 +278,108 @@ fn register_to_ipxact(reg: &base::Register) -> Result<ipxact::Register, Error> {
         ipxact_field.resets = Some(ipxact::Resets {
             reset: vec![ipxact::Reset::new(field.reset())],
         });
+        ipxact_field.access_handles = hdl_path_access_handles_2014(field);
 
         register.add_field(ipxact_field);
     }
 
     Ok(register)
+}
+
+fn register_vendor_extensions(register: &base::Register) -> Option<ipxact::VendorExtensions> {
+    register.csr_setting().map(|csr_setting| {
+        snps_single_child_vendor_extensions("register", "csrSetting", csr_setting)
+    })
+}
+
+fn hdl_path_vendor_extensions_2009(field: &base::Field) -> Option<ipxact::VendorExtensions> {
+    if is_reserved_field_name(field.name()) {
+        return None;
+    }
+
+    field
+        .hdl_path()
+        .map(|hdl_path| snps_single_child_vendor_extensions("field", "hdl_path", hdl_path))
+}
+
+fn block_hdl_path_vendor_extensions_2009(block_name: &str) -> ipxact::VendorExtensions {
+    snps_single_child_vendor_extensions(
+        "addressBlock",
+        "hdl_path",
+        &block_hdl_path_macro(block_name),
+    )
+}
+
+fn hdl_path_access_handles_2014(field: &base::Field) -> Option<ipxact::NonIndexedAccessHandles> {
+    if is_reserved_field_name(field.name()) {
+        return None;
+    }
+
+    field.hdl_path().map(non_indexed_access_handles_2014)
+}
+
+fn block_hdl_path_access_handles_2014(block_name: &str) -> ipxact::NonIndexedAccessHandles {
+    non_indexed_access_handles_2014(&block_hdl_path_macro(block_name))
+}
+
+fn non_indexed_access_handles_2014(path: impl Into<String>) -> ipxact::NonIndexedAccessHandles {
+    let slice = ipxact::Slice::new(ipxact::PathSegment::new(path.into()));
+    ipxact::NonIndexedAccessHandles {
+        access_handle: vec![ipxact::NonIndexedLeafAccessHandle::new(ipxact::Slices {
+            slice: vec![slice],
+        })],
+    }
+}
+
+fn hdl_path_access_handles_2022(field: &base::Field) -> Option<ipxact2022::SlicedAccessHandles> {
+    if is_reserved_field_name(field.name()) {
+        return None;
+    }
+
+    field.hdl_path().map(sliced_access_handles_2022)
+}
+
+fn block_hdl_path_access_handles_2022(block_name: &str) -> ipxact2022::SlicedAccessHandles {
+    sliced_access_handles_2022(block_hdl_path_macro(block_name))
+}
+
+fn sliced_access_handles_2022(path: impl Into<String>) -> ipxact2022::SlicedAccessHandles {
+    ipxact2022::SlicedAccessHandles::new(path)
+}
+
+fn snps_single_child_vendor_extensions(
+    element: &str,
+    child: &str,
+    value: &str,
+) -> ipxact::VendorExtensions {
+    let mut vendor_extensions = ipxact::VendorExtensions::new();
+    let mut snps_element = ipxact::VendorExtension::new(format!("snps:{element}"))
+        .with_attribute("xmlns:snps", SNPS_NAMESPACE);
+    snps_element.add_child(ipxact::VendorExtension::new(format!("snps:{child}")).with_text(value));
+    vendor_extensions.add(snps_element);
+    vendor_extensions
+}
+
+fn block_hdl_path_macro(block_name: &str) -> String {
+    let mut macro_name = String::from("`");
+    for ch in block_name.chars() {
+        if ch.is_ascii_alphanumeric() {
+            macro_name.push(ch.to_ascii_uppercase());
+        } else {
+            macro_name.push('_');
+        }
+    }
+    macro_name.push_str("_HDL_PATH");
+    macro_name
+}
+
+fn is_reserved_field_name(field_name: &str) -> bool {
+    let lower = field_name.to_ascii_lowercase();
+    let suffix = lower
+        .strip_prefix("reserved")
+        .or_else(|| lower.strip_prefix("rsvd"));
+
+    suffix.is_some_and(|suffix| !suffix.is_empty() && suffix.chars().all(|ch| ch.is_ascii_digit()))
 }
 
 fn non_empty_string(value: &str) -> Option<String> {

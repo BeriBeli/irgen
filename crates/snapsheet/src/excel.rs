@@ -131,6 +131,10 @@ impl Table {
         Ok(())
     }
 
+    pub(crate) fn has_column(&self, column: &str) -> bool {
+        self.headers.contains(column)
+    }
+
     pub(crate) fn require<'a>(
         &self,
         row: &'a Row,

@@ -57,6 +57,11 @@ The crate is split across focused modules:
 - Field access attributes map to `sw`, `hw`, and when needed `onread` or
   `onwrite` properties.
 - Field descriptions map to `desc`.
+- HDL backdoor paths use standard SystemRDL properties. Address-block
+  instances receive a built-in `hdl_path` assignment with a SystemVerilog macro
+  placeholder such as `` `REGS_HDL_PATH``. Fields receive `hdl_path_slice` with
+  their configured path, since the standard `hdl_path` property is not valid on
+  field components. Reserved fields do not receive `hdl_path_slice`.
 
 ## Implementation Notes
 
@@ -67,6 +72,8 @@ The crate is split across focused modules:
   arrays, bit ranges, register-file arrays, and base conversion.
 - CLI coverage includes explicit `--format systemrdl` parsing, example export,
   and current-directory `.rdl` default output behavior.
+- CI validates generated `.rdl` examples with the Python
+  `systemrdl-compiler` package by running compile and elaboration.
 
 ## Current Limitations
 
@@ -79,7 +86,6 @@ populate. The snapsheet-to-SystemRDL conversion does not yet populate:
 - explicit nested addrmap/subsystem composition beyond address blocks
 - constraints
 - external component references
-- HDL path or tool-specific properties
 
 Those features should be enabled in CLI output by first extending the snapsheet
 schema and `irgen_model::base`, then mapping the new data into the existing

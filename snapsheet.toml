@@ -25,6 +25,8 @@ access = "ATTR"
 reset = "RESET"
 register_description = "REG_DESC"
 description = "FIELD_DESC"
+path = "PATH"
+setting = "SETTING"
 
 [register]
 inherit_address = true

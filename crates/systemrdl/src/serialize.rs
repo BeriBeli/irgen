@@ -60,14 +60,14 @@ fn write_property_decl(writer: &mut Writer, property: &PropertyDecl) {
         .iter()
         .map(ComponentKind::as_str)
         .collect::<Vec<_>>()
-        .join(", ");
+        .join(" | ");
     let default = property
         .default
         .as_ref()
-        .map(|value| format!(" = {}", expr(value)))
+        .map(|value| format!(" default = {};", expr(value)))
         .unwrap_or_default();
     writer.line(format!(
-        "property {} {{ type = {}; component = {{{components}}};{default}; }};",
+        "property {} {{ type = {}; component = {components};{default} }};",
         property.name,
         property.ty.as_str()
     ));

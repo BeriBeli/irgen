@@ -25,6 +25,7 @@ struct RegisterGroup {
     source_row: usize,
     spec: String,
     description: String,
+    csr_setting: Option<String>,
     offset: u64,
     fields: Vec<ParsedField>,
     ranges: Vec<(u64, u64, String)>,
@@ -54,6 +55,7 @@ struct ParsedField {
     source_row: usize,
     field: Field,
     uses_register_name: bool,
+    hdl_path_uses_register_name: bool,
 }
 
 impl ParsedField {
@@ -66,13 +68,20 @@ impl ParsedField {
             return self.field.clone();
         }
 
-        Field::new(
+        let hdl_path = if self.hdl_path_uses_register_name {
+            Some(register.into())
+        } else {
+            self.field.hdl_path().map(str::to_owned)
+        };
+
+        Field::new_with_hdl_path(
             register.into(),
             self.field.offset().into(),
             self.field.width().into(),
             self.field.attr().into(),
             self.field.reset().into(),
             self.field.desc().into(),
+            hdl_path,
         )
     }
 }
@@ -226,6 +235,9 @@ pub(crate) fn parse_registers(
             if groups[index].description.is_empty() {
                 groups[index].description = register_description(columns, row);
             }
+            if let Err(error) = update_csr_setting(config, table, row, block, &mut groups[index]) {
+                collect_validation(&mut issues, error)?;
+            }
             if let Err(error) = add_field(config, table, row, block, &mut groups[index], field) {
                 collect_validation(&mut issues, error)?;
             }
@@ -234,11 +246,15 @@ pub(crate) fn parse_registers(
                 source_row: row.number(),
                 spec: spec.into(),
                 description: register_description(columns, row),
+                csr_setting: None,
                 offset,
                 fields: Vec::new(),
                 ranges: Vec::new(),
                 width: 0,
             };
+            if let Err(error) = update_csr_setting(config, table, row, block, &mut group) {
+                collect_validation(&mut issues, error)?;
+            }
             match add_field(config, table, row, block, &mut group, field) {
                 Ok(()) => groups.push(group),
                 Err(error) => collect_validation(&mut issues, error)?,
@@ -406,11 +422,12 @@ pub(crate) fn parse_registers(
                     continue;
                 }
             };
-            registers.push(Register::new_with_description(
+            registers.push(Register::new_with_description_and_csr_setting(
                 name,
                 format_address(group.offset),
                 group.width.to_string(),
                 group.description,
+                group.csr_setting,
                 fields,
             ));
         }
@@ -669,13 +686,15 @@ fn add_register_to_file(
         name.clone(),
         group.source_row,
     ));
-    file.registers.push(Register::new_with_description(
-        name,
-        format_address(relative_offset),
-        group.width.to_string(),
-        group.description.clone(),
-        fields,
-    ));
+    file.registers
+        .push(Register::new_with_description_and_csr_setting(
+            name,
+            format_address(relative_offset),
+            group.width.to_string(),
+            group.description.clone(),
+            group.csr_setting.clone(),
+            fields,
+        ));
 
     Ok(())
 }
@@ -718,6 +737,8 @@ fn parse_field(
     let description = row
         .get(&columns.description)
         .unwrap_or(&config.register.default_description);
+    let (hdl_path, hdl_path_uses_register_name) =
+        hdl_path_from_row(table, row, &columns.path, name, uses_register_name);
 
     let (msb, lsb) = parse_bit_range(config, table, row, block, register, bit)?;
     let width = msb
@@ -800,22 +821,98 @@ fn parse_field(
 
     Ok(ParsedField {
         source_row: row.number(),
-        field: Field::new(
+        field: Field::new_with_hdl_path(
             name.into(),
             lsb.to_string(),
             width.to_string(),
             attribute.into(),
             reset.into(),
             description.into(),
+            hdl_path,
         ),
         uses_register_name,
+        hdl_path_uses_register_name,
     })
+}
+
+fn hdl_path_from_row(
+    table: &Table,
+    row: &Row,
+    column: &str,
+    field_name: &str,
+    uses_register_name: bool,
+) -> (Option<String>, bool) {
+    if table.has_column(column) {
+        match row.get(column) {
+            Some("-") => (None, false),
+            Some(path) => (Some(path.into()), false),
+            None => (Some(field_name.into()), uses_register_name),
+        }
+    } else {
+        (Some(field_name.into()), uses_register_name)
+    }
 }
 
 fn register_description(columns: &crate::config::RegisterColumns, row: &Row) -> String {
     row.get(&columns.register_description)
         .map(str::to_owned)
         .unwrap_or_default()
+}
+
+fn update_csr_setting(
+    config: &SnapsheetConfig,
+    table: &Table,
+    row: &Row,
+    block: &str,
+    group: &mut RegisterGroup,
+) -> Result<(), Error> {
+    let column = &config.columns.register.setting;
+    let Some(csr_setting) = row.get(column) else {
+        return Ok(());
+    };
+    validate_csr_setting(config, table, row, block, &group.spec, csr_setting)?;
+
+    if let Some(existing) = &group.csr_setting {
+        if existing != csr_setting {
+            return Err(Error::validation(
+                table.sheet(),
+                Some(row.number()),
+                Some(column),
+                Some(block),
+                Some(&group.spec),
+                format!("CSR setting `{csr_setting}` conflicts with earlier `{existing}`"),
+            ));
+        }
+    } else {
+        group.csr_setting = Some(csr_setting.into());
+    }
+
+    Ok(())
+}
+
+fn validate_csr_setting(
+    config: &SnapsheetConfig,
+    table: &Table,
+    row: &Row,
+    block: &str,
+    register: &str,
+    csr_setting: &str,
+) -> Result<(), Error> {
+    if matches!(
+        csr_setting,
+        "NO_CSR_TEST" | "NO_CSR_R_TEST" | "NO_CSR_W_TEST"
+    ) {
+        return Ok(());
+    }
+
+    Err(Error::validation(
+        table.sheet(),
+        Some(row.number()),
+        Some(&config.columns.register.setting),
+        Some(block),
+        Some(register),
+        format!("CSR setting `{csr_setting}` must be NO_CSR_TEST, NO_CSR_R_TEST, or NO_CSR_W_TEST"),
+    ))
 }
 
 fn add_field(
@@ -1089,6 +1186,42 @@ mod tests {
         Table::for_test(
             "regs",
             &["ADDR", "REG", "FIELD", "BIT", "ATTR", "RESET", "FIELD_DESC"],
+            rows,
+        )
+    }
+
+    fn table_with_path(rows: &[&[&str]]) -> Table {
+        Table::for_test(
+            "regs",
+            &[
+                "ADDR",
+                "REG",
+                "FIELD",
+                "BIT",
+                "WIDTH",
+                "ATTR",
+                "RESET",
+                "FIELD_DESC",
+                "PATH",
+            ],
+            rows,
+        )
+    }
+
+    fn table_with_csr_setting(rows: &[&[&str]]) -> Table {
+        Table::for_test(
+            "regs",
+            &[
+                "ADDR",
+                "REG",
+                "FIELD",
+                "BIT",
+                "WIDTH",
+                "ATTR",
+                "RESET",
+                "FIELD_DESC",
+                "SETTING",
+            ],
             rows,
         )
     }
@@ -1412,6 +1545,136 @@ mod tests {
 
         assert!(registers.is_empty());
         assert_eq!(register_files[0].regs()[0].fields()[0].name(), "reg");
+    }
+
+    #[test]
+    fn reads_optional_hdl_path_column() {
+        let table = table_with_path(&[
+            &[
+                "0",
+                "reg",
+                "done",
+                "[31:16]",
+                "16",
+                "RW",
+                "0",
+                "",
+                "dut.reg.done_q",
+            ],
+            &["", "", "masked", "[15:8]", "8", "RO", "0", "", "-"],
+        ]);
+
+        let (registers, register_files) = parse_registers(&table, "regs", 4).unwrap();
+
+        assert!(register_files.is_empty());
+        assert_eq!(registers[0].fields()[0].hdl_path(), Some("dut.reg.done_q"));
+        assert_eq!(registers[0].fields()[1].hdl_path(), None);
+    }
+
+    #[test]
+    fn reads_optional_csr_setting_column() {
+        let table = table_with_csr_setting(&[
+            &[
+                "0",
+                "skip_all_tests",
+                "high",
+                "[31:16]",
+                "16",
+                "RW",
+                "0",
+                "",
+                "NO_CSR_TEST",
+            ],
+            &["", "", "low", "[15:0]", "16", "RW", "0", "", ""],
+            &["4", "normal", "value", "[31:0]", "32", "RW", "0", "", ""],
+        ]);
+
+        let (registers, register_files) = parse_registers(&table, "regs", 8).unwrap();
+
+        assert!(register_files.is_empty());
+        assert_eq!(registers[0].csr_setting(), Some("NO_CSR_TEST"));
+        assert_eq!(registers[1].csr_setting(), None);
+    }
+
+    #[test]
+    fn rejects_invalid_csr_setting() {
+        let table = table_with_csr_setting(&[&[
+            "0",
+            "reg",
+            "value",
+            "[31:0]",
+            "32",
+            "RW",
+            "0",
+            "",
+            "NO_CSR_X_TEST",
+        ]]);
+
+        let error = parse_registers(&table, "regs", 4).unwrap_err();
+
+        assert!(error.to_string().contains(
+            "CSR setting `NO_CSR_X_TEST` must be NO_CSR_TEST, NO_CSR_R_TEST, or NO_CSR_W_TEST"
+        ));
+    }
+
+    #[test]
+    fn rejects_conflicting_csr_settings_for_same_register() {
+        let table = table_with_csr_setting(&[
+            &[
+                "0",
+                "reg",
+                "high",
+                "[31:16]",
+                "16",
+                "RW",
+                "0",
+                "",
+                "NO_CSR_R_TEST",
+            ],
+            &[
+                "",
+                "",
+                "low",
+                "[15:0]",
+                "16",
+                "RW",
+                "0",
+                "",
+                "NO_CSR_W_TEST",
+            ],
+        ]);
+
+        let error = parse_registers(&table, "regs", 4).unwrap_err();
+
+        assert!(
+            error
+                .to_string()
+                .contains("CSR setting `NO_CSR_W_TEST` conflicts with earlier `NO_CSR_R_TEST`")
+        );
+    }
+
+    #[test]
+    fn default_hdl_path_tracks_register_file_child_field_name() {
+        let table = table_with_path(&[&[
+            "0",
+            "reg{n}, n=range(1, 3)",
+            "",
+            "[31:0]",
+            "32",
+            "RW",
+            "0",
+            "",
+            "",
+        ]]);
+
+        let (registers, register_files) = parse_registers(&table, "regs", 12).unwrap();
+
+        assert!(registers.is_empty());
+        assert_eq!(register_files[0].regs()[0].fields()[0].name(), "reg");
+        assert_eq!(
+            register_files[0].regs()[0].fields()[0].hdl_path(),
+            Some("reg")
+        );
     }
 
     #[test]

@@ -210,6 +210,15 @@ pub struct AddressBlock {
         default
     )]
     pub register_file: Vec<RegisterFile>,
+
+    #[serde(
+        rename(
+            serialize = "spirit:vendorExtensions",
+            deserialize = "vendorExtensions"
+        ),
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub vendor_extensions: Option<VendorExtensions>,
 }
 
 impl AddressBlock {
@@ -226,6 +235,7 @@ impl AddressBlock {
             width: width.into(),
             register: Vec::new(),
             register_file: Vec::new(),
+            vendor_extensions: None,
         }
     }
 
@@ -300,6 +310,15 @@ pub struct Register {
 
     #[serde(rename(serialize = "spirit:field", deserialize = "field"), default)]
     pub field: Vec<Field>,
+
+    #[serde(
+        rename(
+            serialize = "spirit:vendorExtensions",
+            deserialize = "vendorExtensions"
+        ),
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub vendor_extensions: Option<VendorExtensions>,
 }
 
 impl Register {
@@ -314,6 +333,7 @@ impl Register {
             address_offset: address_offset.into(),
             size: size.into(),
             field: Vec::new(),
+            vendor_extensions: None,
         }
     }
 
@@ -360,6 +380,15 @@ pub struct Field {
         skip_serializing_if = "Option::is_none"
     )]
     pub read_action: Option<String>,
+
+    #[serde(
+        rename(
+            serialize = "spirit:vendorExtensions",
+            deserialize = "vendorExtensions"
+        ),
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub vendor_extensions: Option<VendorExtensions>,
 }
 
 impl Field {
@@ -376,6 +405,7 @@ impl Field {
             access: None,
             modified_write_value: None,
             read_action: None,
+            vendor_extensions: None,
         }
     }
 }

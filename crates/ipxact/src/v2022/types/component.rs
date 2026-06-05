@@ -2,6 +2,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use super::vendor_extensions::VendorExtensions;
+
 pub const NAMESPACE: &str = "http://www.accellera.org/XMLSchema/IPXACT/1685-2022";
 pub const XSI_NAMESPACE: &str = "http://www.w3.org/2001/XMLSchema-instance";
 pub const SCHEMA_LOCATION: &str = "http://www.accellera.org/XMLSchema/IPXACT/1685-2022 http://www.accellera.org/XMLSchema/IPXACT/1685-2022/index.xsd";
@@ -108,6 +110,12 @@ pub struct AddressBlock {
     #[serde(rename(serialize = "ipxact:name", deserialize = "name"))]
     pub name: String,
 
+    #[serde(
+        rename(serialize = "ipxact:accessHandles", deserialize = "accessHandles"),
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub access_handles: Option<SlicedAccessHandles>,
+
     #[serde(rename(serialize = "ipxact:baseAddress", deserialize = "baseAddress"))]
     pub base_address: String,
 
@@ -128,6 +136,15 @@ pub struct AddressBlock {
         default
     )]
     pub register_file: Vec<RegisterFile>,
+
+    #[serde(
+        rename(
+            serialize = "ipxact:vendorExtensions",
+            deserialize = "vendorExtensions"
+        ),
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub vendor_extensions: Option<VendorExtensions>,
 }
 
 impl AddressBlock {
@@ -139,11 +156,13 @@ impl AddressBlock {
     ) -> Self {
         Self {
             name: name.into(),
+            access_handles: None,
             base_address: base_address.into(),
             range: range.into(),
             width: width.into(),
             register: Vec::new(),
             register_file: Vec::new(),
+            vendor_extensions: None,
         }
     }
 }
@@ -197,6 +216,129 @@ pub struct RegisterFileArray {
     pub dim: Vec<String>,
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct SimpleAccessHandles {
+    #[serde(
+        rename(serialize = "ipxact:accessHandle", deserialize = "accessHandle"),
+        default
+    )]
+    pub access_handle: Vec<SimpleAccessHandle>,
+}
+
+impl SimpleAccessHandles {
+    pub fn new(path_segment: impl Into<String>) -> Self {
+        Self {
+            access_handle: vec![SimpleAccessHandle::new(path_segment)],
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SimpleAccessHandle {
+    #[serde(rename(serialize = "ipxact:viewRef", deserialize = "viewRef"), default)]
+    pub view_ref: Vec<String>,
+
+    #[serde(rename(serialize = "ipxact:pathSegments", deserialize = "pathSegments"))]
+    pub path_segments: PathSegments,
+}
+
+impl SimpleAccessHandle {
+    pub fn new(path_segment: impl Into<String>) -> Self {
+        Self {
+            view_ref: Vec::new(),
+            path_segments: PathSegments::new(path_segment),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct SlicedAccessHandles {
+    #[serde(
+        rename(serialize = "ipxact:accessHandle", deserialize = "accessHandle"),
+        default
+    )]
+    pub access_handle: Vec<SlicedAccessHandle>,
+}
+
+impl SlicedAccessHandles {
+    pub fn new(path_segment: impl Into<String>) -> Self {
+        Self {
+            access_handle: vec![SlicedAccessHandle::new(path_segment)],
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SlicedAccessHandle {
+    #[serde(rename(serialize = "ipxact:viewRef", deserialize = "viewRef"), default)]
+    pub view_ref: Vec<String>,
+
+    #[serde(rename(serialize = "ipxact:slices", deserialize = "slices"))]
+    pub slices: Slices,
+}
+
+impl SlicedAccessHandle {
+    pub fn new(path_segment: impl Into<String>) -> Self {
+        Self {
+            view_ref: Vec::new(),
+            slices: Slices {
+                slice: vec![Slice::new(path_segment)],
+            },
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct Slices {
+    #[serde(rename(serialize = "ipxact:slice", deserialize = "slice"), default)]
+    pub slice: Vec<Slice>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Slice {
+    #[serde(rename(serialize = "ipxact:pathSegments", deserialize = "pathSegments"))]
+    pub path_segments: PathSegments,
+}
+
+impl Slice {
+    pub fn new(path_segment: impl Into<String>) -> Self {
+        Self {
+            path_segments: PathSegments::new(path_segment),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct PathSegments {
+    #[serde(
+        rename(serialize = "ipxact:pathSegment", deserialize = "pathSegment"),
+        default
+    )]
+    pub path_segment: Vec<PathSegment>,
+}
+
+impl PathSegments {
+    pub fn new(path_segment: impl Into<String>) -> Self {
+        Self {
+            path_segment: vec![PathSegment::new(path_segment)],
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PathSegment {
+    #[serde(rename = "$text")]
+    pub value: String,
+}
+
+impl PathSegment {
+    pub fn new(value: impl Into<String>) -> Self {
+        Self {
+            value: value.into(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Register {
     #[serde(rename(serialize = "ipxact:name", deserialize = "name"))]
@@ -208,6 +350,12 @@ pub struct Register {
     )]
     pub description: Option<String>,
 
+    #[serde(
+        rename(serialize = "ipxact:accessHandles", deserialize = "accessHandles"),
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub access_handles: Option<SimpleAccessHandles>,
+
     #[serde(rename(serialize = "ipxact:addressOffset", deserialize = "addressOffset"))]
     pub address_offset: String,
 
@@ -216,6 +364,15 @@ pub struct Register {
 
     #[serde(rename(serialize = "ipxact:field", deserialize = "field"), default)]
     pub field: Vec<Field>,
+
+    #[serde(
+        rename(
+            serialize = "ipxact:vendorExtensions",
+            deserialize = "vendorExtensions"
+        ),
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub vendor_extensions: Option<VendorExtensions>,
 }
 
 impl Register {
@@ -227,9 +384,11 @@ impl Register {
         Self {
             name: name.into(),
             description: None,
+            access_handles: None,
             address_offset: address_offset.into(),
             size: size.into(),
             field: Vec::new(),
+            vendor_extensions: None,
         }
     }
 }
@@ -244,6 +403,12 @@ pub struct Field {
         skip_serializing_if = "Option::is_none"
     )]
     pub description: Option<String>,
+
+    #[serde(
+        rename(serialize = "ipxact:accessHandles", deserialize = "accessHandles"),
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub access_handles: Option<SlicedAccessHandles>,
 
     #[serde(rename(serialize = "ipxact:bitOffset", deserialize = "bitOffset"))]
     pub bit_offset: String,
@@ -265,6 +430,15 @@ pub struct Field {
         skip_serializing_if = "Option::is_none"
     )]
     pub field_access_policies: Option<FieldAccessPolicies>,
+
+    #[serde(
+        rename(
+            serialize = "ipxact:vendorExtensions",
+            deserialize = "vendorExtensions"
+        ),
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub vendor_extensions: Option<VendorExtensions>,
 }
 
 impl Field {
@@ -276,10 +450,12 @@ impl Field {
         Self {
             name: name.into(),
             description: None,
+            access_handles: None,
             bit_offset: bit_offset.into(),
             bit_width: bit_width.into(),
             resets: None,
             field_access_policies: None,
+            vendor_extensions: None,
         }
     }
 }

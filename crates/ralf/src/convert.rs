@@ -27,6 +27,7 @@ pub fn component_to_document(component: &base::Component) -> Result<Document, Er
         for block in component.blks() {
             system.body.blocks.push(BlockInstance {
                 name: block.name().into(),
+                hdl_path: Some(block_hdl_path_macro(block.name())),
                 offset: ralf_number("block offset", block.offset())?,
                 ..BlockInstance::default()
             });
@@ -100,6 +101,7 @@ fn register_instance_from_base(
     for field in register.fields() {
         definition.fields.push(FieldInstance {
             name: field.name().into(),
+            hdl_path: field_hdl_path(field),
             offset: Some(ralf_number("field bit offset", field.offset())?),
             definition: Some(field_from_base(field)?),
             ..FieldInstance::default()
@@ -127,4 +129,34 @@ fn field_from_base(field: &base::Field) -> Result<Field, Error> {
         doc: (!field.desc().trim().is_empty()).then(|| sanitize_doc(field.desc())),
         ..Field::default()
     })
+}
+
+fn field_hdl_path(field: &base::Field) -> Option<String> {
+    if is_reserved_field_name(field.name()) {
+        return None;
+    }
+
+    field.hdl_path().map(str::to_owned)
+}
+
+fn block_hdl_path_macro(block_name: &str) -> String {
+    let mut macro_name = String::from("`");
+    for ch in block_name.chars() {
+        if ch.is_ascii_alphanumeric() {
+            macro_name.push(ch.to_ascii_uppercase());
+        } else {
+            macro_name.push('_');
+        }
+    }
+    macro_name.push_str("_HDL_PATH");
+    macro_name
+}
+
+fn is_reserved_field_name(field_name: &str) -> bool {
+    let lower = field_name.to_ascii_lowercase();
+    let suffix = lower
+        .strip_prefix("reserved")
+        .or_else(|| lower.strip_prefix("rsvd"));
+
+    suffix.is_some_and(|suffix| !suffix.is_empty() && suffix.chars().all(|ch| ch.is_ascii_digit()))
 }

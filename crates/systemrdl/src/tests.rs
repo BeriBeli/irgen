@@ -110,14 +110,25 @@ fn converts_base_component_to_systemrdl() {
                 "status".into(),
                 "0x4".into(),
                 "32".into(),
-                vec![BaseField::new(
-                    "ready".into(),
-                    "0".into(),
-                    "1".into(),
-                    "RO".into(),
-                    "0x1".into(),
-                    "ready flag".into(),
-                )],
+                vec![
+                    BaseField::new_with_hdl_path(
+                        "ready".into(),
+                        "0".into(),
+                        "1".into(),
+                        "RO".into(),
+                        "0x1".into(),
+                        "ready flag".into(),
+                        Some("u_status.ready_q".into()),
+                    ),
+                    BaseField::new(
+                        "reserved0".into(),
+                        "1".into(),
+                        "1".into(),
+                        "RO".into(),
+                        "0".into(),
+                        "".into(),
+                    ),
+                ],
             )],
         )],
     );
@@ -128,6 +139,10 @@ fn converts_base_component_to_systemrdl() {
     assert!(rdl.contains("addrmap regs {"));
     assert!(rdl.contains("reg status {"));
     assert!(rdl.contains("field ready {"));
+    assert!(rdl.contains("hdl_path_slice = '{\"u_status.ready_q\"};"));
+    assert!(rdl.contains("regs->hdl_path = \"`REGS_HDL_PATH\";"));
+    assert!(!rdl.contains("hdl_path_slice = '{\"reserved0\"};"));
+    assert!(!rdl.contains("irgen_hdl_path"));
     assert!(rdl.contains("sw = r;"));
     assert!(rdl.contains("ready[0:0] = 0x1;"));
     assert!(rdl.contains("status @ 0x4;"));

@@ -80,14 +80,14 @@ Columns:
 
 Each register sheet describes the registers under one address block.
 
-| ADDR | REG | REG_DESC | FIELD | BIT | ATTR | RESET | FIELD_DESC |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| 0x0 | noc_version | Version information register | version | [31:0] | RO | 0x20250101 | noc_version |
-| 0x4 | noc_config | Configuration register | config | [31:0] | RW | 0x1 | noc_config |
-| 0x1000 | reg{n}, n=range(0, 10, 0x4) | Repeated example register | field1 | [31:24] | RW | 0x0 | example |
-| | | | rsvd1 | [23:16] | RO | 0x0 | |
-| | | | field0 | [15:8] | RW | 0x0 | |
-| | | | rsvd0 | [7:0] | RO | 0x0 | |
+| ADDR | REG | REG_DESC | FIELD | BIT | ATTR | RESET | FIELD_DESC | PATH | SETTING |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 0x0 | noc_version | Version information register | version | [31:0] | RO | 0x20250101 | noc_version | dut.noc_version.version | |
+| 0x4 | noc_config | Configuration register | config | [31:0] | RW | 0x1 | noc_config | dut.noc_config.config | NO_CSR_TEST |
+| 0x1000 | reg{n}, n=range(0, 10, 0x4) | Repeated example register | field1 | [31:24] | RW | 0x0 | example | dut.reg.field1 | |
+| | | | rsvd1 | [23:16] | RO | 0x0 | | - | |
+| | | | field0 | [15:8] | RW | 0x0 | | dut.reg.field0 | |
+| | | | rsvd0 | [7:0] | RO | 0x0 | | - | |
 
 Columns:
 
@@ -106,6 +106,14 @@ Columns:
 - `RESET`: field reset value.
 - `FIELD_DESC`: optional field description. Blank values remain blank unless a
   non-empty default description is configured.
+- `PATH`: optional HDL backdoor path. When the column is absent or the cell is
+  blank, non-reserved fields default to the field name. A value of `-` means the
+  field has no HDL path. Reserved fields never emit HDL paths.
+- `SETTING`: optional Synopsys IP-XACT pre-defined-test exclusion for the
+  register. Blank cells mean the register remains testable and no
+  `csrSetting` extension is emitted. Non-empty cells must be `NO_CSR_TEST`,
+  `NO_CSR_R_TEST`, or `NO_CSR_W_TEST`; repeated rows for the same register must
+  use the same non-empty value.
 
 For backwards compatibility, workbooks may still include the old `WIDTH` field
 size column. If present, it is optional and can be checked against `BIT`.
@@ -172,6 +180,8 @@ access = "ATTR"
 reset = "RESET"
 register_description = "REG_DESC"
 description = "FIELD_DESC"
+path = "PATH"
+setting = "SETTING"
 
 [register]
 inherit_address = true

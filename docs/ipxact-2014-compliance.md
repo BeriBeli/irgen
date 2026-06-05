@@ -21,6 +21,50 @@ CLI path plus all eight root documents listed by the vendored 2014
 IEEE 1685-2009 and IEEE 1685-2022 are P2 multi-version compliance work. They
 are not blockers for the current 2014 milestone.
 
+## HDL Path Compatibility
+
+The generated IP-XACT 2014 and 2022 outputs carry HDL backdoor paths through standard
+`accessHandles`, not a vendor extension:
+
+```xml
+<ipxact:accessHandles>
+  <ipxact:accessHandle>
+    <ipxact:slices>
+      <ipxact:slice>
+        <ipxact:pathSegments>
+          <ipxact:pathSegment>
+            <ipxact:pathSegmentName>...</ipxact:pathSegmentName>
+          </ipxact:pathSegment>
+        </ipxact:pathSegments>
+      </ipxact:slice>
+    </ipxact:slices>
+  </ipxact:accessHandle>
+</ipxact:accessHandles>
+```
+
+IP-XACT 2022 uses the same access-handle structure, with the path segment value
+serialized as text content of `ipxact:pathSegment` per the 2022 schema.
+
+The narrower IP-XACT 2009 emitter still uses the Synopsys `snps:hdl_path`
+vendor extension because that version does not provide the same standard
+register-model access-handle structure.
+
+Register-level Synopsys pre-defined-test exclusions from the snapsheet
+`SETTING` column remain Synopsys-specific vendor metadata:
+
+```xml
+<ipxact:vendorExtensions>
+  <snps:register xmlns:snps="http://www.synopsys.com">
+    <snps:csrSetting>NO_CSR_TEST</snps:csrSetting>
+  </snps:register>
+</ipxact:vendorExtensions>
+```
+
+The `snps:*` metadata is intentional for stability with Synopsys-oriented
+flows, but it is not portable IEEE 1685 metadata. Other consumers may ignore the
+`snps:*` extension elements, strip them, or need a downstream conversion to
+their own vendor-extension namespace.
+
 ## Evidence
 
 - `crates/model` emits IP-XACT through `ip_xact::v2014`.

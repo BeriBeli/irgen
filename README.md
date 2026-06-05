@@ -31,6 +31,12 @@ CLI emits the component, memory map, register, register-file, field, reset, and
 access-policy structures needed by snapsheet register tables, but it is not yet
 a complete model for every IP-XACT root document or schema feature.
 
+HDL backdoor paths in IP-XACT 2014 and 2022 are emitted through standard
+`accessHandles`. The narrower 2009 emitter keeps using the Synopsys
+`snps:hdl_path` vendor extension because that version does not provide the same
+standard register-model access-handle structure. The optional `SETTING` column
+also emits Synopsys `snps:csrSetting` metadata for pre-defined-test exclusion.
+
 Generate RALF or SystemRDL:
 
 ```sh
