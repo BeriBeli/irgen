@@ -15,8 +15,8 @@ const REGISTER_COLUMNS: &[&str] = &[
     "FIELD",
     "BIT",
     "WIDTH",
-    "ATTRIBUTE",
-    "DEFAULT",
+    "ATTR",
+    "RESET",
     "FIELD_DESC",
 ];
 
@@ -113,7 +113,7 @@ fn validate_field_identifier(
 
 #[derive(Debug)]
 struct RegisterFileGroup {
-    name: String,
+    ordinal: usize,
     source_row: usize,
     spec: String,
     offset: u64,
@@ -301,31 +301,8 @@ pub(crate) fn parse_registers(
                         continue;
                     }
 
-                    let name = array.name.clone();
-                    if let Some(previous_row) = duplicate_name_row(
-                        config.validation.reject_duplicate_registers,
-                        &names,
-                        &name,
-                    ) {
-                        collect_validation(
-                            &mut issues,
-                            Error::validation(
-                                table.sheet(),
-                                Some(group.source_row),
-                                Some(&columns.register),
-                                Some(block),
-                                Some(&name),
-                                format!(
-                                    "register name collides with the definition on row {previous_row}"
-                                ),
-                            ),
-                        )?;
-                        continue;
-                    }
-                    names.insert(name.clone(), group.source_row);
-
                     register_file_groups.push(RegisterFileGroup {
-                        name,
+                        ordinal: register_file_groups.len(),
                         source_row: group.source_row,
                         spec: group.spec.clone(),
                         offset: group.offset,
@@ -443,6 +420,25 @@ pub(crate) fn parse_registers(
     let mut register_files = Vec::new();
 
     for file in register_file_groups {
+        let file_name = register_file_name(&file);
+        if let Some(previous_row) = duplicate_name_row(
+            config.validation.reject_duplicate_registers,
+            &names,
+            &file_name,
+        ) {
+            collect_validation(
+                &mut issues,
+                Error::validation(
+                    table.sheet(),
+                    Some(file.source_row),
+                    Some(&columns.register),
+                    Some(block),
+                    Some(&file_name),
+                    format!("register name collides with the definition on row {previous_row}"),
+                ),
+            )?;
+            continue;
+        }
         let Some(last_element_offset) = file
             .array
             .dim()
@@ -484,7 +480,7 @@ pub(crate) fn parse_registers(
                     Some(file.source_row),
                     Some(&columns.address),
                     Some(block),
-                    Some(&file.name),
+                    Some(&file_name),
                     "register address overflows u64",
                 ),
             )?;
@@ -498,7 +494,7 @@ pub(crate) fn parse_registers(
                     Some(file.source_row),
                     Some(&columns.address),
                     Some(block),
-                    Some(&file.name),
+                    Some(&file_name),
                     format!(
                         "register range {}..{} exceeds address block range {}",
                         format_address(file.offset),
@@ -522,15 +518,16 @@ pub(crate) fn parse_registers(
                     Some(file.source_row),
                     Some(&columns.address),
                     Some(block),
-                    Some(&file.name),
+                    Some(&file_name),
                     format!("address overlaps register `{other_name}` from row {other_row}"),
                 ),
             )?;
             continue;
         }
-        occupied.push((file.offset, end, file.name.clone(), file.source_row));
+        names.insert(file_name.clone(), file.source_row);
+        occupied.push((file.offset, end, file_name.clone(), file.source_row));
         register_files.push(RegisterFile::new(
-            file.name,
+            file_name,
             format_address(file.offset),
             format_address(file.array.stride),
             file.array.dim().to_string(),
@@ -543,6 +540,10 @@ pub(crate) fn parse_registers(
     }
 
     Ok((registers, register_files))
+}
+
+fn register_file_name(file: &RegisterFileGroup) -> String {
+    format!("regfile_{}", file.ordinal)
 }
 
 fn duplicate_name_row(
@@ -1087,15 +1088,7 @@ mod tests {
     fn table_without_width(rows: &[&[&str]]) -> Table {
         Table::for_test(
             "regs",
-            &[
-                "ADDR",
-                "REG",
-                "FIELD",
-                "BIT",
-                "ATTRIBUTE",
-                "DEFAULT",
-                "FIELD_DESC",
-            ],
+            &["ADDR", "REG", "FIELD", "BIT", "ATTR", "RESET", "FIELD_DESC"],
             rows,
         )
     }
@@ -1170,7 +1163,7 @@ mod tests {
         let (registers, register_files) = parse_registers(&table, "regs", 0x1_0000_0100).unwrap();
 
         assert!(registers.is_empty());
-        assert_eq!(register_files[0].name(), "reg");
+        assert_eq!(register_files[0].name(), "regfile_0");
         assert_eq!(register_files[0].offset(), "0x100000000");
         assert_eq!(register_files[0].range(), "0x4");
         assert_eq!(register_files[0].dim(), "2");
@@ -1193,7 +1186,7 @@ mod tests {
         let (registers, register_files) = parse_registers(&table, "regs", 0x200).unwrap();
 
         assert!(registers.is_empty());
-        assert_eq!(register_files[0].name(), "reg");
+        assert_eq!(register_files[0].name(), "regfile_0");
         assert_eq!(register_files[0].offset(), "0x100");
         assert_eq!(register_files[0].range(), "0x10");
         assert_eq!(register_files[0].dim(), "2");
@@ -1249,7 +1242,7 @@ mod tests {
 
         assert!(registers.is_empty());
         assert_eq!(register_files.len(), 1);
-        assert_eq!(register_files[0].name(), "MATRIX_CTRL_ADDR");
+        assert_eq!(register_files[0].name(), "regfile_0");
         assert_eq!(register_files[0].offset(), "0xD00");
         assert_eq!(register_files[0].range(), "0x10");
         assert_eq!(register_files[0].dim(), "10");
@@ -1257,6 +1250,40 @@ mod tests {
         assert_eq!(register_files[0].regs()[0].offset(), "0x0");
         assert_eq!(register_files[0].regs()[1].name(), "MATRIX_INFO0_ADDR");
         assert_eq!(register_files[0].regs()[1].offset(), "0x4");
+    }
+
+    #[test]
+    fn names_register_file_by_parse_order_when_children_have_no_common_prefix() {
+        let table = table(&[
+            &[
+                "0x80",
+                "CTRL{n}, n=range(0,4,8)",
+                "enable",
+                "[31:0]",
+                "32",
+                "RW",
+                "0",
+                "",
+            ],
+            &[
+                "0x84",
+                "STATUS{n}, n=range(0,4,8)",
+                "ready",
+                "[31:0]",
+                "32",
+                "RO",
+                "0",
+                "",
+            ],
+        ]);
+
+        let (registers, register_files) = parse_registers(&table, "regs", 0x100).unwrap();
+
+        assert!(registers.is_empty());
+        assert_eq!(register_files.len(), 1);
+        assert_eq!(register_files[0].name(), "regfile_0");
+        assert_eq!(register_files[0].regs()[0].name(), "CTRL");
+        assert_eq!(register_files[0].regs()[1].name(), "STATUS");
     }
 
     #[test]
@@ -1321,8 +1348,8 @@ mod tests {
                 "FIELD",
                 "BIT",
                 "WIDTH",
-                "ATTRIBUTE",
-                "DEFAULT",
+                "ATTR",
+                "RESET",
                 "FIELD_DESC",
             ],
             &[
@@ -1606,7 +1633,7 @@ mod tests {
                 "0",
                 "",
             ],
-            &["8", "reg", "value", "[31:0]", "32", "RW", "0", ""],
+            &["8", "regfile_0", "value", "[31:0]", "32", "RW", "0", ""],
         ]);
 
         let error = parse_registers(&table, "regs", 12).unwrap_err();

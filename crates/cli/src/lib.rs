@@ -7,6 +7,8 @@ use clap::{Parser, ValueEnum, error::ErrorKind};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum OutputFormat {
+    #[value(name = "all")]
+    All,
     #[value(name = "html")]
     Html,
     #[value(name = "ipxact")]
@@ -18,12 +20,13 @@ pub enum OutputFormat {
 }
 
 impl OutputFormat {
-    fn extension(self) -> &'static str {
+    fn file_extension(self) -> Option<&'static str> {
         match self {
-            Self::Html => "html",
-            Self::Ipxact => "xml",
-            Self::Ralf => "ralf",
-            Self::SystemRdl => "rdl",
+            Self::All => None,
+            Self::Html => None,
+            Self::Ipxact => Some("xml"),
+            Self::Ralf => Some("ralf"),
+            Self::SystemRdl => Some("rdl"),
         }
     }
 }
@@ -100,32 +103,126 @@ pub fn run(args: impl Iterator<Item = OsString>) -> Result<Option<PathBuf>, CliE
         irgen_snapsheet::load_excel(&args.input)
     }
     .map_err(|error| CliError::Runtime(error.to_string()))?;
+    if args.format == OutputFormat::Html {
+        write_html_output(&loaded.compo, &args.output)?;
+        return Ok(Some(args.output));
+    }
+    if args.format == OutputFormat::All {
+        write_all_outputs(&loaded.compo, &args.output)?;
+        return Ok(Some(args.output));
+    }
+
     let output = match args.format {
-        OutputFormat::Html => irgen_docs::serialize_html(&loaded.compo)
-            .map_err(|error| CliError::Runtime(error.to_string()))?,
-        OutputFormat::Ipxact => match args.ipxact_version {
-            IpxactVersion::V2009 => irgen_model::serialize_ipxact_2009_xml(&loaded.compo)
-                .map_err(|error| CliError::Runtime(error.to_string()))?,
-            IpxactVersion::V2014 => irgen_model::serialize_ipxact_xml(&loaded.compo)
-                .map_err(|error| CliError::Runtime(error.to_string()))?,
-            IpxactVersion::V2022 => irgen_model::serialize_ipxact_2022_xml(&loaded.compo)
-                .map_err(|error| CliError::Runtime(error.to_string()))?,
-        },
+        OutputFormat::All => unreachable!("ALL output is handled before string serialization"),
+        OutputFormat::Html => unreachable!("HTML output is handled before string serialization"),
+        OutputFormat::Ipxact => serialize_ipxact(&loaded.compo, args.ipxact_version)?,
         OutputFormat::Ralf => irgen_ralf::serialize_ralf(&loaded.compo)
             .map_err(|error| CliError::Runtime(error.to_string()))?,
         OutputFormat::SystemRdl => irgen_systemrdl::serialize_systemrdl(&loaded.compo)
             .map_err(|error| CliError::Runtime(error.to_string()))?,
     };
-    fs::write(&args.output, output).map_err(|error| {
-        CliError::Runtime(format!(
-            "failed to write {}: {error}",
-            args.output.display()
-        ))
-    })?;
+    write_text_output(&args.output, output)?;
     if let Some(schema) = args.validate_xsd {
         validate_ipxact_xml(&schema, &args.output).map_err(CliError::Runtime)?;
     }
     Ok(Some(args.output))
+}
+
+fn write_all_outputs(
+    component: &irgen_model::base::Component,
+    output: &Path,
+) -> Result<(), CliError> {
+    fs::create_dir_all(output).map_err(|error| {
+        CliError::Runtime(format!(
+            "failed to create output directory {}: {error}",
+            output.display()
+        ))
+    })?;
+
+    write_text_output(
+        &output.join("ipxact-2009.xml"),
+        serialize_ipxact(component, IpxactVersion::V2009)?,
+    )?;
+    write_text_output(
+        &output.join("ipxact-2014.xml"),
+        serialize_ipxact(component, IpxactVersion::V2014)?,
+    )?;
+    write_text_output(
+        &output.join("ipxact-2022.xml"),
+        serialize_ipxact(component, IpxactVersion::V2022)?,
+    )?;
+    write_text_output(
+        &output.join("ralf.ralf"),
+        irgen_ralf::serialize_ralf(component)
+            .map_err(|error| CliError::Runtime(error.to_string()))?,
+    )?;
+    write_text_output(
+        &output.join("systemrdl.rdl"),
+        irgen_systemrdl::serialize_systemrdl(component)
+            .map_err(|error| CliError::Runtime(error.to_string()))?,
+    )?;
+    write_html_output(component, &output.join("html"))?;
+    Ok(())
+}
+
+fn serialize_ipxact(
+    component: &irgen_model::base::Component,
+    version: IpxactVersion,
+) -> Result<String, CliError> {
+    match version {
+        IpxactVersion::V2009 => irgen_model::serialize_ipxact_2009_xml(component)
+            .map_err(|error| CliError::Runtime(error.to_string())),
+        IpxactVersion::V2014 => irgen_model::serialize_ipxact_xml(component)
+            .map_err(|error| CliError::Runtime(error.to_string())),
+        IpxactVersion::V2022 => irgen_model::serialize_ipxact_2022_xml(component)
+            .map_err(|error| CliError::Runtime(error.to_string())),
+    }
+}
+
+fn write_html_output(
+    component: &irgen_model::base::Component,
+    output: &Path,
+) -> Result<(), CliError> {
+    fs::create_dir_all(output).map_err(|error| {
+        CliError::Runtime(format!(
+            "failed to create HTML output directory {}: {error}",
+            output.display()
+        ))
+    })?;
+    let index = irgen_docs::serialize_html_site_stream(component, ".", "index.html", |page| {
+        let path = output.join(&page.filename);
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).map_err(|error| {
+                irgen_docs::Error::WritePage(format!(
+                    "failed to create HTML output directory {}: {error}",
+                    parent.display()
+                ))
+            })?;
+        }
+        fs::write(&path, page.content).map_err(|error| {
+            irgen_docs::Error::WritePage(format!("failed to write {}: {error}", path.display()))
+        })
+    })
+    .map_err(|error| CliError::Runtime(error.to_string()))?;
+    let index_path = output.join("index.html");
+    fs::write(&index_path, index).map_err(|error| {
+        CliError::Runtime(format!("failed to write {}: {error}", index_path.display()))
+    })?;
+    Ok(())
+}
+
+fn default_output_path(input: &Path, format: OutputFormat) -> PathBuf {
+    let stem = input.file_stem().unwrap_or_else(|| input.as_os_str());
+    match format.file_extension() {
+        Some(extension) => PathBuf::from(stem).with_extension(extension),
+        None => PathBuf::from(stem),
+    }
+}
+
+fn write_text_output(output: &Path, content: String) -> Result<(), CliError> {
+    fs::write(output, content).map_err(|error| {
+        CliError::Runtime(format!("failed to write {}: {error}", output.display()))
+    })
 }
 
 fn validate_ipxact_xml(schema: &Path, output: &Path) -> Result<(), String> {
@@ -160,7 +257,7 @@ fn validate_ipxact_xml(schema: &Path, output: &Path) -> Result<(), String> {
 #[command(
     name = "irgen",
     version,
-    about = "Convert a register spreadsheet into an output file."
+    about = "Convert a register spreadsheet into an output path."
 )]
 struct RawArgs {
     #[arg(value_name = "input.xlsx")]
@@ -210,7 +307,7 @@ fn convert_raw_args(raw: RawArgs) -> Result<Command, String> {
     let ipxact_version = raw.ipxact_version.unwrap_or(IpxactVersion::V2014);
     let output = raw
         .output
-        .unwrap_or_else(|| raw.input.with_extension(raw.format.extension()));
+        .unwrap_or_else(|| default_output_path(&raw.input, raw.format));
     Ok(Command::Convert(ConvertArgs {
         input: raw.input,
         output,

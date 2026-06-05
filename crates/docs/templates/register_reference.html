@@ -4,9 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{ document.component_name }} Register Reference</title>
-  <style>
-{{ css|safe }}
-  </style>
+  <link rel="stylesheet" href="{{ css_href }}">
 </head>
 <body>
 <header class="doc-header">
@@ -27,9 +25,9 @@
       <div id="search-results" class="search-results" role="listbox" aria-label="Search results"></div>
     </div>
     <ol>
-      <li><a class="toc-link" href="#summary" data-target="summary">Summary</a></li>
+      <li><a class="toc-link toc-link-active" href="#summary">Summary</a></li>
 {% for block in document.blocks %}
-      <li><a class="toc-link" href="#{{ block.anchor }}" data-target="{{ block.anchor }}">{{ block.name }}</a></li>
+      <li><a class="toc-link" href="{{ block.href }}">{{ block.name }}</a></li>
 {% endfor %}
     </ol>
   </nav>
@@ -47,88 +45,9 @@
         <dd>{{ document.version }}</dd>
       </dl>
     </section>
-{% for block in document.blocks %}
-    <section id="{{ block.anchor }}" class="page block-section" data-page="{{ block.anchor }}">
-      <h2>{{ block.name }}</h2>
-      <dl class="meta-list">
-        <dt>Offset</dt>
-        <dd><span class="offset-value">{{ block.offset }}</span></dd>
-        <dt>Range</dt>
-        <dd>{{ block.range }}</dd>
-        <dt>Size</dt>
-        <dd>{{ block.size }}</dd>
-      </dl>
-{% for register in block.registers %}
-      <section id="{{ register.anchor }}" class="register-section" data-register data-page-ref="{{ block.anchor }}" data-register-name="{{ register.name }}" data-register-offset="{{ register.offset }}" data-search="{{ register.search_text }}">
-        <div class="register-heading">
-          <h3>{{ register.name }}</h3>
-          <span class="offset-badge">{{ register.offset }}</span>
-        </div>
-        <dl class="register-meta">
-          <dt>Name</dt>
-          <dd>{{ register.name }}</dd>
-          <dt>Description</dt>
-{% if register.has_description %}
-          <dd>{{ register.description }}</dd>
-{% else %}
-          <dd>-</dd>
-{% endif %}
-          <dt>Size</dt>
-          <dd>{{ register.size }}</dd>
-          <dt>Offset</dt>
-          <dd><span class="offset-value">{{ register.offset }}</span></dd>
-          <dt>Exists</dt>
-          <dd>Always</dd>
-        </dl>
-{% if register.has_fields %}
-        <div class="bit-map" role="table" aria-label="Register bit layout">
-          <div class="bit-row bit-index-row" role="row">
-{% for field in register.fields %}
-            <div class="bit-cell" role="columnheader" style="--span:{{ field.bit_width }}">{{ field.bits }}</div>
-{% endfor %}
-          </div>
-          <div class="bit-row bit-name-row" role="row">
-{% for field in register.fields %}
-            <a class="bit-cell" role="cell" href="#{{ field.anchor }}" style="--span:{{ field.bit_width }}">{{ field.name }}</a>
-{% endfor %}
-          </div>
-        </div>
-        <h4>Fields for Register: {{ register.name }}</h4>
-        <table class="field-table">
-          <thead>
-            <tr><th>Bits</th><th>Name</th><th>Memory Access</th><th>Description</th></tr>
-          </thead>
-          <tbody>
-{% for field in register.fields %}
-            <tr id="{{ field.anchor }}">
-              <td>{{ field.bits }}</td>
-              <td>{{ field.name }}</td>
-              <td><span class="access-pill">{{ field.attr }}</span></td>
-              <td>
-{% if field.has_description %}
-                <p>{{ field.description }}</p>
-{% else %}
-                <p>-</p>
-{% endif %}
-{% if field.has_reset %}
-                <p class="field-note"><strong>Value After Reset:</strong> {{ field.reset }}</p>
-{% endif %}
-              </td>
-            </tr>
-{% endfor %}
-          </tbody>
-        </table>
-{% else %}
-        <p class="empty">No fields.</p>
-{% endif %}
-      </section>
-{% endfor %}
-    </section>
-{% endfor %}
   </article>
 </main>
-  <script>
-{{ script|safe }}
-  </script>
+<script id="register-search-index" type="application/json">{{ document.search_index_json|safe }}</script>
+  <script src="{{ script_href }}"></script>
 </body>
 </html>

@@ -22,7 +22,19 @@ pub(crate) struct RegisterView<'a> {
     pub(crate) anchor: String,
     pub(crate) display_name: String,
     pub(crate) display_offset: String,
+    pub(crate) source: RegisterSource,
     pub(crate) fields: Vec<FieldView<'a>>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) enum RegisterSource {
+    Direct,
+    RegisterFile {
+        dim: String,
+        stride: String,
+        base_offset: String,
+        child_offset: String,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -70,6 +82,7 @@ impl<'a> RegisterView<'a> {
             register,
             register.name().into(),
             register.offset().into(),
+            RegisterSource::Direct,
         )
     }
 
@@ -78,6 +91,7 @@ impl<'a> RegisterView<'a> {
         register: &'a Register,
         display_name: String,
         display_offset: String,
+        source: RegisterSource,
     ) -> Result<Self, Error> {
         let mut register_anchor = anchor_prefix.to_vec();
         register_anchor.push(&display_name);
@@ -89,6 +103,7 @@ impl<'a> RegisterView<'a> {
             anchor,
             display_name,
             display_offset,
+            source,
             fields,
         })
     }
@@ -154,52 +169,46 @@ fn expand_register_file<'a>(
     register_file: &'a RegisterFile,
 ) -> Result<Vec<RegisterView<'a>>, Error> {
     let base_offset = parse_literal("register file offset", register_file.offset())?;
-    let stride = parse_literal("register file stride", register_file.range())?;
     let dim = parse_literal("register file dimension", register_file.dim())?;
     let mut registers = Vec::new();
 
-    for index in 0..dim {
-        let element_delta = index
-            .checked_mul(stride)
-            .ok_or_else(|| Error::AddressOverflow {
-                kind: "register file instance offset",
-                name: register_file.name().into(),
-            })?;
-        let instance_offset =
+    for register in register_file.regs() {
+        let child_offset = parse_literal("register offset", register.offset())?;
+        let display_name = unexpanded_register_file_name(register_file, register, dim);
+        let display_offset_value =
             base_offset
-                .checked_add(element_delta)
+                .checked_add(child_offset)
                 .ok_or_else(|| Error::AddressOverflow {
-                    kind: "register file instance offset",
-                    name: register_file.name().into(),
+                    kind: "register file register offset",
+                    name: display_name.clone(),
                 })?;
-        for register in register_file.regs() {
-            let child_offset = parse_literal("register offset", register.offset())?;
-            let display_name = expanded_register_name(register_file, register, index);
-            let display_offset_value =
-                instance_offset.checked_add(child_offset).ok_or_else(|| {
-                    Error::AddressOverflow {
-                        kind: "expanded register offset",
-                        name: display_name.clone(),
-                    }
-                })?;
-            let display_offset = format_hex(display_offset_value);
-            registers.push(RegisterView::new(
-                &["register", block_name, register_file.name()],
-                register,
-                display_name,
-                display_offset,
-            )?);
-        }
+        let display_offset = format_hex(display_offset_value);
+        registers.push(RegisterView::new(
+            &["register", block_name],
+            register,
+            display_name,
+            display_offset,
+            RegisterSource::RegisterFile {
+                dim: register_file.dim().into(),
+                stride: register_file.range().into(),
+                base_offset: register_file.offset().into(),
+                child_offset: register.offset().into(),
+            },
+        )?);
     }
 
     Ok(registers)
 }
 
-fn expanded_register_name(register_file: &RegisterFile, register: &Register, index: u64) -> String {
+fn unexpanded_register_file_name(
+    register_file: &RegisterFile,
+    register: &Register,
+    dim: u64,
+) -> String {
     if register_file.regs().len() == 1 && register.name() == register_file.name() {
-        format!("{}[{index}]", register_file.name())
+        format!("{}[{dim}]", register_file.name())
     } else {
-        format!("{}[{index}].{}", register_file.name(), register.name())
+        format!("{}[{dim}].{}", register_file.name(), register.name())
     }
 }
 

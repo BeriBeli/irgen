@@ -17,9 +17,9 @@ The CLI supports RALF output with:
 cargo run -p irgen-cli -- example_simple.xlsx --format ralf
 ```
 
-The default output extension for `--format ralf` is `.ralf`. IP-XACT XSD
-validation remains scoped to `--format ipxact`; `--validate` is rejected for
-RALF output.
+When `-o/--output` is omitted, RALF output is written in the current directory
+as `<input-stem>.ralf`. IP-XACT XSD validation remains scoped to
+`--format ipxact`; `--validate` is rejected for RALF output.
 
 ## Model Coverage
 
@@ -89,8 +89,8 @@ for those widths.
   attributes, enums, constraints, cover directives, and cross coverage.
 - Typed model coverage includes `user_code`, callback class definitions,
   `add_reg_cb`, external callback references, and `default_map_name`.
-- CLI coverage includes explicit `--format ralf` parsing and `.ralf` default
-  output extension behavior.
+- CLI coverage includes explicit `--format ralf` parsing and current-directory
+  `.ralf` default output behavior.
 
 ## Current Limitations
 

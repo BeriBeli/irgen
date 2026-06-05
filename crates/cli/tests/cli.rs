@@ -64,7 +64,8 @@ fn accepts_explicit_output_path() {
 
 #[test]
 fn accepts_explicit_ipxact_format() {
-    let Command::Convert(parsed) = parse_args(args(&["input.xlsx", "--format", "ipxact"])).unwrap()
+    let Command::Convert(parsed) =
+        parse_args(args(&["nested/input.xlsx", "--format", "ipxact"])).unwrap()
     else {
         panic!("expected conversion command");
     };
@@ -76,13 +77,26 @@ fn accepts_explicit_ipxact_format() {
 
 #[test]
 fn accepts_explicit_html_format() {
-    let Command::Convert(parsed) = parse_args(args(&["input.xlsx", "--format", "html"])).unwrap()
+    let Command::Convert(parsed) =
+        parse_args(args(&["nested/input.xlsx", "--format", "html"])).unwrap()
     else {
         panic!("expected conversion command");
     };
 
     assert_eq!(parsed.format, OutputFormat::Html);
-    assert_eq!(parsed.output, PathBuf::from("input.html"));
+    assert_eq!(parsed.output, PathBuf::from("input"));
+}
+
+#[test]
+fn accepts_explicit_all_format() {
+    let Command::Convert(parsed) =
+        parse_args(args(&["nested/input.xlsx", "--format", "all"])).unwrap()
+    else {
+        panic!("expected conversion command");
+    };
+
+    assert_eq!(parsed.format, OutputFormat::All);
+    assert_eq!(parsed.output, PathBuf::from("input"));
 }
 
 #[test]
@@ -136,7 +150,8 @@ fn accepts_explicit_ipxact_2022_version() {
 
 #[test]
 fn accepts_explicit_ralf_format() {
-    let Command::Convert(parsed) = parse_args(args(&["input.xlsx", "--format", "ralf"])).unwrap()
+    let Command::Convert(parsed) =
+        parse_args(args(&["nested/input.xlsx", "--format", "ralf"])).unwrap()
     else {
         panic!("expected conversion command");
     };
@@ -148,7 +163,7 @@ fn accepts_explicit_ralf_format() {
 #[test]
 fn accepts_explicit_systemrdl_format() {
     let Command::Convert(parsed) =
-        parse_args(args(&["input.xlsx", "--format", "systemrdl"])).unwrap()
+        parse_args(args(&["nested/input.xlsx", "--format", "systemrdl"])).unwrap()
     else {
         panic!("expected conversion command");
     };
@@ -213,29 +228,80 @@ fn generates_systemrdl_output() {
 #[test]
 fn generates_html_output() {
     let input = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../example_simple.xlsx");
-    let output = std::env::temp_dir().join(format!(
-        "irgen-cli-test-{}-example.html",
+    let output_dir = std::env::temp_dir().join(format!(
+        "irgen-cli-test-{}-example-html",
         std::process::id()
     ));
-    let _ = fs::remove_file(&output);
+    let _ = fs::remove_dir_all(&output_dir);
 
     let result = run([
         OsString::from(input),
         OsString::from("--format"),
         OsString::from("html"),
         OsString::from("-o"),
-        OsString::from(&output),
+        OsString::from(&output_dir),
     ]
     .into_iter())
     .unwrap();
 
-    assert_eq!(result.as_deref(), Some(output.as_path()));
-    let html = fs::read_to_string(&output).unwrap();
+    assert_eq!(result.as_deref(), Some(output_dir.as_path()));
+    let html = fs::read_to_string(output_dir.join("index.html")).unwrap();
     assert!(html.contains("<!doctype html>"));
     assert!(!html.contains("Print or Save PDF"));
-    assert!(html.contains("Fields for Register: status"));
-    assert!(html.contains("<strong>Value After Reset:</strong> 0"));
-    let _ = fs::remove_file(output);
+    assert!(html.contains("register-search-index"));
+    assert!(!html.contains("Fields for Register: status"));
+    let block_page = fs::read_to_string(output_dir.join("block-regs.html")).unwrap();
+    assert!(block_page.contains("href=\"index.html\""));
+    assert!(!block_page.contains("href=\"../index.html\""));
+    assert!(block_page.contains("href=\"block-regs/register-regs-status.html\""));
+    assert!(!block_page.contains("Fields for Register: status"));
+    let register_page =
+        fs::read_to_string(output_dir.join("block-regs/register-regs-status.html")).unwrap();
+    assert!(register_page.contains("href=\"../index.html\""));
+    assert!(!register_page.contains("href=\"../../index.html\""));
+    assert!(register_page.contains("Fields for Register: status"));
+    assert!(register_page.contains("<strong>Value After Reset:</strong> 0"));
+    assert!(output_dir.join("assets/register_reference.css").is_file());
+    assert!(output_dir.join("assets/register_reference.js").is_file());
+    let _ = fs::remove_dir_all(output_dir);
+}
+
+#[test]
+fn generates_all_outputs() {
+    let input = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../example_simple.xlsx");
+    let output_dir =
+        std::env::temp_dir().join(format!("irgen-cli-test-{}-example-all", std::process::id()));
+    let _ = fs::remove_dir_all(&output_dir);
+
+    let result = run([
+        OsString::from(input),
+        OsString::from("--format"),
+        OsString::from("all"),
+        OsString::from("-o"),
+        OsString::from(&output_dir),
+    ]
+    .into_iter())
+    .unwrap();
+
+    assert_eq!(result.as_deref(), Some(output_dir.as_path()));
+    let ipxact_2009 = fs::read_to_string(output_dir.join("ipxact-2009.xml")).unwrap();
+    let ipxact_2014 = fs::read_to_string(output_dir.join("ipxact-2014.xml")).unwrap();
+    let ipxact_2022 = fs::read_to_string(output_dir.join("ipxact-2022.xml")).unwrap();
+    let ralf = fs::read_to_string(output_dir.join("ralf.ralf")).unwrap();
+    let rdl = fs::read_to_string(output_dir.join("systemrdl.rdl")).unwrap();
+    let html = fs::read_to_string(output_dir.join("html/index.html")).unwrap();
+    assert!(ipxact_2009.contains("http://www.spiritconsortium.org/XMLSchema/SPIRIT/1685-2009"));
+    assert!(ipxact_2014.contains("http://www.accellera.org/XMLSchema/IPXACT/1685-2014"));
+    assert!(ipxact_2022.contains("http://www.accellera.org/XMLSchema/IPXACT/1685-2022"));
+    assert!(ralf.contains("block regs {"));
+    assert!(rdl.contains("addrmap example_simple {"));
+    assert!(html.contains("<!doctype html>"));
+    assert!(
+        output_dir
+            .join("html/assets/register_reference.css")
+            .is_file()
+    );
+    let _ = fs::remove_dir_all(output_dir);
 }
 
 #[test]
@@ -378,6 +444,23 @@ fn rejects_validation_for_non_ipxact_before_loading_workbook() {
 }
 
 #[test]
+fn rejects_validation_for_all_before_loading_workbook() {
+    let error = run(args(&[
+        "this-file-does-not-exist.xlsx",
+        "--format",
+        "all",
+        "--validate",
+        "schema/index.xsd",
+    ]))
+    .unwrap_err();
+
+    assert_eq!(
+        error.to_string(),
+        "--validate can only be used with --format ipxact"
+    );
+}
+
+#[test]
 fn rejects_missing_validation_schema_before_loading_workbook() {
     let missing_schema = PathBuf::from("schema/does-not-exist.xsd");
     let error = run([
@@ -499,6 +582,22 @@ fn rejects_ipxact_version_for_non_ipxact_format() {
             "input.xlsx",
             "--format",
             "systemrdl",
+            "--ipxact-version",
+            "2014",
+        ]))
+        .err()
+        .as_deref(),
+        Some("--ipxact-version can only be used with --format ipxact")
+    );
+}
+
+#[test]
+fn rejects_ipxact_version_for_all_format() {
+    assert_eq!(
+        parse_args(args(&[
+            "input.xlsx",
+            "--format",
+            "all",
             "--ipxact-version",
             "2014",
         ]))

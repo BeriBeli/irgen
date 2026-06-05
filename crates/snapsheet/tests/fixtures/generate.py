@@ -6,7 +6,7 @@ from xml.sax.saxutils import escape
 from zipfile import ZIP_DEFLATED, ZipFile, ZipInfo
 
 FIXTURE_DIR = Path(__file__).parent
-HEADERS = ["ADDR", "REG", "REG_DESC", "FIELD", "BIT", "ATTRIBUTE", "DEFAULT", "FIELD_DESC"]
+HEADERS = ["ADDR", "REG", "REG_DESC", "FIELD", "BIT", "ATTR", "RESET", "FIELD_DESC"]
 FIXED_TIMESTAMP = (1980, 1, 1, 0, 0, 0)
 
 CONTENT_TYPES = """<?xml version="1.0" encoding="UTF-8"?>

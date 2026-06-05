@@ -48,7 +48,7 @@ model. This behavior is required for correct IP-XACT field emission.
 ## Current Capability
 
 - Converts `.xlsx` input into IP-XACT XML, RALF, and SystemRDL.
-- Supports `--format ipxact|ralf|systemrdl`.
+- Supports `--format ipxact|ralf|systemrdl|html|all`.
 - Supports `--ipxact-version 2009|2014|2022`, with 2014 as the default for
   IP-XACT output.
 - Supports `--snapsheet-spec <snapsheet.toml>`.

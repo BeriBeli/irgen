@@ -16,9 +16,9 @@ The CLI supports SystemRDL output with:
 cargo run -p irgen-cli -- example_simple.xlsx --format systemrdl
 ```
 
-The default output extension for `--format systemrdl` is `.rdl`. IP-XACT XSD
-validation remains scoped to `--format ipxact`; `--validate` is rejected for
-SystemRDL output.
+When `-o/--output` is omitted, SystemRDL output is written in the current
+directory as `<input-stem>.rdl`. IP-XACT XSD validation remains scoped to
+`--format ipxact`; `--validate` is rejected for SystemRDL output.
 
 ## Model Coverage
 
@@ -66,7 +66,7 @@ The crate is split across focused modules:
 - Serializer tests cover core SystemRDL declarations, components, constraints,
   arrays, bit ranges, register-file arrays, and base conversion.
 - CLI coverage includes explicit `--format systemrdl` parsing, example export,
-  and `.rdl` default output extension behavior.
+  and current-directory `.rdl` default output behavior.
 
 ## Current Limitations
 

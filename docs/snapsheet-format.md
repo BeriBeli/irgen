@@ -80,7 +80,7 @@ Columns:
 
 Each register sheet describes the registers under one address block.
 
-| ADDR | REG | REG_DESC | FIELD | BIT | ATTRIBUTE | DEFAULT | FIELD_DESC |
+| ADDR | REG | REG_DESC | FIELD | BIT | ATTR | RESET | FIELD_DESC |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | 0x0 | noc_version | Version information register | version | [31:0] | RO | 0x20250101 | noc_version |
 | 0x4 | noc_config | Configuration register | config | [31:0] | RW | 0x1 | noc_config |
@@ -102,8 +102,8 @@ Columns:
   mode, a blank field name can default to the register name.
 - `BIT`: field bit range, such as `[31:0]` or `[20]`. Field width is inferred
   from this range.
-- `ATTRIBUTE`: field access type, such as `RW`, `RO`, or `W1C`.
-- `DEFAULT`: field reset value.
+- `ATTR`: field access type, such as `RW`, `RO`, or `W1C`.
+- `RESET`: field reset value.
 - `FIELD_DESC`: optional field description. Blank values remain blank unless a
   non-empty default description is configured.
 
@@ -155,26 +155,28 @@ vendor = "VENDOR"
 library = "LIBRARY"
 name = "NAME"
 version = "VERSION"
+description = "DESC"
 
 [columns.address_block]
 name = "BLOCK"
 offset = "OFFSET"
 range = "RANGE"
+description = "DESC"
 
 [columns.register]
 address = "ADDR"
 register = "REG"
 field = "FIELD"
 bit = "BIT"
-access = "ATTRIBUTE"
-reset = "DEFAULT"
+access = "ATTR"
+reset = "RESET"
 register_description = "REG_DESC"
 description = "FIELD_DESC"
 
 [register]
 inherit_address = true
 inherit_register = true
-default_description = ""
+# default_description = ""
 default_array_step_bytes = "0x4"
 max_array_elements = 1000000
 register_size = "infer_from_fields"

@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ document.component_name }} {{ register.display_name }} Register</title>
+  <link rel="stylesheet" href="{{ css_href }}">
+</head>
+<body>
+<header class="doc-header">
+  <div class="doc-kicker">irgen-docs</div>
+  <h1>{{ document.component_name }} Register Reference</h1>
+  <p>Generated register documentation for review, implementation, and release artifacts.</p>
+</header>
+<main class="layout">
+  <nav class="toc doc-panel" aria-label="Register sections">
+    <h2>Contents</h2>
+    <label class="theme-toggle" for="theme-toggle">
+      <span>Dark mode</span>
+      <input id="theme-toggle" type="checkbox" role="switch" aria-label="Dark mode">
+      <span class="theme-toggle-track" aria-hidden="true"></span>
+    </label>
+    <ol>
+      <li><a class="toc-link" href="{{ index_href }}">Summary</a></li>
+{% for nav_block in document.blocks %}
+      <li><a class="toc-link{% if nav_block.anchor == block.anchor %} toc-link-active{% endif %}" href="{{ nav_block.href }}">{{ nav_block.name }}</a></li>
+{% endfor %}
+    </ol>
+  </nav>
+  <article class="content">
+    <section id="{{ block.anchor }}" class="page page-active block-section" data-page="{{ block.anchor }}">
+      <p><a href="{{ block.href }}">Back to {{ block.name }} registers</a></p>
+      <section id="{{ register.anchor }}" class="register-section register-section-active" data-register>
+        <div class="register-heading">
+          <h3>{{ register.display_name }}</h3>
+          <span class="offset-badge">{{ register.offset }}</span>
+        </div>
+        <dl class="register-meta">
+          <dt>Name</dt>
+          <dd>{{ register.display_name }}</dd>
+          <dt>Description</dt>
+{% if register.has_description %}
+          <dd>{{ register.description }}</dd>
+{% else %}
+          <dd>-</dd>
+{% endif %}
+          <dt>Size</dt>
+          <dd>{{ register.size }}</dd>
+          <dt>Offset</dt>
+          <dd><span class="offset-value">{{ register.offset }}</span></dd>
+{% if register.source.is_register_file %}
+          <dt>Instances</dt>
+          <dd>{{ register.source.dim }}</dd>
+          <dt>Offset Formula</dt>
+          <dd>
+            <div class="offset-formula">
+              <code>offset(i) = {{ register.source.offset_formula }}</code>
+              <span>{{ register.source.index_range }}</span>
+            </div>
+          </dd>
+{% endif %}
+          <dt>Exists</dt>
+          <dd>Always</dd>
+        </dl>
+{% if register.has_fields %}
+        <div class="bit-map" role="table" aria-label="Register bit layout">
+          <div class="bit-row bit-index-row" role="row">
+{% for field in register.fields %}
+            <div class="bit-cell" role="columnheader" style="--span:{{ field.bit_width }}">{{ field.bits }}</div>
+{% endfor %}
+          </div>
+          <div class="bit-row bit-name-row" role="row">
+{% for field in register.fields %}
+            <a class="bit-cell" role="cell" href="#{{ field.anchor }}" style="--span:{{ field.bit_width }}">{{ field.name }}</a>
+{% endfor %}
+          </div>
+        </div>
+        <h4>Fields for Register: {{ register.display_name }}</h4>
+        <table class="field-table">
+          <thead>
+            <tr><th>Bits</th><th>Name</th><th>Memory Access</th><th>Description</th></tr>
+          </thead>
+          <tbody>
+{% for field in register.fields %}
+            <tr id="{{ field.anchor }}">
+              <td>{{ field.bits }}</td>
+              <td>{{ field.name }}</td>
+              <td><span class="access-pill">{{ field.attr }}</span></td>
+              <td>
+{% if field.has_description %}
+                <p>{{ field.description }}</p>
+{% else %}
+                <p>-</p>
+{% endif %}
+{% if field.has_reset %}
+                <p class="field-note"><strong>Value After Reset:</strong> {{ field.reset }}</p>
+{% endif %}
+              </td>
+            </tr>
+{% endfor %}
+          </tbody>
+        </table>
+{% else %}
+        <p class="empty">No fields.</p>
+{% endif %}
+      </section>
+    </section>
+  </article>
+</main>
+  <script src="{{ script_href }}"></script>
+</body>
+</html>

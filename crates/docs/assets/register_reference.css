@@ -429,6 +429,33 @@ dd {
   flex: 0 0 auto;
 }
 
+.offset-formula {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  max-width: 100%;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  border-radius: 6px;
+  padding: 8px 10px;
+  box-shadow: var(--shadow-sm);
+}
+
+.offset-formula code {
+  color: var(--ink);
+  font-family: Menlo, Consolas, monospace;
+  font-size: 13px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.offset-formula span {
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
 table {
   width: 100%;
   border-collapse: collapse;

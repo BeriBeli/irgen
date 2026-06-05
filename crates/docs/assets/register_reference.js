@@ -1,12 +1,32 @@
 (() => {
   const root = document.documentElement;
-  const pages = Array.from(document.querySelectorAll("[data-page]"));
-  const pageLinks = Array.from(document.querySelectorAll(".toc-link[data-target]"));
-  const registers = Array.from(document.querySelectorAll("[data-register]"));
   const themeToggle = document.getElementById("theme-toggle");
   const searchInput = document.getElementById("register-search");
   const searchResults = document.getElementById("search-results");
   let highlightedRegister = null;
+  let searchIndex = null;
+
+  function readJson(id, fallback) {
+    const element = document.getElementById(id);
+    if (!element) {
+      return fallback;
+    }
+    try {
+      return JSON.parse(element.textContent || "");
+    } catch {
+      return fallback;
+    }
+  }
+
+  function getSearchIndex() {
+    if (!searchIndex) {
+      searchIndex = readJson("register-search-index", []).map((entry) => ({
+        ...entry,
+        lowerSearch: String(entry.search || "").toLowerCase(),
+      }));
+    }
+    return searchIndex;
+  }
 
   function savedTheme() {
     try {
@@ -41,51 +61,28 @@
     }
   }
 
-  function showPage(id) {
-    const target = pages.find((page) => page.dataset.page === id) || pages[0];
-    if (!target) {
+  function clearHighlight() {
+    if (highlightedRegister) {
+      highlightedRegister.classList.remove("register-section-active");
+      highlightedRegister = null;
+    }
+  }
+
+  function highlightFromHash() {
+    clearHighlight();
+    const id = window.location.hash.slice(1);
+    if (!id) {
       return;
     }
-
-    pages.forEach((page) => {
-      page.classList.toggle("page-active", page === target);
-    });
-    pageLinks.forEach((link) => {
-      link.classList.toggle(
-        "toc-link-active",
-        link.dataset.target === target.dataset.page
-      );
-    });
-
-    return target;
-  }
-
-  function highlightRegister(element) {
-    if (highlightedRegister && highlightedRegister !== element) {
-      highlightedRegister.classList.remove("register-section-active");
-    }
-    highlightedRegister = element && element.matches("[data-register]") ? element : null;
-    if (highlightedRegister) {
+    const element = document.getElementById(id);
+    const register = element ? element.closest("[data-register]") : null;
+    if (register) {
+      highlightedRegister = register;
       highlightedRegister.classList.add("register-section-active");
-    }
-  }
-
-  function showAnchor(id, updateHash) {
-    const fallback = pages[0];
-    const element = id ? document.getElementById(id) : fallback;
-    const page = element ? element.closest("[data-page]") : fallback;
-    const shownPage = showPage(page ? page.dataset.page : "summary");
-
-    if (updateHash && id) {
-      window.history.replaceState(null, "", `#${id}`);
-    }
-
-    window.requestAnimationFrame(() => {
-      if (element && element !== shownPage) {
+      window.requestAnimationFrame(() => {
         element.scrollIntoView({ block: "start" });
-      }
-      highlightRegister(element ? element.closest("[data-register]") : null);
-    });
+      });
+    }
   }
 
   function clearSearchResults() {
@@ -95,23 +92,20 @@
   }
 
   function appendSearchResult(register) {
-    const button = document.createElement("button");
+    const link = document.createElement("a");
     const name = document.createElement("span");
     const offset = document.createElement("span");
 
-    button.type = "button";
-    button.className = "search-result";
-    button.setAttribute("role", "option");
+    link.className = "search-result";
+    link.setAttribute("role", "option");
+    link.href = register.href || `#${register.anchor}`;
     name.className = "search-result-name";
     offset.className = "search-result-offset";
-    name.textContent = register.dataset.registerName || register.id;
-    offset.textContent = register.dataset.registerOffset || "";
+    name.textContent = register.name || register.anchor;
+    offset.textContent = register.offset || "";
 
-    button.append(name, offset);
-    button.addEventListener("click", () => {
-      showAnchor(register.id, true);
-    });
-    searchResults.append(button);
+    link.append(name, offset);
+    searchResults.append(link);
   }
 
   function updateSearch() {
@@ -121,8 +115,8 @@
       return;
     }
 
-    const matches = registers
-      .filter((register) => (register.dataset.search || "").toLowerCase().includes(query))
+    const matches = getSearchIndex()
+      .filter((register) => register.lowerSearch.includes(query))
       .slice(0, 24);
 
     if (matches.length === 0) {
@@ -135,13 +129,6 @@
 
     matches.forEach(appendSearchResult);
   }
-
-  pageLinks.forEach((link) => {
-    link.addEventListener("click", (event) => {
-      event.preventDefault();
-      showAnchor(link.dataset.target, true);
-    });
-  });
 
   if (themeToggle) {
     applyTheme(preferredTheme());
@@ -160,14 +147,11 @@
       if (event.key === "Escape") {
         searchInput.value = "";
         clearSearchResults();
-        highlightRegister(null);
+        clearHighlight();
       }
     });
   }
 
-  window.addEventListener("hashchange", () => {
-    showAnchor(window.location.hash.slice(1) || "summary", false);
-  });
-
-  showAnchor(window.location.hash.slice(1) || "summary", false);
+  window.addEventListener("hashchange", highlightFromHash);
+  highlightFromHash();
 })();

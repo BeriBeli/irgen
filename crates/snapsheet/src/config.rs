@@ -118,6 +118,7 @@ pub struct VersionColumns {
     pub library: String,
     pub name: String,
     pub version: String,
+    pub description: String,
 }
 
 impl VersionColumns {
@@ -138,6 +139,7 @@ impl Default for VersionColumns {
             library: "LIBRARY".into(),
             name: "NAME".into(),
             version: "VERSION".into(),
+            description: "DESC".into(),
         }
     }
 }
@@ -148,6 +150,7 @@ pub struct AddressBlockColumns {
     pub name: String,
     pub offset: String,
     pub range: String,
+    pub description: String,
 }
 
 impl AddressBlockColumns {
@@ -166,6 +169,7 @@ impl Default for AddressBlockColumns {
             name: "BLOCK".into(),
             offset: "OFFSET".into(),
             range: "RANGE".into(),
+            description: "DESC".into(),
         }
     }
 }
@@ -207,8 +211,8 @@ impl Default for RegisterColumns {
             field: "FIELD".into(),
             bit: "BIT".into(),
             width: "WIDTH".into(),
-            access: "ATTRIBUTE".into(),
-            reset: "DEFAULT".into(),
+            access: "ATTR".into(),
+            reset: "RESET".into(),
             description: "FIELD_DESC".into(),
         }
     }
@@ -399,6 +403,12 @@ reset = "Reset"
 description = "Desc"
 register_description = "RegisterDesc"
 
+[columns.version]
+description = "VersionDesc"
+
+[columns.address_block]
+description = "BlockDesc"
+
 [register]
 default_array_step_bytes = "0x8"
 default_description = "N/A"
@@ -425,6 +435,8 @@ patterns = ["^reserved[0-9]+$", "^rsvd[0-9]+$"]
         assert_eq!(config.workbook.sheets.version, "meta");
         assert_eq!(config.workbook.sheets.address_map, "map");
         assert_eq!(config.workbook.sheets.register_sheet, "block_name");
+        assert_eq!(config.columns.version.description, "VersionDesc");
+        assert_eq!(config.columns.address_block.description, "BlockDesc");
         assert_eq!(config.columns.register.address, "Address");
         assert_eq!(config.columns.register.register_description, "RegisterDesc");
         assert_eq!(config.register.parse_default_array_step_bytes(), Ok(0x8));

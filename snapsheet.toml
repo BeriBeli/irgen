@@ -8,26 +8,28 @@ vendor = "VENDOR"
 library = "LIBRARY"
 name = "NAME"
 version = "VERSION"
+description = "DESC"
 
 [columns.address_block]
 name = "BLOCK"
 offset = "OFFSET"
 range = "RANGE"
+description = "DESC"
 
 [columns.register]
 address = "ADDR"
 register = "REG"
 field = "FIELD"
 bit = "BIT"
-access = "ATTRIBUTE"
-reset = "DEFAULT"
+access = "ATTR"
+reset = "RESET"
 register_description = "REG_DESC"
 description = "FIELD_DESC"
 
 [register]
 inherit_address = true
 inherit_register = true
-default_description = ""
+# default_description = ""
 default_array_step_bytes = "0x4"
 max_array_elements = 1000000
 register_size = "infer_from_fields"
