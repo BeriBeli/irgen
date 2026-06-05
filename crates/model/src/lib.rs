@@ -319,7 +319,7 @@ fn hdl_path_access_handles_2014(field: &base::Field) -> Option<ipxact::NonIndexe
 }
 
 fn block_hdl_path_access_handles_2014(block_name: &str) -> ipxact::NonIndexedAccessHandles {
-    non_indexed_access_handles_2014(&block_hdl_path_macro(block_name))
+    non_indexed_access_handles_2014(block_hdl_path_macro(block_name))
 }
 
 fn non_indexed_access_handles_2014(path: impl Into<String>) -> ipxact::NonIndexedAccessHandles {

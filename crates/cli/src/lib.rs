@@ -212,7 +212,7 @@ fn write_html_output(
 }
 
 fn default_output_path(input: &Path, format: OutputFormat) -> PathBuf {
-    let stem = input.file_stem().unwrap_or_else(|| input.as_os_str());
+    let stem = input.file_stem().unwrap_or(input.as_os_str());
     match format.file_extension() {
         Some(extension) => PathBuf::from(stem).with_extension(extension),
         None => PathBuf::from(stem),
