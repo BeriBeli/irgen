@@ -59,7 +59,7 @@ fn accepts_explicit_output_path() {
         panic!("expected conversion command");
     };
 
-    assert_eq!(parsed.output, PathBuf::from("nested/output.xml"));
+    assert_eq!(parsed.output, Some(PathBuf::from("nested/output.xml")));
 }
 
 #[test]
@@ -72,7 +72,7 @@ fn accepts_explicit_ipxact_format() {
 
     assert_eq!(parsed.format, OutputFormat::Ipxact);
     assert_eq!(parsed.ipxact_version, IpxactVersion::V2014);
-    assert_eq!(parsed.output, PathBuf::from("input.xml"));
+    assert_eq!(parsed.output, None);
 }
 
 #[test]
@@ -84,7 +84,7 @@ fn accepts_explicit_html_format() {
     };
 
     assert_eq!(parsed.format, OutputFormat::Html);
-    assert_eq!(parsed.output, PathBuf::from("input"));
+    assert_eq!(parsed.output, None);
 }
 
 #[test]
@@ -96,7 +96,7 @@ fn accepts_explicit_all_format() {
     };
 
     assert_eq!(parsed.format, OutputFormat::All);
-    assert_eq!(parsed.output, PathBuf::from("input"));
+    assert_eq!(parsed.output, None);
 }
 
 #[test]
@@ -119,7 +119,7 @@ fn accepts_explicit_ipxact_2014_version() {
 
     assert_eq!(parsed.format, OutputFormat::Ipxact);
     assert_eq!(parsed.ipxact_version, IpxactVersion::V2014);
-    assert_eq!(parsed.output, PathBuf::from("input.xml"));
+    assert_eq!(parsed.output, None);
 }
 
 #[test]
@@ -132,7 +132,7 @@ fn accepts_explicit_ipxact_2009_version() {
 
     assert_eq!(parsed.format, OutputFormat::Ipxact);
     assert_eq!(parsed.ipxact_version, IpxactVersion::V2009);
-    assert_eq!(parsed.output, PathBuf::from("input.xml"));
+    assert_eq!(parsed.output, None);
 }
 
 #[test]
@@ -145,7 +145,7 @@ fn accepts_explicit_ipxact_2022_version() {
 
     assert_eq!(parsed.format, OutputFormat::Ipxact);
     assert_eq!(parsed.ipxact_version, IpxactVersion::V2022);
-    assert_eq!(parsed.output, PathBuf::from("input.xml"));
+    assert_eq!(parsed.output, None);
 }
 
 #[test]
@@ -157,7 +157,7 @@ fn accepts_explicit_ralf_format() {
     };
 
     assert_eq!(parsed.format, OutputFormat::Ralf);
-    assert_eq!(parsed.output, PathBuf::from("input.ralf"));
+    assert_eq!(parsed.output, None);
 }
 
 #[test]
@@ -169,7 +169,7 @@ fn accepts_explicit_systemrdl_format() {
     };
 
     assert_eq!(parsed.format, OutputFormat::SystemRdl);
-    assert_eq!(parsed.output, PathBuf::from("input.rdl"));
+    assert_eq!(parsed.output, None);
 }
 
 #[test]
@@ -284,11 +284,14 @@ fn generates_all_outputs() {
     .unwrap();
 
     assert_eq!(result.as_deref(), Some(output_dir.as_path()));
-    let ipxact_2009 = fs::read_to_string(output_dir.join("ipxact-2009.xml")).unwrap();
-    let ipxact_2014 = fs::read_to_string(output_dir.join("ipxact-2014.xml")).unwrap();
-    let ipxact_2022 = fs::read_to_string(output_dir.join("ipxact-2022.xml")).unwrap();
-    let ralf = fs::read_to_string(output_dir.join("ralf.ralf")).unwrap();
-    let rdl = fs::read_to_string(output_dir.join("systemrdl.rdl")).unwrap();
+    let ipxact_2009 =
+        fs::read_to_string(output_dir.join("example_simple-ipxact-2009.xml")).unwrap();
+    let ipxact_2014 =
+        fs::read_to_string(output_dir.join("example_simple-ipxact-2014.xml")).unwrap();
+    let ipxact_2022 =
+        fs::read_to_string(output_dir.join("example_simple-ipxact-2022.xml")).unwrap();
+    let ralf = fs::read_to_string(output_dir.join("example_simple.ralf")).unwrap();
+    let rdl = fs::read_to_string(output_dir.join("example_simple.rdl")).unwrap();
     let html = fs::read_to_string(output_dir.join("html/index.html")).unwrap();
     assert!(ipxact_2009.contains("http://www.spiritconsortium.org/XMLSchema/SPIRIT/1685-2009"));
     assert!(ipxact_2014.contains("http://www.accellera.org/XMLSchema/IPXACT/1685-2014"));

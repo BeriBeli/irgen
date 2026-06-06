@@ -45,25 +45,13 @@ The generated IP-XACT 2014 and 2022 outputs carry HDL backdoor paths through sta
 IP-XACT 2022 uses the same access-handle structure, with the path segment value
 serialized as text content of `ipxact:pathSegment` per the 2022 schema.
 
-The narrower IP-XACT 2009 emitter still uses the Synopsys `snps:hdl_path`
-vendor extension because that version does not provide the same standard
-register-model access-handle structure.
+The narrower IP-XACT 2009 emitter does not carry HDL backdoor paths because
+that version does not provide the same standard register-model access-handle
+structure.
 
-Register-level Synopsys pre-defined-test exclusions from the snapsheet
-`SETTING` column remain Synopsys-specific vendor metadata:
-
-```xml
-<ipxact:vendorExtensions>
-  <snps:register xmlns:snps="http://www.synopsys.com">
-    <snps:csrSetting>NO_CSR_TEST</snps:csrSetting>
-  </snps:register>
-</ipxact:vendorExtensions>
-```
-
-The `snps:*` metadata is intentional for stability with Synopsys-oriented
-flows, but it is not portable IEEE 1685 metadata. Other consumers may ignore the
-`snps:*` extension elements, strip them, or need a downstream conversion to
-their own vendor-extension namespace.
+Generated IP-XACT does not emit Synopsys `snps:*` vendor extensions. Legacy
+snapsheet `SETTING` values are parsed for workbook compatibility, but they are
+not serialized as vendor metadata.
 
 ## Evidence
 

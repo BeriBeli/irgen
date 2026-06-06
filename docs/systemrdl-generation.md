@@ -17,7 +17,7 @@ cargo run -p irgen-cli -- example_simple.xlsx --format systemrdl
 ```
 
 When `-o/--output` is omitted, SystemRDL output is written in the current
-directory as `<input-stem>.rdl`. IP-XACT XSD validation remains scoped to
+directory as `<component>.rdl`. IP-XACT XSD validation remains scoped to
 `--format ipxact`; `--validate` is rejected for SystemRDL output.
 
 ## Model Coverage
@@ -53,15 +53,43 @@ The crate is split across focused modules:
 - `Register` maps to a `reg` instance at the register offset.
 - `Register::size` maps to `regwidth` and `accesswidth`.
 - `RegisterFile` maps to a `regfile` array instance with `dim` and byte stride.
+  Sparse arrays are represented directly with `+=` stride; SystemRDL does not
+  have an IP-XACT-style explicit range property for `addrmap` or `regfile`.
 - `Field` maps to a `field` instance with a bit range and reset value.
 - Field access attributes map to `sw`, `hw`, and when needed `onread` or
   `onwrite` properties.
-- Field descriptions map to `desc`.
+- Descriptions are intentionally not emitted in generated SystemRDL.
 - HDL backdoor paths use standard SystemRDL properties. Address-block
   instances receive a built-in `hdl_path` assignment with a SystemVerilog macro
   placeholder such as `` `REGS_HDL_PATH``. Fields receive `hdl_path_slice` with
   their configured path, since the standard `hdl_path` property is not valid on
   field components. Reserved fields do not receive `hdl_path_slice`.
+
+## Address Ranges and Sparse Arrays
+
+Snapsheet address-block `RANGE` values are used by the parser as validation
+bounds and are contracted in the base model to the actual occupied register
+span. SystemRDL output does not emit that contracted block range because
+SystemRDL has no IP-XACT-style explicit `addrmap` or `regfile` range property.
+Toolchains are expected to infer component size from addressable contents.
+
+Sparse register-file arrays are emitted with the standard SystemRDL stride
+syntax:
+
+```systemrdl
+regfile_0[512] @ 0x10 += 0x100;
+```
+
+This means each element starts `0x100` bytes after the previous one. If the
+last element uses less than a full stride, that unused tail space is not modeled
+as a separate register or block. `irgen` intentionally does not split the last
+array element into a scalar instance, because that would change the regular
+array model into a tool-specific workaround.
+
+`bridge` is also not used for this case. In SystemRDL, `bridge` describes
+multiple address-map views from a root map; it is not a range or overlap
+escape hatch for a single CSR address space. Use `bridge` only when the design
+really has multiple bus-visible views.
 
 ## Implementation Notes
 

@@ -39,6 +39,93 @@ fn serializes_block_registers_and_fields_from_base_model() {
 }
 
 #[test]
+fn omits_empty_blocks_from_base_model() {
+    let component = Component::new(
+        "example.com".into(),
+        "IP".into(),
+        "example".into(),
+        "1.0".into(),
+        vec![BaseBlock::new(
+            "empty".into(),
+            "0x0".into(),
+            "0x20".into(),
+            "32".into(),
+            vec![],
+        )],
+    );
+
+    let ralf = serialize_ralf(&component).unwrap();
+
+    assert_eq!(ralf, "");
+}
+
+#[test]
+fn omits_empty_blocks_from_system_instances() {
+    let component = Component::new(
+        "example.com".into(),
+        "IP".into(),
+        "example".into(),
+        "1.0".into(),
+        vec![
+            BaseBlock::new(
+                "empty".into(),
+                "0x0".into(),
+                "0x20".into(),
+                "32".into(),
+                vec![],
+            ),
+            BaseBlock::new(
+                "regs".into(),
+                "0x100".into(),
+                "0x20".into(),
+                "32".into(),
+                vec![BaseRegister::new(
+                    "status".into(),
+                    "0x0".into(),
+                    "32".into(),
+                    vec![BaseField::new(
+                        "ready".into(),
+                        "0".into(),
+                        "1".into(),
+                        "RO".into(),
+                        "0".into(),
+                        "".into(),
+                    )],
+                )],
+            ),
+            BaseBlock::new(
+                "ctrl".into(),
+                "0x200".into(),
+                "0x20".into(),
+                "32".into(),
+                vec![BaseRegister::new(
+                    "enable".into(),
+                    "0x0".into(),
+                    "32".into(),
+                    vec![BaseField::new(
+                        "on".into(),
+                        "0".into(),
+                        "1".into(),
+                        "RW".into(),
+                        "0".into(),
+                        "".into(),
+                    )],
+                )],
+            ),
+        ],
+    );
+
+    let ralf = serialize_ralf(&component).unwrap();
+
+    assert!(!ralf.contains("block empty"));
+    assert!(ralf.contains("block regs {"));
+    assert!(ralf.contains("block ctrl {"));
+    assert!(ralf.contains("system example {"));
+    assert!(ralf.contains("block regs (`REGS_HDL_PATH) @'h100;"));
+    assert!(ralf.contains("block ctrl (`CTRL_HDL_PATH) @'h200;"));
+}
+
+#[test]
 fn serializes_register_file_arrays_from_base_model() {
     let component = Component::new(
         "example.com".into(),

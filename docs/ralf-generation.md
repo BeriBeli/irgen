@@ -18,7 +18,7 @@ cargo run -p irgen-cli -- example_simple.xlsx --format ralf
 ```
 
 When `-o/--output` is omitted, RALF output is written in the current directory
-as `<input-stem>.ralf`. IP-XACT XSD validation remains scoped to
+as `<component>.ralf`. IP-XACT XSD validation remains scoped to
 `--format ipxact`; `--validate` is rejected for RALF output.
 
 ## Model Coverage

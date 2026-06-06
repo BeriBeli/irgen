@@ -44,7 +44,7 @@ pub enum IpxactVersion {
 #[derive(Debug, PartialEq, Eq)]
 pub struct ConvertArgs {
     pub input: PathBuf,
-    pub output: PathBuf,
+    pub output: Option<PathBuf>,
     pub format: OutputFormat,
     pub ipxact_version: IpxactVersion,
     pub snapsheet_spec: Option<PathBuf>,
@@ -103,16 +103,17 @@ pub fn run(args: impl Iterator<Item = OsString>) -> Result<Option<PathBuf>, CliE
         irgen_snapsheet::load_excel(&args.input)
     }
     .map_err(|error| CliError::Runtime(error.to_string()))?;
+    let output_path = resolved_output_path(&args, &loaded.compo);
     if args.format == OutputFormat::Html {
-        write_html_output(&loaded.compo, &args.output)?;
-        return Ok(Some(args.output));
+        write_html_output(&loaded.compo, &output_path)?;
+        return Ok(Some(output_path));
     }
     if args.format == OutputFormat::All {
-        write_all_outputs(&loaded.compo, &args.output)?;
-        return Ok(Some(args.output));
+        write_all_outputs(&loaded.compo, &output_path)?;
+        return Ok(Some(output_path));
     }
 
-    let output = match args.format {
+    let content = match args.format {
         OutputFormat::All => unreachable!("ALL output is handled before string serialization"),
         OutputFormat::Html => unreachable!("HTML output is handled before string serialization"),
         OutputFormat::Ipxact => serialize_ipxact(&loaded.compo, args.ipxact_version)?,
@@ -121,11 +122,11 @@ pub fn run(args: impl Iterator<Item = OsString>) -> Result<Option<PathBuf>, CliE
         OutputFormat::SystemRdl => irgen_systemrdl::serialize_systemrdl(&loaded.compo)
             .map_err(|error| CliError::Runtime(error.to_string()))?,
     };
-    write_text_output(&args.output, output)?;
+    write_text_output(&output_path, content)?;
     if let Some(schema) = args.validate_xsd {
-        validate_ipxact_xml(&schema, &args.output).map_err(CliError::Runtime)?;
+        validate_ipxact_xml(&schema, &output_path).map_err(CliError::Runtime)?;
     }
-    Ok(Some(args.output))
+    Ok(Some(output_path))
 }
 
 fn write_all_outputs(
@@ -139,25 +140,26 @@ fn write_all_outputs(
         ))
     })?;
 
+    let stem = component_file_stem(component);
     write_text_output(
-        &output.join("ipxact-2009.xml"),
+        &output.join(format!("{stem}-ipxact-2009.xml")),
         serialize_ipxact(component, IpxactVersion::V2009)?,
     )?;
     write_text_output(
-        &output.join("ipxact-2014.xml"),
+        &output.join(format!("{stem}-ipxact-2014.xml")),
         serialize_ipxact(component, IpxactVersion::V2014)?,
     )?;
     write_text_output(
-        &output.join("ipxact-2022.xml"),
+        &output.join(format!("{stem}-ipxact-2022.xml")),
         serialize_ipxact(component, IpxactVersion::V2022)?,
     )?;
     write_text_output(
-        &output.join("ralf.ralf"),
+        &output.join(format!("{stem}.ralf")),
         irgen_ralf::serialize_ralf(component)
             .map_err(|error| CliError::Runtime(error.to_string()))?,
     )?;
     write_text_output(
-        &output.join("systemrdl.rdl"),
+        &output.join(format!("{stem}.rdl")),
         irgen_systemrdl::serialize_systemrdl(component)
             .map_err(|error| CliError::Runtime(error.to_string()))?,
     )?;
@@ -211,11 +213,48 @@ fn write_html_output(
     Ok(())
 }
 
-fn default_output_path(input: &Path, format: OutputFormat) -> PathBuf {
+fn resolved_output_path(args: &ConvertArgs, component: &irgen_model::base::Component) -> PathBuf {
+    args.output.clone().unwrap_or_else(|| match args.format {
+        OutputFormat::Html => default_input_output_path(&args.input, args.format),
+        OutputFormat::All | OutputFormat::Ipxact | OutputFormat::Ralf | OutputFormat::SystemRdl => {
+            default_component_output_path(component, args.format)
+        }
+    })
+}
+
+fn default_input_output_path(input: &Path, format: OutputFormat) -> PathBuf {
     let stem = input.file_stem().unwrap_or(input.as_os_str());
     match format.file_extension() {
         Some(extension) => PathBuf::from(stem).with_extension(extension),
         None => PathBuf::from(stem),
+    }
+}
+
+fn default_component_output_path(
+    component: &irgen_model::base::Component,
+    format: OutputFormat,
+) -> PathBuf {
+    let stem = component_file_stem(component);
+    match format.file_extension() {
+        Some(extension) => PathBuf::from(stem).with_extension(extension),
+        None => PathBuf::from(stem),
+    }
+}
+
+fn component_file_stem(component: &irgen_model::base::Component) -> String {
+    let stem = component
+        .name()
+        .trim()
+        .chars()
+        .map(|ch| match ch {
+            '/' | '\\' => '_',
+            _ => ch,
+        })
+        .collect::<String>();
+    if stem.is_empty() {
+        "component".into()
+    } else {
+        stem
     }
 }
 
@@ -305,15 +344,88 @@ fn convert_raw_args(raw: RawArgs) -> Result<Command, String> {
         return Err("--ipxact-version can only be used with --format ipxact".into());
     }
     let ipxact_version = raw.ipxact_version.unwrap_or(IpxactVersion::V2014);
-    let output = raw
-        .output
-        .unwrap_or_else(|| default_output_path(&raw.input, raw.format));
     Ok(Command::Convert(ConvertArgs {
         input: raw.input,
-        output,
+        output: raw.output,
         format: raw.format,
         ipxact_version,
         snapsheet_spec: raw.snapsheet_spec,
         validate_xsd: raw.validate_xsd,
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn component(name: &str) -> irgen_model::base::Component {
+        irgen_model::base::Component::new(
+            "example.com".into(),
+            "IP".into(),
+            name.into(),
+            "1.0".into(),
+            Vec::new(),
+        )
+    }
+
+    fn args(format: OutputFormat, output: Option<PathBuf>) -> ConvertArgs {
+        ConvertArgs {
+            input: PathBuf::from("input.xlsx"),
+            output,
+            format,
+            ipxact_version: IpxactVersion::V2014,
+            snapsheet_spec: None,
+            validate_xsd: None,
+        }
+    }
+
+    #[test]
+    fn defaults_single_file_outputs_to_component_name() {
+        let component = component("soc_regs");
+
+        assert_eq!(
+            resolved_output_path(&args(OutputFormat::Ipxact, None), &component),
+            PathBuf::from("soc_regs.xml")
+        );
+        assert_eq!(
+            resolved_output_path(&args(OutputFormat::Ralf, None), &component),
+            PathBuf::from("soc_regs.ralf")
+        );
+        assert_eq!(
+            resolved_output_path(&args(OutputFormat::SystemRdl, None), &component),
+            PathBuf::from("soc_regs.rdl")
+        );
+    }
+
+    #[test]
+    fn defaults_all_output_directory_to_component_name() {
+        assert_eq!(
+            resolved_output_path(&args(OutputFormat::All, None), &component("soc_regs")),
+            PathBuf::from("soc_regs")
+        );
+    }
+
+    #[test]
+    fn keeps_html_default_directory_based_on_input_name() {
+        assert_eq!(
+            resolved_output_path(&args(OutputFormat::Html, None), &component("soc_regs")),
+            PathBuf::from("input")
+        );
+    }
+
+    #[test]
+    fn explicit_output_path_takes_precedence() {
+        assert_eq!(
+            resolved_output_path(
+                &args(OutputFormat::Ralf, Some(PathBuf::from("custom/out.ralf"))),
+                &component("soc_regs")
+            ),
+            PathBuf::from("custom/out.ralf")
+        );
+    }
+
+    #[test]
+    fn component_output_name_does_not_create_subdirectories() {
+        assert_eq!(component_file_stem(&component("soc/regs")), "soc_regs");
+    }
 }

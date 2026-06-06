@@ -73,12 +73,32 @@ Columns:
 - `BLOCK`: address-block name. In configured mode, each register sheet must
   match one address-block name.
 - `OFFSET`: address-block base offset.
-- `RANGE`: address-block size in bytes.
+- `RANGE`: address-block size in bytes. This is used as the validation
+  boundary; generated block ranges are contracted to the actual used register
+  span, so unused tail space is not emitted.
 - `DESC`: optional block description.
+
+### Address-Block Range Normalization
+
+The address-map `RANGE` column is treated as an upper validation bound, not as
+a promise that every byte in the block is used. During snapsheet parsing,
+`irgen` computes the actual occupied span from registers and register-file
+arrays:
+
+- plain registers use `ADDR + register byte width`
+- register-file arrays use `array base + (dim - 1) * stride + child used span`
+- address blocks with no registers or register-file arrays are omitted
+
+The parsed base model stores the contracted range. Formats with an explicit
+address-block range, such as IP-XACT, therefore do not emit unused tail space.
+Formats that do not have an explicit block range, such as SystemRDL and RALF,
+continue to express the addressable instances directly.
 
 ## Register Sheets
 
 Each register sheet describes the registers under one address block.
+Address blocks whose register sheet produces no registers or register-file
+arrays are omitted from generated outputs.
 
 | ADDR | REG | REG_DESC | FIELD | BIT | ATTR | RESET | FIELD_DESC | PATH | SETTING |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -109,11 +129,11 @@ Columns:
 - `PATH`: optional HDL backdoor path. When the column is absent or the cell is
   blank, non-reserved fields default to the field name. A value of `-` means the
   field has no HDL path. Reserved fields never emit HDL paths.
-- `SETTING`: optional Synopsys IP-XACT pre-defined-test exclusion for the
-  register. Blank cells mean the register remains testable and no
-  `csrSetting` extension is emitted. Non-empty cells must be `NO_CSR_TEST`,
-  `NO_CSR_R_TEST`, or `NO_CSR_W_TEST`; repeated rows for the same register must
-  use the same non-empty value.
+- `SETTING`: optional legacy pre-defined-test exclusion marker for the
+  register. Blank cells mean the register remains testable. Non-empty cells
+  must be `NO_CSR_TEST`, `NO_CSR_R_TEST`, or `NO_CSR_W_TEST`; repeated rows for
+  the same register must use the same non-empty value. Generated IP-XACT does
+  not emit Synopsys `snps:*` vendor extensions for this column.
 
 For backwards compatibility, workbooks may still include the old `WIDTH` field
 size column. If present, it is optional and can be checked against `BIT`.

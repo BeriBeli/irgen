@@ -11,11 +11,17 @@ pub fn serialize_ralf(component: &base::Component) -> Result<String, Error> {
 
 pub fn component_to_document(component: &base::Component) -> Result<Document, Error> {
     let mut items = Vec::new();
-    for block in component.blks() {
+    let blocks = component
+        .blks()
+        .iter()
+        .filter(|block| !is_empty_block(block))
+        .collect::<Vec<_>>();
+
+    for block in &blocks {
         items.push(TopLevelItem::Block(block_from_base(block)?));
     }
 
-    if component.blks().len() > 1 {
+    if blocks.len() > 1 {
         let mut system = System {
             name: component.name().into(),
             body: HierarchyBody {
@@ -24,7 +30,7 @@ pub fn component_to_document(component: &base::Component) -> Result<Document, Er
             },
             ..System::default()
         };
-        for block in component.blks() {
+        for block in blocks {
             system.body.blocks.push(BlockInstance {
                 name: block.name().into(),
                 hdl_path: Some(block_hdl_path_macro(block.name())),
@@ -36,6 +42,10 @@ pub fn component_to_document(component: &base::Component) -> Result<Document, Er
     }
 
     Ok(Document { items })
+}
+
+fn is_empty_block(block: &base::Block) -> bool {
+    block.regs().is_empty() && block.register_files().is_empty()
 }
 
 fn block_from_base(block: &base::Block) -> Result<Block, Error> {

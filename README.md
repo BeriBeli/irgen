@@ -1,8 +1,8 @@
 # irgen
 
 `irgen` is a CLI-first register spreadsheet converter. It reads structured
-Excel snapsheets and emits register-oriented IEEE 1685 IP-XACT XML, Synopsys
-RALF, SystemRDL, or HTML register documentation.
+Excel snapsheets and emits register-oriented IEEE 1685 IP-XACT XML, RALF,
+SystemRDL, or HTML register documentation.
 
 ## Quick Start
 
@@ -12,10 +12,10 @@ Generate IP-XACT XML:
 cargo run -p irgen-cli -- example_simple.xlsx
 ```
 
-When `-o/--output` is omitted, outputs are written in the current directory
-using the input file stem: `example_simple.xml`, `example_simple.ralf`,
-`example_simple.rdl`, the `example_simple/` HTML directory, or the
-`example_simple/` all-output directory.
+When `-o/--output` is omitted, IP-XACT, RALF, SystemRDL, and all-output paths
+are written in the current directory using the component name:
+`<component>.xml`, `<component>.ralf`, `<component>.rdl`, or `<component>/`.
+HTML output still defaults to the input file stem, such as `example_simple/`.
 
 IP-XACT output defaults to IEEE 1685-2014. IEEE 1685-2009 and IEEE 1685-2022
 can also be specified explicitly for the current register-oriented subset:
@@ -32,10 +32,10 @@ access-policy structures needed by snapsheet register tables, but it is not yet
 a complete model for every IP-XACT root document or schema feature.
 
 HDL backdoor paths in IP-XACT 2014 and 2022 are emitted through standard
-`accessHandles`. The narrower 2009 emitter keeps using the Synopsys
-`snps:hdl_path` vendor extension because that version does not provide the same
-standard register-model access-handle structure. The optional `SETTING` column
-also emits Synopsys `snps:csrSetting` metadata for pre-defined-test exclusion.
+`accessHandles`. The narrower 2009 emitter does not carry HDL paths because
+that version does not provide the same standard register-model access-handle
+structure. Generated IP-XACT does not emit Synopsys `snps:*` vendor
+extensions.
 
 Generate RALF or SystemRDL:
 
@@ -57,9 +57,9 @@ Generate every supported output format at once:
 cargo run -p irgen-cli -- example_simple.xlsx --format all
 ```
 
-The all-output directory contains `ipxact-2009.xml`, `ipxact-2014.xml`,
-`ipxact-2022.xml`, `ralf.ralf`, `systemrdl.rdl`, and an `html/` documentation
-directory.
+The all-output directory contains `<component>-ipxact-2009.xml`,
+`<component>-ipxact-2014.xml`, `<component>-ipxact-2022.xml`,
+`<component>.ralf`, `<component>.rdl`, and an `html/` documentation directory.
 
 Write to a specific output path:
 

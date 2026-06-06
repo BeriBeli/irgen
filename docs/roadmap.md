@@ -145,8 +145,8 @@ Implemented:
   non-reserved fields to the field name, `-` disables the path, and reserved
   fields do not emit HDL paths.
 - IP-XACT 2014 and 2022 emit field and block HDL paths through standard
-  `accessHandles`; IP-XACT 2009 uses Synopsys `snps:hdl_path` vendor
-  extensions for the narrower 2009 path.
+  `accessHandles`; IP-XACT 2009 does not emit HDL paths because it lacks the
+  same standard register-model access-handle structure.
 - RALF and SystemRDL outputs preserve field HDL paths; SystemRDL uses
   `hdl_path_slice` for fields.
 - Tests cover field-level paths, disabled paths, reserved-field suppression,

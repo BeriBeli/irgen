@@ -95,12 +95,6 @@ fn field_instance(field: &base::Field) -> Result<Instance, Error> {
     field_component
         .properties
         .extend(access_properties(field.attr())?);
-    if !field.desc().trim().is_empty() {
-        field_component.properties.push(PropertyAssignment::value(
-            "desc",
-            Expression::String(sanitize_string(field.desc())),
-        ));
-    }
     if let Some(hdl_path) = field_hdl_path(field) {
         field_component.properties.push(PropertyAssignment::value(
             "hdl_path_slice",

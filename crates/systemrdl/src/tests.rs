@@ -141,6 +141,7 @@ fn converts_base_component_to_systemrdl() {
     assert!(rdl.contains("field ready {"));
     assert!(rdl.contains("hdl_path_slice = '{\"u_status.ready_q\"};"));
     assert!(rdl.contains("regs->hdl_path = \"`REGS_HDL_PATH\";"));
+    assert!(!rdl.contains("desc ="));
     assert!(!rdl.contains("hdl_path_slice = '{\"reserved0\"};"));
     assert!(!rdl.contains("irgen_hdl_path"));
     assert!(rdl.contains("sw = r;"));
@@ -188,5 +189,6 @@ fn converts_register_file_arrays() {
 
     assert!(rdl.contains("regfile lane {"));
     assert!(rdl.contains("lane[4] @ 0x10 += 0x20;"));
+    assert!(!rdl.contains("lane_last"));
     assert!(rdl.contains("control @ 0x0;"));
 }
