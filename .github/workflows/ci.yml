@@ -88,9 +88,9 @@ jobs:
       - name: Install xmllint
         if: runner.os == 'Linux'
         run: command -v xmllint || (sudo apt-get update && sudo apt-get install -y libxml2-utils)
-      - name: Validate ip-xact IEEE 1685-2014 models
+      - name: Validate ip-xact XML serializers
         if: runner.os == 'Linux'
-        run: cargo test --locked -p ip-xact --test v2014_test
+        run: cargo test --locked -p ip-xact --test ipxact_xml
       - name: Validate IP-XACT against official XSD
         if: runner.os == 'Linux'
-        run: cargo run --locked -p irgen-cli -- example.xlsx --snapsheet-spec snapsheet.toml -o target/irgen-configured-example.xml --validate crates/ipxact/tests/fixtures/schemas/1685-2014/index.xsd
+        run: cargo run --locked -p irgen-cli -- example.xlsx --snapsheet-spec snapsheet.toml -o target/irgen-configured-example.xml --validate crates/ipxact/schema/1685-2014/index.xsd

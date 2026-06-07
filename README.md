@@ -1,7 +1,7 @@
 # irgen
 
 `irgen` is a CLI-first register spreadsheet converter. It reads structured
-Excel snapsheets and emits register-oriented IEEE 1685 IP-XACT XML, RALF,
+Excel snapsheets and emits register-oriented SPIRIT/IP-XACT XML, RALF,
 SystemRDL, or HTML register documentation.
 
 ## Quick Start
@@ -17,25 +17,29 @@ are written in the current directory using the component name:
 `<component>.xml`, `<component>.ralf`, `<component>.rdl`, or `<component>/`.
 HTML output still defaults to the input file stem, such as `example_simple/`.
 
-IP-XACT output defaults to IEEE 1685-2014. IEEE 1685-2009 and IEEE 1685-2022
-can also be specified explicitly for the current register-oriented subset:
+IP-XACT output defaults to IEEE 1685-2014. SPIRIT 1.4, SPIRIT 1.5,
+IEEE 1685-2009, IEEE 1685-2014, and IEEE 1685-2022 can also be specified
+explicitly for the current register-oriented subset:
 
 ```sh
+cargo run -p irgen-cli -- example_simple.xlsx --ipxact-version 1.4
+cargo run -p irgen-cli -- example_simple.xlsx --ipxact-version 1.5
 cargo run -p irgen-cli -- example_simple.xlsx --ipxact-version 2009
 cargo run -p irgen-cli -- example_simple.xlsx --ipxact-version 2014
 cargo run -p irgen-cli -- example_simple.xlsx --ipxact-version 2022
 ```
 
-2009 and 2022 support is intentionally narrower than the 2014 path today: the
-CLI emits the component, memory map, register, register-file, field, reset, and
-access-policy structures needed by snapsheet register tables, but it is not yet
-a complete model for every IP-XACT root document or schema feature.
+The IP-XACT emitters cover the register-oriented component subset produced by
+snapsheets: memory maps, address blocks, registers, register-file arrays where
+the target schema supports them, fields, resets, and field access metadata.
+They are not complete models for every IP-XACT root document or schema feature.
+SPIRIT 1.4 does not define `registerFile`, so register-file arrays are flattened
+into ordinary registers in 1.4 output.
 
 HDL backdoor paths in IP-XACT 2014 and 2022 are emitted through standard
-`accessHandles`. The narrower 2009 emitter does not carry HDL paths because
-that version does not provide the same standard register-model access-handle
-structure. Generated IP-XACT does not emit Synopsys `snps:*` vendor
-extensions.
+`accessHandles`. The 1.4, 1.5, and 2009 emitters do not carry HDL paths because
+those versions do not provide the same standard register-model access-handle
+structure. Generated IP-XACT does not emit Synopsys `snps:*` vendor extensions.
 
 Generate RALF or SystemRDL:
 
@@ -57,7 +61,8 @@ Generate every supported output format at once:
 cargo run -p irgen-cli -- example_simple.xlsx --format all
 ```
 
-The all-output directory contains `<component>-ipxact-2009.xml`,
+The all-output directory contains `<component>-ipxact-1.4.xml`,
+`<component>-ipxact-1.5.xml`, `<component>-ipxact-2009.xml`,
 `<component>-ipxact-2014.xml`, `<component>-ipxact-2022.xml`,
 `<component>.ralf`, `<component>.rdl`, and an `html/` documentation directory.
 
@@ -79,7 +84,7 @@ cargo run -p irgen-cli -- example.xlsx --snapsheet-spec snapsheet.toml
 Validate generated IP-XACT XML with `xmllint` and an explicit XSD:
 
 ```sh
-cargo run -p irgen-cli -- example_simple.xlsx --validate path/to/index.xsd
+cargo run -p irgen-cli -- example_simple.xlsx --ipxact-version 1.5 --validate crates/ipxact/schema/1.5/index.xsd
 ```
 
 `--validate` and `--ipxact-version` are only available with `--format ipxact`.
@@ -92,8 +97,8 @@ cargo run -p irgen-cli -- example_simple.xlsx --validate path/to/index.xsd
   mapping, and current limitations.
 - [SystemRDL generation](docs/systemrdl-generation.md): SystemRDL model
   coverage, snapsheet mapping, and current limitations.
-- [IP-XACT 2014 compliance](docs/ipxact-2014-compliance.md): active IEEE
-  1685-2014 compliance status and verification evidence.
+- [IP-XACT generation](docs/ipxact-generation.md): supported schema versions,
+  crate layout, and current register-oriented coverage.
 - [Roadmap](docs/roadmap.md): crate boundaries, milestones, and useful
   verification gates.
 

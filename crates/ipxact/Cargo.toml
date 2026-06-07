@@ -8,10 +8,7 @@ name = "ip_xact"
 path = "src/lib.rs"
 
 [dependencies]
+irgen-model = { path = "../model" }
 quick-xml = { workspace = true }
-serde = { workspace = true }
 thiserror = { workspace = true }
-
-[dev-dependencies]
-serde-xml-rs = "0.6"
-serde_json = "1.0"
+xsd-parser-types = { workspace = true }

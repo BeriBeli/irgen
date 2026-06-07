@@ -123,6 +123,32 @@ fn accepts_explicit_ipxact_2014_version() {
 }
 
 #[test]
+fn accepts_explicit_ipxact_1_4_version() {
+    let Command::Convert(parsed) =
+        parse_args(args(&["input.xlsx", "--ipxact-version", "1.4"])).unwrap()
+    else {
+        panic!("expected conversion command");
+    };
+
+    assert_eq!(parsed.format, OutputFormat::Ipxact);
+    assert_eq!(parsed.ipxact_version, IpxactVersion::V1_4);
+    assert_eq!(parsed.output, None);
+}
+
+#[test]
+fn accepts_explicit_ipxact_1_5_version() {
+    let Command::Convert(parsed) =
+        parse_args(args(&["input.xlsx", "--ipxact-version", "1.5"])).unwrap()
+    else {
+        panic!("expected conversion command");
+    };
+
+    assert_eq!(parsed.format, OutputFormat::Ipxact);
+    assert_eq!(parsed.ipxact_version, IpxactVersion::V1_5);
+    assert_eq!(parsed.output, None);
+}
+
+#[test]
 fn accepts_explicit_ipxact_2009_version() {
     let Command::Convert(parsed) =
         parse_args(args(&["input.xlsx", "--ipxact-version", "2009"])).unwrap()
@@ -284,6 +310,8 @@ fn generates_all_outputs() {
     .unwrap();
 
     assert_eq!(result.as_deref(), Some(output_dir.as_path()));
+    let ipxact_1_4 = fs::read_to_string(output_dir.join("example_simple-ipxact-1.4.xml")).unwrap();
+    let ipxact_1_5 = fs::read_to_string(output_dir.join("example_simple-ipxact-1.5.xml")).unwrap();
     let ipxact_2009 =
         fs::read_to_string(output_dir.join("example_simple-ipxact-2009.xml")).unwrap();
     let ipxact_2014 =
@@ -293,6 +321,8 @@ fn generates_all_outputs() {
     let ralf = fs::read_to_string(output_dir.join("example_simple.ralf")).unwrap();
     let rdl = fs::read_to_string(output_dir.join("example_simple.rdl")).unwrap();
     let html = fs::read_to_string(output_dir.join("html/index.html")).unwrap();
+    assert!(ipxact_1_4.contains("http://www.spiritconsortium.org/XMLSchema/SPIRIT/1.4"));
+    assert!(ipxact_1_5.contains("http://www.spiritconsortium.org/XMLSchema/SPIRIT/1.5"));
     assert!(ipxact_2009.contains("http://www.spiritconsortium.org/XMLSchema/SPIRIT/1685-2009"));
     assert!(ipxact_2014.contains("http://www.accellera.org/XMLSchema/IPXACT/1685-2014"));
     assert!(ipxact_2022.contains("http://www.accellera.org/XMLSchema/IPXACT/1685-2022"));
@@ -321,7 +351,7 @@ fn generates_and_validates_ipxact_output() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
     let input = root.join("example.xlsx");
     let spec = root.join("snapsheet.toml");
-    let schema = root.join("crates/ipxact/tests/fixtures/schemas/1685-2014/index.xsd");
+    let schema = root.join("crates/ipxact/schema/1685-2014/index.xsd");
     let output =
         std::env::temp_dir().join(format!("irgen-cli-test-{}-example.xml", std::process::id()));
     let _ = fs::remove_file(&output);
@@ -353,10 +383,30 @@ fn generates_and_validates_ipxact_output() {
 }
 
 #[test]
+fn generates_and_validates_complex_ipxact_1_4_output() {
+    generate_and_validate_complex_ipxact(
+        "1.4",
+        "crates/ipxact/schema/1.4/index.xsd",
+        "http://www.spiritconsortium.org/XMLSchema/SPIRIT/1.4",
+        "<spirit:register><spirit:name>reg1</spirit:name>",
+    );
+}
+
+#[test]
+fn generates_and_validates_complex_ipxact_1_5_output() {
+    generate_and_validate_complex_ipxact(
+        "1.5",
+        "crates/ipxact/schema/1.5/index.xsd",
+        "http://www.spiritconsortium.org/XMLSchema/SPIRIT/1.5",
+        "<spirit:register><spirit:name>reg1</spirit:name>",
+    );
+}
+
+#[test]
 fn generates_and_validates_complex_ipxact_2009_output() {
     generate_and_validate_complex_ipxact(
         "2009",
-        "crates/ipxact/tests/fixtures/schemas/1685-2009/index.xsd",
+        "crates/ipxact/schema/1685-2009/index.xsd",
         "http://www.spiritconsortium.org/XMLSchema/SPIRIT/1685-2009",
         "<spirit:register><spirit:name>reg1</spirit:name>",
     );
@@ -366,7 +416,7 @@ fn generates_and_validates_complex_ipxact_2009_output() {
 fn generates_and_validates_complex_ipxact_2022_output() {
     generate_and_validate_complex_ipxact(
         "2022",
-        "crates/ipxact/tests/fixtures/schemas/1685-2022/index.xsd",
+        "crates/ipxact/schema/1685-2022/index.xsd",
         "http://www.accellera.org/XMLSchema/IPXACT/1685-2022",
         "<ipxact:register><ipxact:name>reg1</ipxact:name>",
     );
@@ -574,7 +624,15 @@ fn rejects_duplicate_ipxact_version() {
 fn rejects_unsupported_ipxact_version() {
     assert_parse_error_contains(
         &["input.xlsx", "--ipxact-version", "2020"],
-        &["invalid value", "2020", "2009", "2014", "2022"],
+        &[
+            "invalid value",
+            "2020",
+            "1.4",
+            "1.5",
+            "2009",
+            "2014",
+            "2022",
+        ],
     );
 }
 

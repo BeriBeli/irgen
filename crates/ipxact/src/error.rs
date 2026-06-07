@@ -1,4 +1,4 @@
-//! Error types for IP-XACT operations
+//! Error types for IP-XACT operations.
 
 use thiserror::Error;
 
@@ -27,15 +27,25 @@ pub enum Error {
     #[error("Invalid value: {field} = {value}")]
     InvalidValue { field: String, value: String },
 
+    #[error("invalid attribute: {attribute}")]
+    InvalidAttribute { attribute: String },
+
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
 
     #[error("XML error: {0}")]
     Xml(#[from] quick_xml::Error),
 
-    #[error("Serde error: {0}")]
-    Serde(String),
-
     #[error("Unknown IP-XACT version: {0}")]
     UnknownVersion(String),
+}
+
+impl From<irgen_model::error::Error> for Error {
+    fn from(value: irgen_model::error::Error) -> Self {
+        match value {
+            irgen_model::error::Error::InvalidAttribute { attribute } => {
+                Self::InvalidAttribute { attribute }
+            }
+        }
+    }
 }

@@ -33,6 +33,10 @@ impl OutputFormat {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum IpxactVersion {
+    #[value(name = "1.4")]
+    V1_4,
+    #[value(name = "1.5")]
+    V1_5,
     #[value(name = "2009")]
     V2009,
     #[value(name = "2014")]
@@ -142,6 +146,14 @@ fn write_all_outputs(
 
     let stem = component_file_stem(component);
     write_text_output(
+        &output.join(format!("{stem}-ipxact-1.4.xml")),
+        serialize_ipxact(component, IpxactVersion::V1_4)?,
+    )?;
+    write_text_output(
+        &output.join(format!("{stem}-ipxact-1.5.xml")),
+        serialize_ipxact(component, IpxactVersion::V1_5)?,
+    )?;
+    write_text_output(
         &output.join(format!("{stem}-ipxact-2009.xml")),
         serialize_ipxact(component, IpxactVersion::V2009)?,
     )?;
@@ -172,12 +184,21 @@ fn serialize_ipxact(
     version: IpxactVersion,
 ) -> Result<String, CliError> {
     match version {
-        IpxactVersion::V2009 => irgen_model::serialize_ipxact_2009_xml(component)
-            .map_err(|error| CliError::Runtime(error.to_string())),
-        IpxactVersion::V2014 => irgen_model::serialize_ipxact_xml(component)
-            .map_err(|error| CliError::Runtime(error.to_string())),
-        IpxactVersion::V2022 => irgen_model::serialize_ipxact_2022_xml(component)
-            .map_err(|error| CliError::Runtime(error.to_string())),
+        IpxactVersion::V1_4 => {
+            ip_xact::serialize_1_4(component).map_err(|error| CliError::Runtime(error.to_string()))
+        }
+        IpxactVersion::V1_5 => {
+            ip_xact::serialize_1_5(component).map_err(|error| CliError::Runtime(error.to_string()))
+        }
+        IpxactVersion::V2009 => {
+            ip_xact::serialize_2009(component).map_err(|error| CliError::Runtime(error.to_string()))
+        }
+        IpxactVersion::V2014 => {
+            ip_xact::serialize_2014(component).map_err(|error| CliError::Runtime(error.to_string()))
+        }
+        IpxactVersion::V2022 => {
+            ip_xact::serialize_2022(component).map_err(|error| CliError::Runtime(error.to_string()))
+        }
     }
 }
 

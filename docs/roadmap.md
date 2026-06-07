@@ -3,26 +3,30 @@
 ## Direction
 
 The current product goal is a CLI-first register spreadsheet converter that
-emits register-oriented IEEE 1685 IP-XACT, RALF, SystemRDL, and static register
+emits register-oriented SPIRIT/IP-XACT, RALF, SystemRDL, and static register
 documentation. Future generated artifacts should stay CLI-first as well:
 additional documentation formats, verification-facing HDL backdoor metadata,
 software-facing headers, and hardware-facing register files should be added as
 explicit output formats or narrow crates rather than by introducing UI runtime
 dependencies.
 
-IEEE 1685-2014 compliance is the active milestone. IEEE 1685-2009 and IEEE
-1685-2022 are available for the current snapsheet register-table subset, but
-their broader schema coverage is still incomplete.
+IP-XACT 2014 remains the default output version. SPIRIT 1.4, SPIRIT 1.5,
+IEEE 1685-2009, IEEE 1685-2014, and IEEE 1685-2022 are available for the
+current snapsheet register-table subset, but the project does not claim a
+complete general-purpose IP-XACT library for every root document and schema
+feature.
 
 ## Crate Boundaries
 
 - `crates/cli`: command-line entry point.
 - `crates/snapsheet`: spreadsheet loading, row validation, array expansion, and
   register aggregation.
-- `crates/model`: lightweight register IR plus conversion into versioned
-  `ip_xact` component models.
-- `crates/ipxact`: broader IP-XACT schema model, currently focused on 2014
-  compliance with narrower 2009 and 2022 register-oriented emitters.
+- `crates/model`: lightweight register IR shared by output crates.
+- `crates/ipxact`: generated IP-XACT schema modules and register-oriented
+  exporters for SPIRIT 1.4, SPIRIT 1.5, IEEE 1685-2009, IEEE 1685-2014, and
+  IEEE 1685-2022.
+- `crates/ipxact-codegen`: local `xsd-parser` based generator for refreshing
+  the versioned Rust schema modules.
 - `crates/docs`: static register documentation view and HTML site generator.
 - `crates/ralf`: RALF model and serializer.
 - `crates/systemrdl`: SystemRDL model and serializer.
@@ -30,11 +34,11 @@ their broader schema coverage is still incomplete.
 Active dependency direction:
 
 ```text
-cli -> snapsheet -> model -> ipxact
+cli -> snapsheet -> model
+cli -> ipxact -> model
 cli -> docs -> model
-cli -> ralf
-cli -> systemrdl
-ralf/systemrdl -> model
+cli -> ralf -> model
+cli -> systemrdl -> model
 ```
 
 Do not restore a generic `core` facade unless there is a concrete shared API
@@ -52,8 +56,8 @@ model. This behavior is required for correct IP-XACT field emission.
 
 - Converts `.xlsx` input into IP-XACT XML, RALF, and SystemRDL.
 - Supports `--format ipxact|ralf|systemrdl|html|all`.
-- Supports `--ipxact-version 2009|2014|2022`, with 2014 as the default for
-  IP-XACT output.
+- Supports `--ipxact-version 1.4|1.5|2009|2014|2022`, with 2014 as the default
+  for IP-XACT output.
 - Supports `--snapsheet-spec <snapsheet.toml>`.
 - Supports opt-in `--validate <schema.xsd>` for IP-XACT XML via `xmllint`.
 - Generates a static HTML register documentation site with shared assets, block
@@ -61,7 +65,9 @@ model. This behavior is required for correct IP-XACT field emission.
 - Validates common workbook failures before conversion, including duplicate
   fields, overlapping bit ranges, malformed arrays, invalid attributes,
   address collisions, out-of-range registers, and reset values that do not fit.
-- Emits register arrays as IP-XACT `registerFile` arrays.
+- Emits register arrays as IP-XACT `registerFile` arrays where the target
+  schema supports them. SPIRIT 1.4 has no `registerFile`, so 1.4 output
+  flattens those arrays into ordinary registers.
 - Carries field-level HDL backdoor paths from the optional `PATH` column through
   IP-XACT, RALF, and SystemRDL output. Reserved fields and explicit `-` values
   suppress field HDL paths.
@@ -75,30 +81,31 @@ model. This behavior is required for correct IP-XACT field emission.
   limitations.
 - `docs/systemrdl-generation.md`: SystemRDL model coverage, snapsheet mapping,
   and limitations.
-- `docs/ipxact-2014-compliance.md`: IEEE 1685-2014 compliance status and
-  verification evidence.
+- `docs/ipxact-generation.md`: supported IP-XACT versions, schema/codegen
+  layout, and current coverage.
 
-## P0: 2014 IP-XACT Compliance
+## P0: IP-XACT Register Component Output
 
-Closed for the current component milestone.
+Closed for the current snapsheet component milestone.
 
 Current state:
 
-- All eight IEEE 1685-2014 root documents listed by the vendored `index.xsd`
-  have official-XSD validation coverage.
-- The `componentType` top-level sequence has no known omitted optional
-  structure.
-- Included-schema nested attachment points have representative official-XSD
-  coverage.
+- The CLI emits schema-valid register-oriented component XML for SPIRIT 1.4,
+  SPIRIT 1.5, IEEE 1685-2009, IEEE 1685-2014, and IEEE 1685-2022.
+- The `ipxact` crate owns conversion from `irgen_model` into versioned
+  IP-XACT XML.
+- The `model` crate stays independent of IP-XACT schema crates.
+- Multi-root, general-purpose IP-XACT authoring is intentionally out of scope
+  for the current CLI path.
 
 ## P1: Stabilization And Cleanup
 
 Status: Active.
 
-- Replace remaining placeholder or stringly typed 2014 nested structures that
-  are still on active paths.
-- Continue auditing overbroad expression wrapper types where the schema
-  disallows extension attributes.
+- Keep generated IP-XACT schema modules reproducible from
+  `crates/ipxact/schema` and `crates/ipxact-codegen`.
+- Keep register-oriented exporters small and explicit so version-specific
+  behavior stays visible.
 - Add new `.xlsx` fixtures as parser failure modes are discovered.
 - Decide whether XML schema validation should remain opt-in CLI behavior or
   become part of release verification only.
@@ -145,8 +152,8 @@ Implemented:
   non-reserved fields to the field name, `-` disables the path, and reserved
   fields do not emit HDL paths.
 - IP-XACT 2014 and 2022 emit field and block HDL paths through standard
-  `accessHandles`; IP-XACT 2009 does not emit HDL paths because it lacks the
-  same standard register-model access-handle structure.
+  `accessHandles`; IP-XACT 1.4, 1.5, and 2009 do not emit HDL paths because
+  they lack the same standard register-model access-handle structure.
 - RALF and SystemRDL outputs preserve field HDL paths; SystemRDL uses
   `hdl_path_slice` for fields.
 - Tests cover field-level paths, disabled paths, reserved-field suppression,
@@ -196,11 +203,13 @@ Status: Not started.
 Status: Active but intentionally narrow.
 
 - Current CLI support emits and validates the register-oriented component subset
-  for IEEE 1685-2009 and IEEE 1685-2022.
-- Expand 2009 and 2022 beyond the current register-oriented component subset
-  before claiming complete IEEE 1685-2009 or IEEE 1685-2022 coverage.
+  for SPIRIT 1.4, SPIRIT 1.5, IEEE 1685-2009, IEEE 1685-2014, and
+  IEEE 1685-2022.
+- Expand individual versions beyond the current register-oriented component
+  subset before claiming complete coverage for that version.
 - Add representative schema validation for non-component root documents and
-  optional schema branches in both versions.
+  optional schema branches only if the project starts exposing those documents
+  through public APIs.
 
 ## Verification
 
@@ -208,9 +217,10 @@ Useful gates:
 
 ```text
 cargo fmt --all
-cargo test -p ip-xact --test v2014_test --offline -- --nocapture
-cargo test --workspace --offline --lib --tests
-cargo clippy --workspace --all-targets --all-features --offline -- -D warnings
+cargo test -p ip-xact --test ipxact_xml
+cargo test -p irgen-cli
+cargo check --workspace
+cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
 git diff --check
 ```
 
@@ -219,5 +229,5 @@ Release-oriented smoke checks:
 ```text
 cargo build --release --locked --bin irgen --offline
 target/release/irgen example.xlsx --snapsheet-spec snapsheet.toml -o /tmp/irgen-example.xml
-target/release/irgen example.xlsx --snapsheet-spec snapsheet.toml --validate crates/ipxact/tests/fixtures/schemas/1685-2014/index.xsd
+target/release/irgen example.xlsx --snapsheet-spec snapsheet.toml --validate crates/ipxact/schema/1685-2014/index.xsd
 ```

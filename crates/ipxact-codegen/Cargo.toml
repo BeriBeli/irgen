@@ -1,0 +1,13 @@
+[package]
+name = "ipxact-codegen"
+version.workspace = true
+edition.workspace = true
+publish = false
+
+[dependencies]
+anyhow = "1.0"
+prettyplease = "0.2"
+proc-macro2 = "1.0"
+syn = { version = "2.0", features = ["full"] }
+xsd-parser = { version = "1.5.2", features = ["serde"] }
+xsd-parser-types = { workspace = true, features = ["serde"] }
