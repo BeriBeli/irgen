@@ -8,6 +8,7 @@ members = [
     "crates/ralf",
     "crates/snapsheet",
     "crates/systemrdl",
+    "crates/uvmreg",
 ]
 default-members = ["crates/cli"]
 resolver = "2"

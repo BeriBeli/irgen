@@ -99,6 +99,9 @@ cargo run -p irgen-cli -- example_simple.xlsx --ipxact-version 1.5 --validate cr
   coverage, snapsheet mapping, and current limitations.
 - [IP-XACT generation](docs/ipxact-generation.md): supported schema versions,
   crate layout, and current register-oriented coverage.
+- [UVM register model generation](docs/uvmreg-generation.md): IP-XACT input to
+  UVM IEEE 2020 RAL coverage, five-version usability assessment, and remaining
+  work.
 - [Roadmap](docs/roadmap.md): crate boundaries, milestones, and useful
   verification gates.
 

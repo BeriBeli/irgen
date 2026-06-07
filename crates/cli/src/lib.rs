@@ -55,9 +55,16 @@ pub struct ConvertArgs {
     pub validate_xsd: Option<PathBuf>,
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub struct IpxactArgs {
+    pub input: PathBuf,
+    pub output: Option<PathBuf>,
+}
+
 #[derive(Debug)]
 pub enum Command {
     Convert(ConvertArgs),
+    Ipxact(IpxactArgs),
     Help(String),
 }
 
@@ -78,14 +85,17 @@ impl std::fmt::Display for CliError {
 impl std::error::Error for CliError {}
 
 pub fn run(args: impl Iterator<Item = OsString>) -> Result<Option<PathBuf>, CliError> {
-    let args = match parse_args(args).map_err(CliError::Usage)? {
-        Command::Convert(args) => args,
+    match parse_args(args).map_err(CliError::Usage)? {
+        Command::Convert(args) => run_convert(args),
+        Command::Ipxact(args) => run_ipxact(args),
         Command::Help(help) => {
             print!("{help}");
-            return Ok(None);
+            Ok(None)
         }
-    };
+    }
+}
 
+fn run_convert(args: ConvertArgs) -> Result<Option<PathBuf>, CliError> {
     if args.format != OutputFormat::Ipxact && args.validate_xsd.is_some() {
         return Err(CliError::Usage(
             "--validate can only be used with --format ipxact".into(),
@@ -131,6 +141,66 @@ pub fn run(args: impl Iterator<Item = OsString>) -> Result<Option<PathBuf>, CliE
         validate_ipxact_xml(&schema, &output_path).map_err(CliError::Runtime)?;
     }
     Ok(Some(output_path))
+}
+
+fn run_ipxact(args: IpxactArgs) -> Result<Option<PathBuf>, CliError> {
+    let xml = fs::read_to_string(&args.input).map_err(|error| {
+        CliError::Runtime(format!("failed to read {}: {error}", args.input.display()))
+    })?;
+    let component = parse_ipxact_with_directory_resolver(&args.input, &xml)?;
+    let output_path = args
+        .output
+        .unwrap_or_else(|| default_ipxact_output_path(&component.name));
+    let content = irgen_uvmreg::serialize_uvm_reg(&component)
+        .map_err(|error| CliError::Runtime(error.to_string()))?;
+    write_text_output(&output_path, content)?;
+    Ok(Some(output_path))
+}
+
+fn parse_ipxact_with_directory_resolver(
+    input: &Path,
+    xml: &str,
+) -> Result<irgen_uvmreg::Component, CliError> {
+    let base_dir = input.parent().unwrap_or_else(|| Path::new("."));
+    let mut cache = Vec::<(irgen_uvmreg::LibraryRef, String)>::new();
+
+    irgen_uvmreg::parse_ipxact_with_resolver(xml, |reference| {
+        Ok(find_ipxact_by_vlnv(base_dir, reference, &mut cache))
+    })
+    .map_err(|error| CliError::Runtime(error.to_string()))
+}
+
+fn find_ipxact_by_vlnv(
+    base_dir: &Path,
+    reference: &irgen_uvmreg::LibraryRef,
+    cache: &mut Vec<(irgen_uvmreg::LibraryRef, String)>,
+) -> Option<String> {
+    if let Some((_, xml)) = cache
+        .iter()
+        .find(|(library_ref, _)| library_ref == reference)
+    {
+        return Some(xml.clone());
+    }
+
+    let entries = fs::read_dir(base_dir).ok()?;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|extension| extension.to_str()) != Some("xml") {
+            continue;
+        }
+        let Ok(xml) = fs::read_to_string(&path) else {
+            continue;
+        };
+        let Ok(library_ref) = irgen_uvmreg::document_library_ref(&xml) else {
+            continue;
+        };
+        cache.push((library_ref.clone(), xml.clone()));
+        if &library_ref == reference {
+            return Some(xml);
+        }
+    }
+
+    None
 }
 
 fn write_all_outputs(
@@ -263,8 +333,15 @@ fn default_component_output_path(
 }
 
 fn component_file_stem(component: &irgen_model::base::Component) -> String {
-    let stem = component
-        .name()
+    file_stem_from_name(component.name())
+}
+
+fn default_ipxact_output_path(component_name: &str) -> PathBuf {
+    PathBuf::from(format!("ral_{}.sv", file_stem_from_name(component_name)))
+}
+
+fn file_stem_from_name(name: &str) -> String {
+    let stem = name
         .trim()
         .chars()
         .map(|ch| match ch {
@@ -319,7 +396,7 @@ fn validate_ipxact_xml(schema: &Path, output: &Path) -> Result<(), String> {
     version,
     about = "Convert a register spreadsheet into an output path."
 )]
-struct RawArgs {
+struct RawSnapsheetArgs {
     #[arg(value_name = "input.xlsx")]
     input: PathBuf,
 
@@ -345,8 +422,36 @@ struct RawArgs {
     validate_xsd: Option<PathBuf>,
 }
 
+#[derive(Debug, Parser)]
+#[command(
+    name = "irgen ip-xact",
+    version,
+    about = "Generate UVM register model SystemVerilog from an IP-XACT component XML file."
+)]
+struct RawIpxactArgs {
+    #[arg(value_name = "input.xml")]
+    input: PathBuf,
+
+    #[arg(short = 'o', long = "output", value_name = "path")]
+    output: Option<PathBuf>,
+}
+
 pub fn parse_args(args: impl Iterator<Item = OsString>) -> Result<Command, String> {
-    match RawArgs::try_parse_from(std::iter::once(OsString::from("irgen")).chain(args)) {
+    let args = args.collect::<Vec<_>>();
+    match args.first().and_then(|value| value.to_str()) {
+        Some("ip-xact") => parse_ipxact_args(args.into_iter().skip(1)),
+        Some("snapsheet") => parse_snapsheet_args("irgen snapsheet", args.into_iter().skip(1)),
+        _ => parse_snapsheet_args("irgen", args.into_iter()),
+    }
+}
+
+fn parse_snapsheet_args(
+    command_name: &'static str,
+    args: impl Iterator<Item = OsString>,
+) -> Result<Command, String> {
+    match RawSnapsheetArgs::try_parse_from(
+        std::iter::once(OsString::from(command_name)).chain(args),
+    ) {
         Ok(raw) => convert_raw_args(raw),
         Err(error)
             if matches!(
@@ -360,7 +465,27 @@ pub fn parse_args(args: impl Iterator<Item = OsString>) -> Result<Command, Strin
     }
 }
 
-fn convert_raw_args(raw: RawArgs) -> Result<Command, String> {
+fn parse_ipxact_args(args: impl Iterator<Item = OsString>) -> Result<Command, String> {
+    match RawIpxactArgs::try_parse_from(
+        std::iter::once(OsString::from("irgen ip-xact")).chain(args),
+    ) {
+        Ok(raw) => Ok(Command::Ipxact(IpxactArgs {
+            input: raw.input,
+            output: raw.output,
+        })),
+        Err(error)
+            if matches!(
+                error.kind(),
+                ErrorKind::DisplayHelp | ErrorKind::DisplayVersion
+            ) =>
+        {
+            Ok(Command::Help(error.to_string()))
+        }
+        Err(error) => Err(error.to_string()),
+    }
+}
+
+fn convert_raw_args(raw: RawSnapsheetArgs) -> Result<Command, String> {
     if raw.format != OutputFormat::Ipxact && raw.ipxact_version.is_some() {
         return Err("--ipxact-version can only be used with --format ipxact".into());
     }
@@ -448,5 +573,13 @@ mod tests {
     #[test]
     fn component_output_name_does_not_create_subdirectories() {
         assert_eq!(component_file_stem(&component("soc/regs")), "soc_regs");
+    }
+
+    #[test]
+    fn ipxact_default_output_uses_ral_prefix() {
+        assert_eq!(
+            default_ipxact_output_path("soc/regs"),
+            PathBuf::from("ral_soc_regs.sv")
+        );
     }
 }

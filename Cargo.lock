@@ -501,6 +501,7 @@ dependencies = [
  "irgen-ralf",
  "irgen-snapsheet",
  "irgen-systemrdl",
+ "irgen-uvmreg",
 ]
 
 [[package]]
@@ -546,6 +547,15 @@ name = "irgen-systemrdl"
 version = "0.2.1"
 dependencies = [
  "irgen-model",
+ "thiserror",
+]
+
+[[package]]
+name = "irgen-uvmreg"
+version = "0.2.1"
+dependencies = [
+ "askama",
+ "quick-xml 0.39.0",
  "thiserror",
 ]
 

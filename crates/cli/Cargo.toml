@@ -15,3 +15,4 @@ irgen-docs = { path = "../docs" }
 irgen-ralf = { path = "../ralf" }
 irgen-snapsheet = { path = "../snapsheet" }
 irgen-systemrdl = { path = "../systemrdl" }
+irgen-uvmreg = { path = "../uvmreg" }

@@ -1,0 +1,9 @@
+[package]
+name = "irgen-uvmreg"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+askama = "0.14"
+quick-xml = { workspace = true }
+thiserror = { workspace = true }

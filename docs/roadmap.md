@@ -30,6 +30,8 @@ feature.
 - `crates/docs`: static register documentation view and HTML site generator.
 - `crates/ralf`: RALF model and serializer.
 - `crates/systemrdl`: SystemRDL model and serializer.
+- `crates/uvmreg`: direct IP-XACT component XML to UVM IEEE 2020 register model
+  generator.
 
 Active dependency direction:
 
@@ -39,6 +41,7 @@ cli -> ipxact -> model
 cli -> docs -> model
 cli -> ralf -> model
 cli -> systemrdl -> model
+cli -> uvmreg
 ```
 
 Do not restore a generic `core` facade unless there is a concrete shared API
@@ -83,6 +86,9 @@ model. This behavior is required for correct IP-XACT field emission.
   and limitations.
 - `docs/ipxact-generation.md`: supported IP-XACT versions, schema/codegen
   layout, and current coverage.
+- `docs/uvmreg-generation.md`: direct IP-XACT input to UVM IEEE 2020 RAL
+  generation coverage, five-version usability assessment, limitations, and
+  remaining work.
 
 ## P0: IP-XACT Register Component Output
 
@@ -185,7 +191,7 @@ Status: Not started.
 
 ## P5: Register-File And RTL Outputs
 
-Status: Not started.
+Status: Partially active for UVM RAL.
 
 - Treat register-file generation as higher risk than documentation or C
   headers because it implies hardware behavior, not just register metadata.
@@ -195,8 +201,10 @@ Status: Not started.
 - If SystemVerilog RTL returns, add it as a dedicated crate with an explicit
   behavior model for clocks, resets, bus protocol, write masks, read data,
   access side effects, reserved fields, and generated assertions.
-- If UVM RAL returns, keep it separate from RALF serialization and verify it
-  against simulator-compatible examples.
+- UVM RAL generation is active as a separate `uvmreg` crate and `ip-xact`
+  subcommand. It intentionally does not reuse the snapsheet IR path. The
+  current milestone is common engineering usability for IP-XACT component XML;
+  see `docs/uvmreg-generation.md` for scope and remaining gates.
 
 ## P6: Multi-Version IP-XACT
 
