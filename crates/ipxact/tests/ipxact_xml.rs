@@ -1,5 +1,9 @@
 use irgen_model::base::{Block, Component, Field, Register, RegisterFile};
 
+fn compact_xml(xml: &str) -> String {
+    xml.split_whitespace().collect()
+}
+
 #[test]
 fn emits_field_elements_in_ipxact_2014_order() {
     let component = Component::new(
@@ -41,6 +45,42 @@ fn emits_field_elements_in_ipxact_2014_order() {
     assert!(bit_width < access);
     assert!(access < modified_write);
     assert!(xml.contains("<ipxact:modifiedWriteValue>oneToClear</ipxact:modifiedWriteValue>"));
+}
+
+#[test]
+fn emits_pretty_printed_ipxact_xml() {
+    let component = Component::new(
+        "example.com".into(),
+        "ip".into(),
+        "example".into(),
+        "1.0".into(),
+        vec![Block::new(
+            "regs".into(),
+            "0x0".into(),
+            "0x4".into(),
+            "32".into(),
+            vec![Register::new(
+                "status".into(),
+                "0x0".into(),
+                "32".into(),
+                vec![Field::new(
+                    "done".into(),
+                    "0".into(),
+                    "1".into(),
+                    "RW".into(),
+                    "0".into(),
+                    String::new(),
+                )],
+            )],
+        )],
+    );
+
+    let xml = ip_xact::serialize_2014(&component).expect("component should serialize");
+
+    assert!(xml.starts_with("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"));
+    assert!(xml.contains("\n  <ipxact:vendor>example.com</ipxact:vendor>\n"));
+    assert!(xml.contains("\n      <ipxact:addressBlock>\n"));
+    assert!(xml.ends_with('\n'));
 }
 
 #[test]
@@ -104,11 +144,13 @@ fn emits_standard_hdl_paths_for_ipxact_versions_that_support_them() {
     let ipxact_2009 = ip_xact::serialize_2009(&component).expect("component should serialize");
     let ipxact_2014 = ip_xact::serialize_2014(&component).expect("component should serialize");
     let ipxact_2022 = ip_xact::serialize_2022(&component).expect("component should serialize");
+    let compact_2014 = compact_xml(&ipxact_2014);
+    let compact_2022 = compact_xml(&ipxact_2022);
 
-    assert!(ipxact_2014.contains(access_handle_2014));
-    assert!(ipxact_2014.contains(block_access_handle_2014));
-    assert!(ipxact_2022.contains(access_handle_2022));
-    assert!(ipxact_2022.contains(block_access_handle_2022));
+    assert!(compact_2014.contains(access_handle_2014));
+    assert!(compact_2014.contains(block_access_handle_2014));
+    assert!(compact_2022.contains(access_handle_2022));
+    assert!(compact_2022.contains(block_access_handle_2022));
     assert!(!ipxact_2009.contains("snps:"));
     assert!(!ipxact_2009.contains("u_status.done_q"));
     assert!(!ipxact_2009.contains("`REGS_HDL_PATH"));
@@ -218,5 +260,5 @@ fn emits_register_file_arrays() {
     assert!(xml.contains("<ipxact:dim>4</ipxact:dim>"));
     assert!(xml.contains("<ipxact:addressOffset>0x10</ipxact:addressOffset>"));
     assert!(xml.contains("<ipxact:range>0x10</ipxact:range>"));
-    assert!(xml.contains("<ipxact:register><ipxact:name>lane</ipxact:name>"));
+    assert!(compact_xml(&xml).contains("<ipxact:register><ipxact:name>lane</ipxact:name>"));
 }

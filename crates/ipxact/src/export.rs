@@ -2,6 +2,8 @@ use irgen_model::attr::{
     extract_access_value, extract_modified_write_value, extract_read_action_value,
 };
 use irgen_model::base::{Block, Component, Field, Register, RegisterFile};
+use quick_xml::events::Event;
+use quick_xml::{Reader, Writer};
 
 use crate::{Error, Result};
 
@@ -61,7 +63,7 @@ fn serialize_component(component: &Component, version: Version) -> Result<String
             .replace("xmlns:ipxact=", "xmlns:spirit=")
             .replace("ipxact:", "spirit:");
     }
-    Ok(xml)
+    format_xml(&xml)
 }
 
 fn write_address_block(xml: &mut String, block: &Block, version: Version) -> Result<()> {
@@ -297,6 +299,23 @@ fn escape_text(xml: &mut String, value: &str) {
             _ => xml.push(ch),
         }
     }
+}
+
+fn format_xml(xml: &str) -> Result<String> {
+    let mut reader = Reader::from_str(xml);
+    let mut writer = Writer::new_with_indent(Vec::new(), b' ', 2);
+
+    loop {
+        match reader.read_event()? {
+            Event::Eof => break,
+            event => writer.write_event(event)?,
+        }
+    }
+
+    let mut formatted = String::from_utf8(writer.into_inner())
+        .map_err(|error| Error::Serialize(error.to_string()))?;
+    formatted.push('\n');
+    Ok(formatted)
 }
 
 fn namespace(version: Version) -> &'static str {
