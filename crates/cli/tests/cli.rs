@@ -13,6 +13,10 @@ fn args(values: &[&str]) -> impl Iterator<Item = OsString> {
         .into_iter()
 }
 
+fn compact_xml(xml: &str) -> String {
+    xml.split_whitespace().collect()
+}
+
 fn assert_parse_error_contains(values: &[&str], needles: &[&str]) {
     let error = parse_args(args(values)).unwrap_err();
     for needle in needles {
@@ -371,13 +375,14 @@ fn generates_and_validates_ipxact_output() {
     assert_eq!(result.as_deref(), Some(output.as_path()));
     let xml = fs::read_to_string(&output).unwrap();
     assert!(xml.contains("http://www.accellera.org/XMLSchema/IPXACT/1685-2014"));
-    let reg1_start = xml
+    let compact = compact_xml(&xml);
+    let reg1_start = compact
         .find("<ipxact:register><ipxact:name>reg1</ipxact:name>")
         .expect("generated IP-XACT should contain reg1");
-    let reg2_offset = xml[reg1_start..]
+    let reg2_offset = compact[reg1_start..]
         .find("<ipxact:register><ipxact:name>reg2</ipxact:name>")
         .expect("generated IP-XACT should contain reg2 after reg1");
-    let reg1_xml = &xml[reg1_start..reg1_start + reg2_offset];
+    let reg1_xml = &compact[reg1_start..reg1_start + reg2_offset];
     assert_eq!(reg1_xml.matches("<ipxact:field>").count(), 4);
     let _ = fs::remove_file(output);
 }
@@ -464,7 +469,7 @@ fn generate_and_validate_complex_ipxact(
     assert_eq!(result.as_deref(), Some(output.as_path()));
     let xml = fs::read_to_string(&output).unwrap();
     assert!(xml.contains(namespace));
-    assert!(xml.contains(register_needle));
+    assert!(compact_xml(&xml).contains(register_needle));
     let _ = fs::remove_file(output);
 }
 
