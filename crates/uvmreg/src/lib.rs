@@ -4,7 +4,7 @@ mod render;
 
 pub use model::*;
 pub use parse::{LibraryRef, document_library_ref, parse_ipxact, parse_ipxact_with_resolver};
-pub use render::serialize_uvm_reg;
+pub use render::{RenderOptions, serialize_uvm_reg, serialize_uvm_reg_with_options};
 
 pub fn ipxact_to_uvm_reg(xml: &str) -> Result<String> {
     serialize_uvm_reg(&parse_ipxact(xml)?)

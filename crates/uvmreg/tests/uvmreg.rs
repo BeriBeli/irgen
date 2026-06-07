@@ -1,4 +1,7 @@
-use irgen_uvmreg::{ipxact_to_uvm_reg, parse_ipxact, parse_ipxact_with_resolver};
+use irgen_uvmreg::{
+    RenderOptions, ipxact_to_uvm_reg, parse_ipxact, parse_ipxact_with_resolver,
+    serialize_uvm_reg_with_options,
+};
 
 const IPXACT_2014: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
 <ipxact:component xmlns:ipxact="http://www.accellera.org/XMLSchema/IPXACT/1685-2014">
@@ -495,19 +498,33 @@ fn renders_uvm_ieee_2020_register_model() {
     let sv = ipxact_to_uvm_reg(IPXACT_2014).unwrap();
 
     assert!(sv.contains("`ifndef RAL_DEMO_SV"));
-    assert!(sv.contains("class uvmreg_reg_demo_regs_status extends uvm_reg;"));
-    assert!(sv.contains("class uvmreg_regfile_demo_regs_lane extends uvm_reg_file;"));
-    assert!(sv.contains("class uvmreg_block_demo_regs extends uvm_reg_block;"));
-    assert!(sv.contains("class ral_sys_demo extends uvmreg_block_demo;"));
-    assert!(sv.contains("rand uvmreg_block_demo_regs regs;"));
+    assert!(sv.contains("class ral_reg_regs_status extends uvm_reg;"));
+    assert!(sv.contains("class ral_regfile_regs_lane extends uvm_reg_file;"));
+    assert!(sv.contains("class ral_block_regs extends uvm_reg_block;"));
+    assert!(sv.contains("class ral_sys_demo extends uvm_reg_block;"));
+    assert!(sv.contains("rand ral_block_regs regs;"));
     assert!(sv.contains("done.configure(this, 1, 0, \"RO\", 1'b0, 1'h1, 1'b1, 1'b0, 1);"));
     assert!(sv.contains("status.add_hdl_path_slice({`REGS_HDL_PATH, \".done_q\"}, 0, 1, 1'b1);"));
     assert!(sv.contains("default_map.add_reg(status, 64'h4, \"RO\");"));
     assert!(sv.contains("default_map.add_submap(regs.default_map, 64'h1000);"));
-    assert!(sv.contains("rand uvmreg_reg_demo_regs_lane_ctrl ctrl;"));
+    assert!(sv.contains("rand ral_reg_regs_lane_ctrl ctrl;"));
     assert!(sv.contains("ctrl.add_hdl_path_slice(\"top.u_regs.lane.enable_q\", 0, 1, 1'b1);"));
     assert!(sv.contains("mp.add_reg(ctrl, offset + 64'h0, \"RW\");"));
     assert!(sv.contains("lane[i].map(default_map, 64'h20 + i * 64'h10);"));
+}
+
+#[test]
+fn optionally_renders_register_bit_coverage() {
+    let component = parse_ipxact(IPXACT_2014).unwrap();
+    let sv = serialize_uvm_reg_with_options(&component, RenderOptions { coverage: true }).unwrap();
+
+    assert!(sv.contains("local uvm_reg_data_t m_data;"));
+    assert!(sv.contains("covergroup cg_bits();"));
+    assert!(sv.contains("done_bits: coverpoint {m_data[0:0], m_is_read} iff (m_be);"));
+    assert!(sv.contains("super.new(name, 32, build_coverage(UVM_CVR_REG_BITS));"));
+    assert!(sv.contains("add_coverage(build_coverage(UVM_CVR_REG_BITS));"));
+    assert!(sv.contains("if (get_coverage(UVM_CVR_REG_BITS)) begin"));
+    assert!(sv.contains("cg_bits.sample();"));
 }
 
 #[test]
@@ -517,37 +534,14 @@ fn renders_ipxact_2022_field_access_policies() {
 
     assert_eq!(clear.reset.as_deref(), Some("0"));
     assert_eq!(clear.resets.len(), 2);
-    assert_eq!(clear.resets[0].mask.as_deref(), Some("1"));
     assert_eq!(clear.resets[1].reset_type.as_deref(), Some("SOFT"));
     assert_eq!(clear.resets[1].value, "1");
     assert_eq!(clear.access.as_deref(), Some("read-write"));
-    assert_eq!(clear.access_policies.len(), 2);
-    assert_eq!(
-        clear.access_policies[0].access.as_deref(),
-        Some("read-only")
-    );
-    assert_eq!(
-        clear.access_policies[0]
-            .mode_refs
-            .first()
-            .map(|mode_ref| (mode_ref.name.as_str(), mode_ref.priority.as_deref())),
-        Some(("diagnostic", Some("1")))
-    );
-    assert_eq!(
-        clear.access_policies[1].access.as_deref(),
-        Some("read-write")
-    );
 
     let sv = ipxact_to_uvm_reg(IPXACT_2022).unwrap();
 
     assert!(sv.contains("clear.configure(this, 1, 0, \"W1C\", 1'b0, 1'h0, 1'b1, 1'b1, 1);"));
-    assert!(sv.contains("localparam string CLEAR_ACCESS_POLICY_0_ACCESS = \"read-only\";"));
-    assert!(sv.contains("localparam string CLEAR_ACCESS_POLICY_0_MODES = \"diagnostic:1\";"));
-    assert!(sv.contains("localparam string CLEAR_ACCESS_POLICY_1_ACCESS = \"read-write\";"));
     assert!(sv.contains("clear.set_reset(1'h1, \"SOFT\");"));
-    assert!(sv.contains("localparam bit [0:0] CLEAR_RESET_0_MASK = 1'h1;"));
-    assert!(sv.contains("localparam string CLEAR_RESET_1_KIND = \"SOFT\";"));
-    assert!(sv.contains("localparam bit [0:0] CLEAR_RESET_1_MASK = 1'h1;"));
     assert!(sv.contains("irq.add_hdl_path_slice({`IRQ_HDL_PATH, \".clear_q\"}, 0, 1, 1'b1);"));
 }
 
@@ -559,19 +553,11 @@ fn renders_ipxact_alternate_registers() {
     assert_eq!(alternate.name, "debug_irq");
     assert_eq!(alternate.access.as_deref(), Some("read-only"));
     assert_eq!(alternate.fields[0].name, "raw");
-    assert_eq!(
-        alternate
-            .groups_or_modes
-            .first()
-            .map(|mode_ref| (mode_ref.name.as_str(), mode_ref.priority.as_deref())),
-        Some(("diagnostic", Some("1")))
-    );
 
     let sv = ipxact_to_uvm_reg(IPXACT_2022).unwrap();
-    assert!(sv.contains("class uvmreg_reg_demo_regs_irq_debug_irq extends uvm_reg;"));
-    assert!(sv.contains("localparam string ALTERNATE_GROUPS_OR_MODES = \"diagnostic:1\";"));
+    assert!(sv.contains("class ral_reg_regs_irq_debug_irq extends uvm_reg;"));
     assert!(sv.contains("raw.configure(this, 8, 0, \"RO\", 1'b0, 8'h0, 1'b0, 1'b0, 1);"));
-    assert!(sv.contains("rand uvmreg_reg_demo_regs_irq_debug_irq debug_irq;"));
+    assert!(sv.contains("rand ral_reg_regs_irq_debug_irq debug_irq;"));
     assert!(sv.contains("default_map.add_reg(debug_irq, 64'h0, \"RO\");"));
 }
 
@@ -585,70 +571,16 @@ fn inherits_block_and_register_access_policies() {
     assert_eq!(block.access.as_deref(), Some("read-only"));
     assert_eq!(block_status.fields[0].access.as_deref(), None);
     assert_eq!(block_status.fields[0].enumerated_values.len(), 2);
-    assert!(
-        block_status.fields[0]
-            .write_value_constraint
-            .as_ref()
-            .is_some_and(|constraint| constraint.use_enumerated_values.as_deref() == Some("true"))
-    );
-    assert!(
-        block_status.fields[0]
-            .testable
-            .as_ref()
-            .is_some_and(|testable| testable.value == "false"
-                && testable.test_constraint.as_deref() == Some("readOnly"))
-    );
-    assert_eq!(block_status.fields[0].reserved.as_deref(), Some("1"));
-    assert_eq!(block_status.fields[0].access_restrictions.len(), 1);
-    assert_eq!(
-        block_status.fields[0].access_restrictions[0]
-            .mode_refs
-            .first()
-            .map(|mode_ref| (mode_ref.name.as_str(), mode_ref.priority.as_deref())),
-        Some(("diagnostic", Some("0")))
-    );
-    assert_eq!(block_status.fields[0].broadcasts.len(), 1);
-    assert_eq!(
-        block_status.fields[0].broadcasts[0]
-            .target
-            .last()
-            .map(|segment| (segment.kind.as_str(), segment.name.as_str())),
-        Some(("fieldRef", "doorbell"))
-    );
-    assert_eq!(
-        block_status.fields[0].enumerated_values[1].usage.as_deref(),
-        Some("read-write")
-    );
     assert_eq!(gate.access.as_deref(), Some("write-only"));
-    assert_eq!(gate.access_policies.len(), 2);
-    assert_eq!(gate.access_policies[0].access.as_deref(), Some("read-only"));
-    assert_eq!(
-        gate.access_policies[0]
-            .mode_refs
-            .first()
-            .map(|mode_ref| (mode_ref.name.as_str(), mode_ref.priority.as_deref())),
-        Some(("diagnostic", Some("1")))
-    );
     assert_eq!(gate.fields[0].access.as_deref(), None);
 
     let sv = ipxact_to_uvm_reg(IPXACT_2022).unwrap();
     assert!(sv.contains("state.configure(this, 4, 0, \"RO\", 1'b0, 4'h0, 1'b0, 1'b0, 1);"));
     assert!(sv.contains("typedef enum bit [3:0] {"));
-    assert!(sv.contains("STATE_IDLE = 4'h0 /* read */,"));
-    assert!(sv.contains("STATE_BUSY = 4'h1 /* read-write */"));
+    assert!(sv.contains("STATE_IDLE = 4'h0,"));
+    assert!(sv.contains("STATE_BUSY = 4'h1"));
     assert!(sv.contains("} state_e;"));
-    assert!(sv.contains("localparam bit STATE_USE_ENUMERATED_VALUES = 1'b1;"));
-    assert!(sv.contains("localparam bit STATE_TESTABLE = 1'b0;"));
-    assert!(sv.contains("localparam string STATE_TEST_CONSTRAINT = \"readOnly\";"));
-    assert!(sv.contains("localparam bit STATE_RESERVED = 1'b1;"));
-    assert!(sv.contains("localparam string STATE_ACCESS_RESTRICTION_0_MODES = \"diagnostic:0\";"));
-    assert!(sv.contains("localparam bit [3:0] STATE_ACCESS_RESTRICTION_0_READ_MASK = 4'hf;"));
-    assert!(sv.contains("localparam bit [3:0] STATE_ACCESS_RESTRICTION_0_WRITE_MASK = 4'h3;"));
-    assert!(sv.contains("localparam string STATE_BROADCAST_0 = \"memoryMapRef=demo.addressBlockRef=regs.registerRef=gate.fieldRef=doorbell\";"));
     assert!(sv.contains("default_map.add_reg(block_status, 64'h4, \"RO\");"));
-    assert!(sv.contains("localparam string ACCESS_POLICY_0_ACCESS = \"read-only\";"));
-    assert!(sv.contains("localparam string ACCESS_POLICY_0_MODES = \"diagnostic:1\";"));
-    assert!(sv.contains("localparam string ACCESS_POLICY_1_ACCESS = \"write-only\";"));
     assert!(sv.contains("doorbell.configure(this, 1, 0, \"WO\", 1'b0, 1'h0, 1'b0, 1'b1, 1);"));
     assert!(sv.contains("default_map.add_reg(gate, 64'h20, \"WO\");"));
 }
@@ -691,9 +623,9 @@ fn expands_local_address_block_and_register_definitions() {
     assert_eq!(register.fields[0].enumerated_values.len(), 2);
 
     let sv = ipxact_to_uvm_reg(IPXACT_2022).unwrap();
-    assert!(sv.contains("class uvmreg_reg_demo_from_definition_status_from_def extends uvm_reg;"));
-    assert!(sv.contains("READY_NOT_READY = 2'h0 /* read */,"));
-    assert!(sv.contains("READY_READY = 2'h1 /* read */"));
+    assert!(sv.contains("class ral_reg_from_definition_status_from_def extends uvm_reg;"));
+    assert!(sv.contains("READY_NOT_READY = 2'h0,"));
+    assert!(sv.contains("READY_READY = 2'h1"));
     assert!(sv.contains("ready.configure(this, 2, 0, \"RC\", 1'b1, 2'h1, 1'b1, 1'b0, 1);"));
     assert!(sv.contains("default_map.add_reg(status_from_def, 64'h0, \"RO\");"));
     assert!(sv.contains("default_map.add_submap(from_definition.default_map, 64'h2400);"));
@@ -712,7 +644,7 @@ fn flattens_serial_banks_into_address_blocks() {
     assert_eq!(stat.base_address, "0x3010");
 
     let sv = ipxact_to_uvm_reg(IPXACT_2022).unwrap();
-    assert!(sv.contains("class uvmreg_reg_demo_banked_ctl_mode extends uvm_reg;"));
+    assert!(sv.contains("class ral_reg_banked_ctl_mode extends uvm_reg;"));
     assert!(sv.contains("default_map.add_reg(mode, 64'h0, \"RW\");"));
     assert!(sv.contains("default_map.add_reg(value, 64'h4, \"RO\");"));
     assert!(sv.contains("default_map.add_submap(banked_ctl.default_map, 64'h3000);"));
@@ -720,20 +652,16 @@ fn flattens_serial_banks_into_address_blocks() {
 }
 
 #[test]
-fn preserves_top_level_subspace_maps_as_block_metadata() {
+fn resolves_top_level_subspace_maps_without_metadata_output() {
     let component = parse_ipxact(IPXACT_2022).unwrap();
     let subspace = &component.subspace_maps[0];
 
     assert_eq!(subspace.name, "dma_window");
     assert_eq!(subspace.base_address, "0x2800");
-    assert_eq!(subspace.initiator_ref, "dma_init");
     assert_eq!(subspace.segment_ref.as_deref(), Some("cfg_seg"));
 
     let sv = ipxact_to_uvm_reg(IPXACT_2022).unwrap();
-    assert!(sv.contains("localparam string SUBSPACE_0_NAME = \"dma_window\";"));
-    assert!(sv.contains("localparam string SUBSPACE_0_BASE = \"0x2800\";"));
-    assert!(sv.contains("localparam string SUBSPACE_0_INITIATOR = \"dma_init\";"));
-    assert!(sv.contains("localparam string SUBSPACE_0_SEGMENT = \"cfg_seg\";"));
+    assert!(!sv.contains("localparam"));
 }
 
 #[test]
@@ -742,22 +670,12 @@ fn preserves_memory_remaps_and_generates_their_registers() {
     let remap = &component.memory_remaps[0];
 
     assert_eq!(remap.name, "low_power");
-    assert_eq!(
-        remap
-            .mode_refs
-            .first()
-            .map(|mode_ref| (mode_ref.name.as_str(), mode_ref.priority.as_deref())),
-        Some(("sleep", Some("0")))
-    );
     assert_eq!(remap.blocks[0].name, "low_power_lp_regs");
     assert_eq!(remap.subspace_maps[0].name, "low_power_lp_window");
 
     let sv = ipxact_to_uvm_reg(IPXACT_2022).unwrap();
-    assert!(sv.contains("localparam string REMAP_0_NAME = \"low_power\";"));
-    assert!(sv.contains("localparam string REMAP_0_MODES = \"sleep:0\";"));
-    assert!(sv.contains("localparam string REMAP_0_SUBSPACE_0_NAME = \"low_power_lp_window\";"));
-    assert!(sv.contains("class uvmreg_reg_demo_low_power_lp_regs_wake extends uvm_reg;"));
-    assert!(sv.contains("rand uvmreg_reg_demo_low_power_lp_regs_wake low_power_lp_regs_wake;"));
+    assert!(sv.contains("class ral_reg_low_power_lp_regs_wake extends uvm_reg;"));
+    assert!(sv.contains("rand ral_reg_low_power_lp_regs_wake low_power_lp_regs_wake;"));
     assert!(sv.contains("default_map.add_reg(low_power_lp_regs_wake, 64'h4000, \"RO\");"));
 }
 
@@ -771,21 +689,13 @@ fn renders_ipxact_register_arrays() {
     assert_eq!(counter.dims, vec!["2".to_string(), "1".to_string()]);
     assert_eq!(counter.stride.as_deref(), Some("8"));
     assert_eq!(counter.volatile.as_deref(), Some("true"));
-    assert!(
-        counter.fields[0]
-            .write_value_constraint
-            .as_ref()
-            .is_some_and(|constraint| constraint.minimum.as_deref() == Some("0x2"))
-    );
 
     let sv = ipxact_to_uvm_reg(IPXACT_2022).unwrap();
     assert!(sv.contains("value.configure(this, 32, 0, \"RW\", 1'b1, 32'h0, 1'b0, 1'b1, 1);"));
-    assert!(sv.contains("localparam bit [31:0] VALUE_MINIMUM = 32'h2;"));
-    assert!(sv.contains("localparam bit [31:0] VALUE_MAXIMUM = 32'hf;"));
-    assert!(sv.contains("rand uvmreg_reg_demo_regs_counter counter[2][1];"));
+    assert!(sv.contains("rand ral_reg_regs_counter counter[2][1];"));
     assert!(sv.contains("for (int unsigned i0 = 0; i0 < 2; i0++) begin"));
     assert!(sv.contains("for (int unsigned i1 = 0; i1 < 1; i1++) begin"));
-    assert!(sv.contains("counter[i0][i1] = uvmreg_reg_demo_regs_counter::type_id::create($sformatf(\"counter_%0d_%0d\", i0, i1));"));
+    assert!(sv.contains("counter[i0][i1] = ral_reg_regs_counter::type_id::create($sformatf(\"counter_%0d_%0d\", i0, i1));"));
     assert!(
         sv.contains(
             "default_map.add_reg(counter[i0][i1], 64'h10 + (i0 * 1 + i1) * 64'h8, \"RW\");"
@@ -972,17 +882,15 @@ fn renders_scalar_register_files_without_array_loop() {
     assert_eq!(component.blocks[0].register_files[0].dim, "1");
 
     let sv = ipxact_to_uvm_reg(xml).unwrap();
-    assert!(sv.contains("class uvmreg_regfile_rf_scalar_cfg_local extends uvm_reg_file;"));
-    assert!(sv.contains("uvmreg_regfile_rf_scalar_cfg_local local;"));
-    assert!(sv.contains("local = uvmreg_regfile_rf_scalar_cfg_local::type_id::create(\"local\");"));
+    assert!(sv.contains("class ral_regfile_cfg_local extends uvm_reg_file;"));
+    assert!(sv.contains("ral_regfile_cfg_local local;"));
+    assert!(sv.contains("local = ral_regfile_cfg_local::type_id::create(\"local\");"));
     assert!(sv.contains("local.configure(this, null, \"\");"));
-    assert!(sv.contains("rand uvmreg_reg_rf_scalar_cfg_local_status status;"));
-    assert!(
-        sv.contains("status = uvmreg_reg_rf_scalar_cfg_local_status::type_id::create(\"status\");")
-    );
+    assert!(sv.contains("rand ral_reg_cfg_local_status status;"));
+    assert!(sv.contains("status = ral_reg_cfg_local_status::type_id::create(\"status\");"));
     assert!(sv.contains("status.configure(get_block(), this);"));
     assert!(sv.contains("mp.add_reg(status, offset + 64'h4, \"RO\");"));
-    assert!(sv.contains("rand uvmreg_reg_rf_scalar_cfg_local_status_shadow shadow;"));
+    assert!(sv.contains("rand ral_reg_cfg_local_status_shadow shadow;"));
     assert!(sv.contains("mp.add_reg(shadow, offset + 64'h4, \"RW\");"));
     assert!(!sv.contains("status[1]"));
     assert!(!sv.contains("$sformatf(\"status_%0d\""));
@@ -1055,22 +963,28 @@ fn renders_register_arrays_inside_register_files() {
 
     let sv = ipxact_to_uvm_reg(xml).unwrap();
 
-    assert!(sv.contains("class uvmreg_regfile_rf_reg_arrays_cfg_local extends uvm_reg_file;"));
-    assert!(sv.contains("rand uvmreg_reg_rf_reg_arrays_cfg_local_counter counter[2];"));
-    assert!(sv.contains("counter[i] = uvmreg_reg_rf_reg_arrays_cfg_local_counter::type_id::create($sformatf(\"counter_%0d\", i));"));
+    assert!(sv.contains("class ral_regfile_cfg_local extends uvm_reg_file;"));
+    assert!(sv.contains("rand ral_reg_cfg_local_counter counter[2];"));
+    assert!(sv.contains(
+        "counter[i] = ral_reg_cfg_local_counter::type_id::create($sformatf(\"counter_%0d\", i));"
+    ));
     assert!(sv.contains("counter[i].configure(get_block(), this);"));
     assert!(sv.contains("mp.add_reg(counter[i], offset + 64'h4 + i * 64'h4, \"RW\");"));
-    assert!(sv.contains("uvmreg_regfile_rf_reg_arrays_cfg_lane lane[2];"));
-    assert!(sv.contains("lane[i] = uvmreg_regfile_rf_reg_arrays_cfg_lane::type_id::create($sformatf(\"lane_%0d\", i));"));
+    assert!(sv.contains("ral_regfile_cfg_lane lane[2];"));
+    assert!(
+        sv.contains("lane[i] = ral_regfile_cfg_lane::type_id::create($sformatf(\"lane_%0d\", i));")
+    );
     assert!(sv.contains("lane[i].configure(this, null, \"\");"));
-    assert!(sv.contains("rand uvmreg_reg_rf_reg_arrays_cfg_lane_sample sample[3];"));
-    assert!(sv.contains("sample[i] = uvmreg_reg_rf_reg_arrays_cfg_lane_sample::type_id::create($sformatf(\"sample_%0d\", i));"));
+    assert!(sv.contains("rand ral_reg_cfg_lane_sample sample[3];"));
+    assert!(sv.contains(
+        "sample[i] = ral_reg_cfg_lane_sample::type_id::create($sformatf(\"sample_%0d\", i));"
+    ));
     assert!(sv.contains("sample[i].configure(get_block(), this);"));
     assert!(sv.contains("mp.add_reg(sample[i], offset + 64'h8 + i * 64'h4, \"RW\");"));
 }
 
 #[test]
-fn preserves_descriptions_as_uvm_metadata() {
+fn ignores_retained_descriptions_while_generating_ral() {
     let xml = r#"
 <ipxact:component xmlns:ipxact="http://www.accellera.org/XMLSchema/IPXACT/1685-2022">
   <ipxact:vendor>acme</ipxact:vendor>
@@ -1160,47 +1074,19 @@ with "quotes"</ipxact:description>
     let component = parse_ipxact(xml).unwrap();
     let block = &component.blocks[0];
 
+    assert_eq!(block.name, "cfg");
+    assert_eq!(block.register_files[0].name, "cluster");
+    assert_eq!(block.registers[0].name, "status");
+    assert_eq!(block.registers[0].fields[0].name, "ready");
     assert_eq!(
-        block.description,
-        "Definition block description\nwith \"quotes\""
-    );
-    assert_eq!(
-        block.register_files[0].description,
-        "Definition register file description"
-    );
-    assert_eq!(
-        block.registers[0].description,
-        "Instance register description"
-    );
-    assert_eq!(
-        block.registers[0].fields[0].description,
-        "Definition field description"
-    );
-    assert_eq!(
-        block.registers[0].alternate_registers[0].description,
-        "Alternate register description"
+        block.registers[0].alternate_registers[0].name,
+        "debug_status"
     );
 
     let sv = ipxact_to_uvm_reg(xml).unwrap();
-    assert!(sv.contains(
-        "localparam string BLOCK_0_DESCRIPTION = \"Definition block description\\nwith \\\"quotes\\\"\";"
-    ));
-    assert!(sv.contains(
-        "localparam string BLOCK_0_REGISTER_FILE_0_DESCRIPTION = \"Definition register file description\";"
-    ));
-    assert!(
-        sv.contains("localparam string REGISTER_DESCRIPTION = \"Instance register description\";")
-    );
-    assert!(
-        sv.contains(
-            "localparam string REGISTER_DESCRIPTION = \"Definition register description\";"
-        )
-    );
-    assert!(
-        sv.contains("localparam string REGISTER_DESCRIPTION = \"Alternate register description\";")
-    );
-    assert!(sv.contains("localparam string READY_DESCRIPTION = \"Definition field description\";"));
-    assert!(sv.contains("localparam string RAW_DESCRIPTION = \"Alternate field description\";"));
+    assert!(!sv.contains("localparam"));
+    assert!(sv.contains("ready.configure(this, 1, 0, \"RO\", 1'b0, 1'h0, 1'b0, 1'b0, 1);"));
+    assert!(sv.contains("raw.configure(this, 8, 0, \"RW\", 1'b0, 8'h0, 1'b0, 1'b1, 1);"));
 }
 
 #[test]
@@ -1334,22 +1220,16 @@ fn resolves_definition_refs_by_type_definitions_scope() {
     let register = &block.registers[0];
     let field = &register.fields[0];
 
-    assert_eq!(block.description, "B block");
     assert_eq!(block.range, "0x40");
     assert_eq!(block.width, "32");
-    assert_eq!(register.description, "B register");
     assert_eq!(register.size, "32");
-    assert_eq!(field.description, "B field");
     assert_eq!(field.bit_width, "2");
     assert_eq!(field.access.as_deref(), Some("read-write"));
     assert_eq!(field.enumerated_values[0].name, "b_value");
     assert_eq!(field.enumerated_values[0].value, "3");
 
     let sv = ipxact_to_uvm_reg(xml).unwrap();
-    assert!(sv.contains("localparam string BLOCK_0_DESCRIPTION = \"B block\";"));
-    assert!(sv.contains("localparam string REGISTER_DESCRIPTION = \"B register\";"));
-    assert!(sv.contains("localparam string STATE_DESCRIPTION = \"B field\";"));
-    assert!(sv.contains("STATE_B_VALUE = 2'h3 /* read */"));
+    assert!(sv.contains("STATE_B_VALUE = 2'h3"));
     assert!(sv.contains("state.configure(this, 2, 0, \"RW\", 1'b0, 2'h0, 1'b0, 1'b1, 1);"));
     assert!(!sv.contains("A block"));
     assert!(!sv.contains("A register"));
@@ -1421,25 +1301,12 @@ fn resolves_external_type_definitions_with_resolver() {
     })
     .unwrap();
 
-    assert_eq!(
-        component.blocks[0].description,
-        "External block description"
-    );
-    assert_eq!(
-        component.blocks[0].registers[0].description,
-        "External register description"
-    );
-    assert_eq!(
-        component.blocks[0].registers[0].fields[0].description,
-        "External field description"
-    );
+    assert_eq!(component.blocks[0].name, "cfg");
+    assert_eq!(component.blocks[0].registers[0].name, "status");
+    assert_eq!(component.blocks[0].registers[0].fields[0].name, "ready");
 
     let sv = irgen_uvmreg::serialize_uvm_reg(&component).unwrap();
-    assert!(sv.contains("localparam string BLOCK_0_DESCRIPTION = \"External block description\";"));
-    assert!(
-        sv.contains("localparam string REGISTER_DESCRIPTION = \"External register description\";")
-    );
-    assert!(sv.contains("localparam string READY_DESCRIPTION = \"External field description\";"));
+    assert!(!sv.contains("localparam"));
     assert!(sv.contains("default_map.add_reg(status, 64'h4, \"RO\");"));
     assert!(sv.contains("default_map.add_submap(cfg.default_map, 64'h40);"));
 }
@@ -1472,6 +1339,13 @@ fn renders_address_space_local_memory_map_as_uvm_submap() {
       <ipxact:range>0x100</ipxact:range>
       <ipxact:width>32</ipxact:width>
       <ipxact:addressUnitBits>8</ipxact:addressUnitBits>
+      <ipxact:segments>
+        <ipxact:segment>
+          <ipxact:name>cfg_seg</ipxact:name>
+          <ipxact:addressOffset>0x20</ipxact:addressOffset>
+          <ipxact:range>0x10</ipxact:range>
+        </ipxact:segment>
+      </ipxact:segments>
       <ipxact:localMemoryMap>
         <ipxact:name>dma_local</ipxact:name>
         <ipxact:addressBlock>
@@ -1514,7 +1388,7 @@ fn renders_address_space_local_memory_map_as_uvm_submap() {
           </ipxact:field>
         </ipxact:register>
       </ipxact:addressBlock>
-      <ipxact:subspaceMap initiatorRef="dma_init">
+      <ipxact:subspaceMap initiatorRef="dma_init" segmentRef="cfg_seg">
         <ipxact:name>dma_window</ipxact:name>
         <ipxact:baseAddress>0x1000</ipxact:baseAddress>
       </ipxact:subspaceMap>
@@ -1525,6 +1399,11 @@ fn renders_address_space_local_memory_map_as_uvm_submap() {
     let component = parse_ipxact(xml).unwrap();
 
     assert_eq!(component.address_spaces[0].name, "dma_space");
+    assert_eq!(component.address_spaces[0].segments[0].name, "cfg_seg");
+    assert_eq!(
+        component.address_spaces[0].segments[0].address_offset,
+        "0x20"
+    );
     assert_eq!(component.address_spaces[0].blocks[0].name, "dma_regs");
     assert_eq!(
         component.subspace_maps[0].address_space_ref.as_deref(),
@@ -1532,17 +1411,15 @@ fn renders_address_space_local_memory_map_as_uvm_submap() {
     );
 
     let sv = ipxact_to_uvm_reg(xml).unwrap();
-    assert!(sv.contains("class uvmreg_block_bridge_dma_space_dma_regs extends uvm_reg_block;"));
-    assert!(sv.contains("class uvmreg_block_bridge_dma_space extends uvm_reg_block;"));
-    assert!(sv.contains("class uvmreg_block_bridge extends uvm_reg_block;"));
-    assert!(sv.contains("rand uvmreg_reg_bridge_dma_space_dma_regs_doorbell doorbell;"));
+    assert!(sv.contains("class ral_block_bridge_dma_space_dma_regs extends uvm_reg_block;"));
+    assert!(sv.contains("class ral_sys_bridge_dma_space extends uvm_reg_block;"));
+    assert!(sv.contains("class ral_sys_bridge extends uvm_reg_block;"));
+    assert!(sv.contains("rand ral_reg_bridge_dma_space_dma_regs_doorbell doorbell;"));
     assert!(sv.contains("default_map.add_reg(doorbell, 64'h4, \"WO\");"));
     assert!(sv.contains("default_map.add_submap(dma_regs.default_map, 64'h20);"));
-    assert!(sv.contains("rand uvmreg_block_bridge_dma_space dma_window;"));
-    assert!(
-        sv.contains("dma_window = uvmreg_block_bridge_dma_space::type_id::create(\"dma_window\");")
-    );
-    assert!(sv.contains("default_map.add_submap(dma_window.default_map, 64'h1000);"));
+    assert!(sv.contains("rand ral_sys_bridge_dma_space dma_window;"));
+    assert!(sv.contains("dma_window = ral_sys_bridge_dma_space::type_id::create(\"dma_window\");"));
+    assert!(sv.contains("default_map.add_submap(dma_window.default_map, 64'hfe0);"));
 }
 
 #[test]
@@ -1629,20 +1506,17 @@ fn expands_scoped_memory_map_definitions() {
     assert_eq!(component.blocks[0].name, "b_regs");
     assert_eq!(component.blocks[0].map_name, "cfg");
     assert_eq!(component.blocks[0].address_unit_bits, "32");
-    assert_eq!(component.blocks[0].description, "Scoped memory map block");
     assert_eq!(component.memory_remaps[0].name, "debug");
     assert_eq!(component.memory_remaps[0].blocks[0].name, "debug_dbg_regs");
     assert_eq!(component.memory_remaps[0].blocks[0].map_name, "cfg");
     assert_eq!(component.memory_remaps[0].blocks[0].address_unit_bits, "32");
 
     let sv = ipxact_to_uvm_reg(xml).unwrap();
-    assert!(sv.contains("localparam string BLOCK_0_DESCRIPTION = \"Scoped memory map block\";"));
     assert!(
         sv.contains("default_map = create_map(\"default_map\", 0, 4, UVM_LITTLE_ENDIAN, 1'b0);")
     );
     assert!(sv.contains("default_map.add_reg(status, 64'h1, \"RO\");"));
     assert!(sv.contains("default_map.add_submap(b_regs.default_map, 64'h2);"));
-    assert!(sv.contains("localparam string REMAP_0_NAME = \"debug\";"));
     assert!(sv.contains("default_map.add_reg(debug_dbg_regs_ctrl, 64'h8, \"RW\");"));
     assert!(!sv.contains("a_regs"));
 }
@@ -1750,13 +1624,7 @@ fn expands_scoped_bank_and_memory_remap_definitions() {
 
     assert_eq!(component.blocks[0].name, "banked_def_regs");
     assert_eq!(component.blocks[0].base_address, "0x100");
-    assert_eq!(component.blocks[0].description, "Scoped bank block");
     assert_eq!(component.memory_remaps[0].name, "lowpower");
-    assert_eq!(component.memory_remaps[0].mode_refs[0].name, "sleep");
-    assert_eq!(
-        component.memory_remaps[0].mode_refs[0].priority.as_deref(),
-        Some("1")
-    );
     assert_eq!(
         component.memory_remaps[0].blocks[0].name,
         "lowpower_lp_regs"
@@ -1764,11 +1632,8 @@ fn expands_scoped_bank_and_memory_remap_definitions() {
     assert_eq!(component.memory_remaps[0].blocks[0].base_address, "0x200");
 
     let sv = ipxact_to_uvm_reg(xml).unwrap();
-    assert!(sv.contains("localparam string BLOCK_0_DESCRIPTION = \"Scoped bank block\";"));
     assert!(sv.contains("default_map.add_reg(status, 64'h4, \"RO\");"));
     assert!(sv.contains("default_map.add_submap(banked_def_regs.default_map, 64'h100);"));
-    assert!(sv.contains("localparam string REMAP_0_NAME = \"lowpower\";"));
-    assert!(sv.contains("localparam string REMAP_0_MODES = \"sleep:1\";"));
     assert!(sv.contains("default_map.add_reg(lowpower_lp_regs_ctrl, 64'h200, \"RW\");"));
     assert!(!sv.contains("a_bank_block"));
     assert!(!sv.contains("a_remap_block"));

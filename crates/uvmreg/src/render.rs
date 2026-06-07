@@ -3,8 +3,8 @@ use std::collections::BTreeMap;
 use askama::Template;
 
 use crate::model::{
-    AccessPolicy, AddressBlock, AlternateRegister, Component, EnumeratedValue, Field, ModeRef,
-    Register, RegisterFile, SubspaceMap,
+    AddressBlock, AlternateRegister, Component, EnumeratedValue, Field, Register, RegisterFile,
+    SubspaceMap,
 };
 use crate::{Error, Result};
 
@@ -15,7 +15,6 @@ struct PackageTemplate<'a> {
     register_classes: &'a [RegisterClass],
     register_file_classes: &'a [RegisterFileClass],
     block_classes: &'a [BlockClass],
-    alias_classes: &'a [AliasClass],
 }
 
 #[derive(Debug)]
@@ -23,15 +22,9 @@ struct RegisterClass {
     class_name: String,
     default_name: String,
     size_bits: u64,
-    metadata_params: Vec<ConstraintParamView>,
+    coverage_enabled: bool,
+    coverage_model: &'static str,
     fields: Vec<FieldView>,
-}
-
-#[derive(Debug)]
-struct AliasClass {
-    class_name: String,
-    base_class_name: String,
-    default_name: String,
 }
 
 #[derive(Debug)]
@@ -42,12 +35,9 @@ struct FieldView {
     enum_msb: u64,
     has_enum_values: bool,
     enum_values: Vec<EnumValueView>,
-    has_constraint_params: bool,
-    constraint_params: Vec<ConstraintParamView>,
-    has_policy_params: bool,
-    policy_params: Vec<ConstraintParamView>,
     width: u64,
     lsb: u64,
+    msb: u64,
     access: String,
     volatile: &'static str,
     reset_literal: String,
@@ -66,15 +56,6 @@ struct ResetView {
 struct EnumValueView {
     name: String,
     literal: String,
-    usage: String,
-    has_usage: bool,
-}
-
-#[derive(Debug)]
-struct ConstraintParamView {
-    name: String,
-    type_expr: String,
-    value_expr: String,
 }
 
 #[derive(Debug)]
@@ -82,7 +63,6 @@ struct BlockClass {
     class_name: String,
     default_name: String,
     maps: Vec<MapInstance>,
-    metadata_params: Vec<ConstraintParamView>,
     memories: Vec<MemoryInstance>,
     reg_files: Vec<RegisterFileInstance>,
     instances: Vec<RegisterInstance>,
@@ -189,40 +169,57 @@ struct MapContext {
 }
 
 pub fn serialize_uvm_reg(component: &Component) -> Result<String> {
+    serialize_uvm_reg_with_options(component, RenderOptions::default())
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct RenderOptions {
+    pub coverage: bool,
+}
+
+pub fn serialize_uvm_reg_with_options(
+    component: &Component,
+    options: RenderOptions,
+) -> Result<String> {
     let guard = format!("RAL_{}_SV", ident(&component.name).to_ascii_uppercase());
-    let register_classes = register_classes(component)?;
+    let register_classes = register_classes_with_options(component, options)?;
     let register_file_classes = register_file_classes(component)?;
     let block_classes = block_classes(component)?;
-    let alias_classes = vec![AliasClass {
-        class_name: format!("ral_sys_{}", ident(&component.name)),
-        base_class_name: format!("uvmreg_block_{}", ident(&component.name)),
-        default_name: component.name.clone(),
-    }];
-    Ok(PackageTemplate {
+    let rendered = PackageTemplate {
         guard: &guard,
         register_classes: &register_classes,
         register_file_classes: &register_file_classes,
         block_classes: &block_classes,
-        alias_classes: &alias_classes,
     }
-    .render()?)
+    .render()?;
+    Ok(normalize_class_spacing(rendered))
 }
 
-fn register_classes(component: &Component) -> Result<Vec<RegisterClass>> {
+fn normalize_class_spacing(mut sv: String) -> String {
+    while sv.contains("endclass\n\n\n\nclass ") {
+        sv = sv.replace("endclass\n\n\n\nclass ", "endclass\n\n\nclass ");
+    }
+    sv
+}
+
+fn register_classes_with_options(
+    component: &Component,
+    options: RenderOptions,
+) -> Result<Vec<RegisterClass>> {
     let mut classes = Vec::new();
     for block in &component.blocks {
-        register_classes_for_block(component, block, &mut classes)?;
+        register_classes_for_block(component, block, &mut classes, false, options)?;
     }
     for remap in &component.memory_remaps {
         for block in &remap.blocks {
-            register_classes_for_block(component, block, &mut classes)?;
+            register_classes_for_block(component, block, &mut classes, false, options)?;
         }
     }
     for address_space in &component.address_spaces {
         let scoped_component =
             scoped_component(component, &address_space.name, &address_space.blocks);
         for block in &address_space.blocks {
-            register_classes_for_block(&scoped_component, block, &mut classes)?;
+            register_classes_for_block(&scoped_component, block, &mut classes, true, options)?;
         }
     }
     Ok(classes)
@@ -231,18 +228,18 @@ fn register_classes(component: &Component) -> Result<Vec<RegisterClass>> {
 fn register_file_classes(component: &Component) -> Result<Vec<RegisterFileClass>> {
     let mut classes = Vec::new();
     for block in &component.blocks {
-        register_file_classes_for_block(component, block, &mut classes)?;
+        register_file_classes_for_block(component, block, &mut classes, false)?;
     }
     for remap in &component.memory_remaps {
         for block in &remap.blocks {
-            register_file_classes_for_block(component, block, &mut classes)?;
+            register_file_classes_for_block(component, block, &mut classes, false)?;
         }
     }
     for address_space in &component.address_spaces {
         let scoped_component =
             scoped_component(component, &address_space.name, &address_space.blocks);
         for block in &address_space.blocks {
-            register_file_classes_for_block(&scoped_component, block, &mut classes)?;
+            register_file_classes_for_block(&scoped_component, block, &mut classes, true)?;
         }
     }
     Ok(classes)
@@ -252,9 +249,15 @@ fn register_file_classes_for_block(
     component: &Component,
     block: &AddressBlock,
     classes: &mut Vec<RegisterFileClass>,
+    include_component: bool,
 ) -> Result<()> {
     for register_file in &block.register_files {
-        classes.push(register_file_class(component, block, register_file)?);
+        classes.push(register_file_class(
+            component,
+            block,
+            register_file,
+            include_component,
+        )?);
     }
     Ok(())
 }
@@ -263,8 +266,9 @@ fn register_file_class(
     component: &Component,
     block: &AddressBlock,
     register_file: &RegisterFile,
+    include_component: bool,
 ) -> Result<RegisterFileClass> {
-    let class_name = register_file_class_name(component, block, register_file);
+    let class_name = register_file_class_name(component, block, register_file, include_component);
     let mut declarations = Vec::new();
     let mut build_lines = Vec::new();
     let mut map_lines = Vec::new();
@@ -278,8 +282,13 @@ fn register_file_class(
             Vec::new()
         };
         let var_name = unique_ident(&register.name, &mut used_names);
-        let class_name =
-            register_file_register_class_name(component, block, register_file, register);
+        let class_name = register_file_register_class_name(
+            component,
+            block,
+            register_file,
+            register,
+            include_component,
+        );
         declarations.push(format!(
             "    rand {class_name} {var_name}{};",
             array_declaration_suffix(&register_dims)
@@ -330,6 +339,7 @@ fn register_file_class(
                 register_file,
                 register,
                 alternate,
+                include_component,
             );
             declarations.push(format!(
                 "    rand {class_name} {var_name}{};",
@@ -376,88 +386,77 @@ fn register_classes_for_block(
     component: &Component,
     block: &AddressBlock,
     classes: &mut Vec<RegisterClass>,
+    include_component: bool,
+    options: RenderOptions,
 ) -> Result<()> {
     for register in &block.registers {
+        let path_parts =
+            class_path_parts(component, include_component, &[&block.name, &register.name]);
         classes.push(register_class(
-            &component.name,
             block,
-            &[block.name.as_str(), register.name.as_str()],
+            &path_parts,
             &register.name,
             &register.size,
-            &register.description,
             register.volatile.as_deref(),
             register.access.as_deref(),
             &register.fields,
-            access_policy_metadata_params("ACCESS_POLICY", &register.access_policies),
+            options,
         )?);
         for alternate in &register.alternate_registers {
+            let path_parts = class_path_parts(
+                component,
+                include_component,
+                &[&block.name, &register.name, &alternate.name],
+            );
             classes.push(register_class(
-                &component.name,
                 block,
-                &[
-                    block.name.as_str(),
-                    register.name.as_str(),
-                    alternate.name.as_str(),
-                ],
+                &path_parts,
                 &alternate.name,
                 &register.size,
-                &alternate.description,
                 alternate.volatile.as_deref(),
                 alternate.access.as_deref(),
                 &alternate.fields,
-                {
-                    let mut params = alternate_metadata_params(alternate);
-                    params.extend(access_policy_metadata_params(
-                        "ACCESS_POLICY",
-                        &alternate.access_policies,
-                    ));
-                    params
-                },
+                options,
             )?);
         }
     }
     for register_file in &block.register_files {
         for register in &register_file.registers {
+            let path_parts = class_path_parts(
+                component,
+                include_component,
+                &[&block.name, &register_file.name, &register.name],
+            );
             classes.push(register_class(
-                &component.name,
                 block,
-                &[
-                    block.name.as_str(),
-                    register_file.name.as_str(),
-                    register.name.as_str(),
-                ],
+                &path_parts,
                 &register.name,
                 &register.size,
-                &register.description,
                 register.volatile.as_deref(),
                 register.access.as_deref(),
                 &register.fields,
-                access_policy_metadata_params("ACCESS_POLICY", &register.access_policies),
+                options,
             )?);
             for alternate in &register.alternate_registers {
-                classes.push(register_class(
-                    &component.name,
-                    block,
+                let path_parts = class_path_parts(
+                    component,
+                    include_component,
                     &[
-                        block.name.as_str(),
-                        register_file.name.as_str(),
-                        register.name.as_str(),
-                        alternate.name.as_str(),
+                        &block.name,
+                        &register_file.name,
+                        &register.name,
+                        &alternate.name,
                     ],
+                );
+                classes.push(register_class(
+                    block,
+                    &path_parts,
                     &alternate.name,
                     &register.size,
-                    &alternate.description,
                     alternate.volatile.as_deref(),
                     alternate.access.as_deref(),
                     &alternate.fields,
-                    {
-                        let mut params = alternate_metadata_params(alternate);
-                        params.extend(access_policy_metadata_params(
-                            "ACCESS_POLICY",
-                            &alternate.access_policies,
-                        ));
-                        params
-                    },
+                    options,
                 )?);
             }
         }
@@ -465,22 +464,20 @@ fn register_classes_for_block(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn register_class(
-    component_name: &str,
     block: &AddressBlock,
-    path_parts: &[&str],
+    path_parts: &[String],
     default_name: &str,
     size: &str,
-    description: &str,
     register_volatile: Option<&str>,
     register_access: Option<&str>,
     fields: &[Field],
-    mut metadata_params: Vec<ConstraintParamView>,
+    options: RenderOptions,
 ) -> Result<RegisterClass> {
     let size_bits = parse_u64("register size", size)?;
     let class_name = format!(
-        "uvmreg_reg_{}_{}",
-        ident(component_name),
+        "ral_reg_{}",
         path_parts
             .iter()
             .map(|part| ident(part))
@@ -503,15 +500,16 @@ fn register_class(
         })
         .collect::<Result<Vec<_>>>()?;
 
-    if let Some(param) = description_param("REGISTER_DESCRIPTION", description) {
-        metadata_params.insert(0, param);
-    }
-
     Ok(RegisterClass {
         class_name,
         default_name: default_name.into(),
         size_bits,
-        metadata_params,
+        coverage_enabled: options.coverage,
+        coverage_model: if options.coverage {
+            "build_coverage(UVM_CVR_REG_BITS)"
+        } else {
+            "UVM_NO_COVERAGE"
+        },
         fields,
     })
 }
@@ -539,22 +537,16 @@ fn field_view(
         width,
         used_enum_value_names,
     )?;
-    let param_prefix = var_name.to_ascii_uppercase();
-    let constraint_params = constraint_param_views(&param_prefix, field, width)?;
-    let policy_params = policy_param_views(&param_prefix, field, width)?;
     Ok(FieldView {
         enum_type_name: format!("{var_name}_e"),
         enum_msb: width.saturating_sub(1),
         has_enum_values: !enum_values.is_empty(),
         enum_values,
-        has_constraint_params: !constraint_params.is_empty(),
-        constraint_params,
-        has_policy_params: !policy_params.is_empty(),
-        policy_params,
         var_name,
         create_name: sv_string(&field.name),
         width,
         lsb: parse_u64("field bitOffset", &field.bit_offset)?,
+        msb: parse_u64("field bitOffset", &field.bit_offset)? + width.saturating_sub(1),
         access: sv_string(&access),
         volatile: sv_bool_literal(inherited_volatile(block, register_volatile, field)),
         reset_literal: format!("{width}'h{reset_value:x}"),
@@ -593,141 +585,6 @@ fn extra_reset_views(
         .collect()
 }
 
-fn constraint_param_views(
-    prefix: &str,
-    field: &Field,
-    width: u64,
-) -> Result<Vec<ConstraintParamView>> {
-    let Some(constraint) = &field.write_value_constraint else {
-        return Ok(Vec::new());
-    };
-
-    let mut params = Vec::new();
-    if let Some(write_as_read) = &constraint.write_as_read {
-        params.push(ConstraintParamView {
-            name: format!("{prefix}_WRITE_AS_READ"),
-            type_expr: "bit".into(),
-            value_expr: sv_bool_expr(write_as_read),
-        });
-    }
-    if let Some(use_enumerated_values) = &constraint.use_enumerated_values {
-        params.push(ConstraintParamView {
-            name: format!("{prefix}_USE_ENUMERATED_VALUES"),
-            type_expr: "bit".into(),
-            value_expr: sv_bool_expr(use_enumerated_values),
-        });
-    }
-    if let Some(minimum) = &constraint.minimum {
-        params.push(ConstraintParamView {
-            name: format!("{prefix}_MINIMUM"),
-            type_expr: format!("bit [{}:0]", width.saturating_sub(1)),
-            value_expr: bit_literal("writeValueConstraint minimum", width, minimum)?,
-        });
-    }
-    if let Some(maximum) = &constraint.maximum {
-        params.push(ConstraintParamView {
-            name: format!("{prefix}_MAXIMUM"),
-            type_expr: format!("bit [{}:0]", width.saturating_sub(1)),
-            value_expr: bit_literal("writeValueConstraint maximum", width, maximum)?,
-        });
-    }
-    Ok(params)
-}
-
-fn policy_param_views(prefix: &str, field: &Field, width: u64) -> Result<Vec<ConstraintParamView>> {
-    let mut params = Vec::new();
-    if let Some(param) = description_param(&format!("{prefix}_DESCRIPTION"), &field.description) {
-        params.push(param);
-    }
-    params.extend(access_policy_metadata_params(
-        &format!("{prefix}_ACCESS_POLICY"),
-        &field.access_policies,
-    ));
-    for (index, reset) in field.resets.iter().enumerate() {
-        if let Some(reset_type) = &reset.reset_type {
-            params.push(ConstraintParamView {
-                name: format!("{prefix}_RESET_{index}_KIND"),
-                type_expr: "string".into(),
-                value_expr: sv_string(reset_type),
-            });
-        }
-        if let Some(mask) = &reset.mask {
-            params.push(ConstraintParamView {
-                name: format!("{prefix}_RESET_{index}_MASK"),
-                type_expr: format!("bit [{}:0]", width.saturating_sub(1)),
-                value_expr: bit_literal("field reset mask", width, mask)?,
-            });
-        }
-    }
-    if let Some(testable) = &field.testable {
-        params.push(ConstraintParamView {
-            name: format!("{prefix}_TESTABLE"),
-            type_expr: "bit".into(),
-            value_expr: sv_bool_expr(&testable.value),
-        });
-        if let Some(test_constraint) = &testable.test_constraint {
-            params.push(ConstraintParamView {
-                name: format!("{prefix}_TEST_CONSTRAINT"),
-                type_expr: "string".into(),
-                value_expr: sv_string(test_constraint),
-            });
-        }
-    }
-    if let Some(reserved) = &field.reserved {
-        params.push(ConstraintParamView {
-            name: format!("{prefix}_RESERVED"),
-            type_expr: "bit".into(),
-            value_expr: sv_bool_expr(reserved),
-        });
-    }
-    for (index, restriction) in field.access_restrictions.iter().enumerate() {
-        let mode_refs = restriction
-            .mode_refs
-            .iter()
-            .map(|mode_ref| match &mode_ref.priority {
-                Some(priority) => format!("{}:{}", mode_ref.name, priority),
-                None => mode_ref.name.clone(),
-            })
-            .collect::<Vec<_>>()
-            .join(",");
-        if !mode_refs.is_empty() {
-            params.push(ConstraintParamView {
-                name: format!("{prefix}_ACCESS_RESTRICTION_{index}_MODES"),
-                type_expr: "string".into(),
-                value_expr: sv_string(&mode_refs),
-            });
-        }
-        if let Some(read_mask) = &restriction.read_access_mask {
-            params.push(ConstraintParamView {
-                name: format!("{prefix}_ACCESS_RESTRICTION_{index}_READ_MASK"),
-                type_expr: format!("bit [{}:0]", width.saturating_sub(1)),
-                value_expr: bit_literal("accessRestriction readAccessMask", width, read_mask)?,
-            });
-        }
-        if let Some(write_mask) = &restriction.write_access_mask {
-            params.push(ConstraintParamView {
-                name: format!("{prefix}_ACCESS_RESTRICTION_{index}_WRITE_MASK"),
-                type_expr: format!("bit [{}:0]", width.saturating_sub(1)),
-                value_expr: bit_literal("accessRestriction writeAccessMask", width, write_mask)?,
-            });
-        }
-    }
-    for (index, broadcast) in field.broadcasts.iter().enumerate() {
-        let target = broadcast
-            .target
-            .iter()
-            .map(|segment| format!("{}={}", segment.kind, segment.name))
-            .collect::<Vec<_>>()
-            .join(".");
-        params.push(ConstraintParamView {
-            name: format!("{prefix}_BROADCAST_{index}"),
-            type_expr: "string".into(),
-            value_expr: sv_string(&target),
-        });
-    }
-    Ok(params)
-}
-
 fn enum_value_views(
     field_name: &str,
     values: &[EnumeratedValue],
@@ -738,12 +595,9 @@ fn enum_value_views(
         .iter()
         .map(|value| {
             let parsed = parse_u64("enumeratedValue value", &value.value)?;
-            let usage = value.usage.clone().unwrap_or_default();
             Ok(EnumValueView {
                 name: unique_const_ident(&format!("{field_name}_{}", value.name), used_names),
                 literal: format!("{width}'h{parsed:x}"),
-                has_usage: !usage.is_empty(),
-                usage,
             })
         })
         .collect()
@@ -755,14 +609,14 @@ fn block_classes(component: &Component) -> Result<Vec<BlockClass>> {
         let scoped_component =
             scoped_component(component, &address_space.name, &address_space.blocks);
         for block in &scoped_component.blocks {
-            classes.push(address_block_class(&scoped_component, block)?);
+            classes.push(address_block_class(&scoped_component, block, true)?);
         }
-        classes.push(block_class(&scoped_component, Vec::new())?);
+        classes.push(block_class(&scoped_component, Vec::new(), true)?);
     }
     for block in &component.blocks {
-        classes.push(address_block_class(component, block)?);
+        classes.push(address_block_class(component, block, false)?);
     }
-    classes.push(block_class(component, submap_instances(component)?)?);
+    classes.push(block_class(component, submap_instances(component)?, false)?);
     Ok(classes)
 }
 
@@ -779,8 +633,21 @@ fn scoped_component(component: &Component, suffix: &str, blocks: &[AddressBlock]
     }
 }
 
-fn block_class(component: &Component, submaps: Vec<SubmapInstance>) -> Result<BlockClass> {
-    let class_name = format!("uvmreg_block_{}", ident(&component.name));
+fn class_path_parts(component: &Component, include_component: bool, parts: &[&str]) -> Vec<String> {
+    let mut path = Vec::new();
+    if include_component {
+        path.push(component.name.clone());
+    }
+    path.extend(parts.iter().map(|part| (*part).to_string()));
+    path
+}
+
+fn block_class(
+    component: &Component,
+    submaps: Vec<SubmapInstance>,
+    include_component: bool,
+) -> Result<BlockClass> {
+    let class_name = format!("ral_sys_{}", ident(&component.name));
     let mut memories = Vec::new();
     let mut reg_files = Vec::new();
     let mut instances = Vec::new();
@@ -788,7 +655,7 @@ fn block_class(component: &Component, submaps: Vec<SubmapInstance>) -> Result<Bl
     let mut used_names = Vec::new();
     let maps = map_instances(component)?;
     let layouts = map_layouts(component, &maps);
-    let child_blocks = child_block_instances(component, &layouts)?;
+    let child_blocks = child_block_instances(component, &layouts, include_component)?;
 
     for remap in &component.memory_remaps {
         for block in &remap.blocks {
@@ -807,6 +674,7 @@ fn block_class(component: &Component, submaps: Vec<SubmapInstance>) -> Result<Bl
                 &mut used_names,
                 true,
                 true,
+                include_component,
             )?;
         }
     }
@@ -815,7 +683,6 @@ fn block_class(component: &Component, submaps: Vec<SubmapInstance>) -> Result<Bl
         class_name,
         default_name: component.name.clone(),
         maps,
-        metadata_params: component_metadata_params(component),
         memories,
         reg_files,
         instances,
@@ -825,12 +692,12 @@ fn block_class(component: &Component, submaps: Vec<SubmapInstance>) -> Result<Bl
     })
 }
 
-fn address_block_class(component: &Component, block: &AddressBlock) -> Result<BlockClass> {
-    let class_name = format!(
-        "uvmreg_block_{}_{}",
-        ident(&component.name),
-        ident(&block.name)
-    );
+fn address_block_class(
+    component: &Component,
+    block: &AddressBlock,
+    include_component: bool,
+) -> Result<BlockClass> {
+    let class_name = address_block_class_name(component, block, include_component);
     let mut memories = Vec::new();
     let mut reg_files = Vec::new();
     let mut instances = Vec::new();
@@ -857,13 +724,13 @@ fn address_block_class(component: &Component, block: &AddressBlock) -> Result<Bl
         &mut used_names,
         false,
         false,
+        include_component,
     )?;
 
     Ok(BlockClass {
         class_name,
         default_name: block.name.clone(),
         maps,
-        metadata_params: block_metadata_params(block),
         memories,
         reg_files,
         instances,
@@ -876,6 +743,7 @@ fn address_block_class(component: &Component, block: &AddressBlock) -> Result<Bl
 fn child_block_instances(
     component: &Component,
     layouts: &BTreeMap<String, MapContext>,
+    include_component: bool,
 ) -> Result<Vec<ChildBlockInstance>> {
     let mut children = Vec::new();
     let mut used_names = Vec::new();
@@ -891,11 +759,7 @@ fn child_block_instances(
         )?;
         children.push(ChildBlockInstance {
             var_name: unique_ident(&block.name, &mut used_names),
-            class_name: format!(
-                "uvmreg_block_{}_{}",
-                ident(&component.name),
-                ident(&block.name)
-            ),
+            class_name: address_block_class_name(component, block, include_component),
             create_name: sv_string(&block.name),
             map_var_name: map.var_name.clone(),
             offset_literal: addr_literal(offset),
@@ -941,12 +805,22 @@ fn submap_instances(component: &Component) -> Result<Vec<SubmapInstance>> {
             map.layout,
             parse_u64("memoryMap addressUnitBits", &subspace.address_unit_bits)?,
         )?;
+        let segment_offset = subspace_segment_offset(component, subspace, map.layout)?;
+        let offset = offset
+            .checked_sub(segment_offset)
+            .ok_or_else(|| Error::InvalidNumber {
+                field: "subspaceMap segmentRef addressOffset",
+                value: subspace
+                    .segment_ref
+                    .as_deref()
+                    .unwrap_or_default()
+                    .to_string(),
+            })?;
         let var_name = unique_ident(&subspace.name, &mut used_names);
         submaps.push(SubmapInstance {
             class_name: format!(
-                "uvmreg_block_{}_{}",
-                ident(&component.name),
-                ident(address_space_ref)
+                "ral_sys_{}",
+                ident(&format!("{}_{}", component.name, address_space_ref))
             ),
             create_name: sv_string(&subspace.name),
             map_var_name: map.var_name.clone(),
@@ -958,6 +832,44 @@ fn submap_instances(component: &Component) -> Result<Vec<SubmapInstance>> {
     Ok(submaps)
 }
 
+fn subspace_segment_offset(
+    component: &Component,
+    subspace: &SubspaceMap,
+    parent_layout: MapLayout,
+) -> Result<u64> {
+    let Some(segment_ref) = subspace.segment_ref.as_deref() else {
+        return Ok(0);
+    };
+    let Some(address_space_ref) = subspace.address_space_ref.as_deref() else {
+        return Ok(0);
+    };
+    let Some(address_space) = component
+        .address_spaces
+        .iter()
+        .find(|address_space| address_space.name == address_space_ref)
+    else {
+        return Ok(0);
+    };
+    let Some(segment) = address_space
+        .segments
+        .iter()
+        .find(|segment| segment.name == segment_ref)
+    else {
+        return Ok(0);
+    };
+
+    map_offset_units_for_address_unit_bits(
+        "addressSpace segment addressOffset",
+        &segment.address_offset,
+        parent_layout,
+        parse_u64(
+            "addressSpace addressUnitBits",
+            &address_space.address_unit_bits,
+        )?,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
 fn block_instances(
     component: &Component,
     block: &AddressBlock,
@@ -970,6 +882,7 @@ fn block_instances(
     used_names: &mut Vec<String>,
     include_block_base: bool,
     prefix_with_block: bool,
+    include_component: bool,
 ) -> Result<()> {
     let block_base = if include_block_base {
         map_offset_units(
@@ -1007,6 +920,7 @@ fn block_instances(
                 map_var_name,
                 used_names,
                 prefix_with_block,
+                include_component,
             )?);
             for alternate in &register.alternate_registers {
                 arrays.push(alternate_register_array(
@@ -1019,6 +933,7 @@ fn block_instances(
                     map_var_name,
                     used_names,
                     prefix_with_block,
+                    include_component,
                 )?);
             }
         } else {
@@ -1030,6 +945,7 @@ fn block_instances(
                 map_var_name,
                 used_names,
                 prefix_with_block,
+                include_component,
             )?);
             for alternate in &register.alternate_registers {
                 instances.push(alternate_register_instance(
@@ -1041,6 +957,7 @@ fn block_instances(
                     map_var_name,
                     used_names,
                     prefix_with_block,
+                    include_component,
                 )?);
             }
         }
@@ -1055,6 +972,7 @@ fn block_instances(
             map_var_name,
             used_names,
             prefix_with_block,
+            include_component,
         )?);
     }
     Ok(())
@@ -1065,14 +983,15 @@ fn register_class_name(
     block: &AddressBlock,
     register: &Register,
     alternate: Option<&AlternateRegister>,
+    include_component: bool,
 ) -> String {
     match alternate {
-        Some(alternate) => alternate_register_class_name(component, block, register, alternate),
-        None => format!(
-            "uvmreg_reg_{}_{}_{}",
-            ident(&component.name),
-            ident(&block.name),
-            ident(&register.name)
+        Some(alternate) => {
+            alternate_register_class_name(component, block, register, alternate, include_component)
+        }
+        None => ral_class_name(
+            "ral_reg",
+            class_path_parts(component, include_component, &[&block.name, &register.name]),
         ),
     }
 }
@@ -1082,13 +1001,15 @@ fn alternate_register_class_name(
     block: &AddressBlock,
     register: &Register,
     alternate: &AlternateRegister,
+    include_component: bool,
 ) -> String {
-    format!(
-        "uvmreg_reg_{}_{}_{}_{}",
-        ident(&component.name),
-        ident(&block.name),
-        ident(&register.name),
-        ident(&alternate.name)
+    ral_class_name(
+        "ral_reg",
+        class_path_parts(
+            component,
+            include_component,
+            &[&block.name, &register.name, &alternate.name],
+        ),
     )
 }
 
@@ -1097,13 +1018,15 @@ fn register_file_register_class_name(
     block: &AddressBlock,
     register_file: &RegisterFile,
     register: &Register,
+    include_component: bool,
 ) -> String {
-    format!(
-        "uvmreg_reg_{}_{}_{}_{}",
-        ident(&component.name),
-        ident(&block.name),
-        ident(&register_file.name),
-        ident(&register.name)
+    ral_class_name(
+        "ral_reg",
+        class_path_parts(
+            component,
+            include_component,
+            &[&block.name, &register_file.name, &register.name],
+        ),
     )
 }
 
@@ -1111,12 +1034,15 @@ fn register_file_class_name(
     component: &Component,
     block: &AddressBlock,
     register_file: &RegisterFile,
+    include_component: bool,
 ) -> String {
-    format!(
-        "uvmreg_regfile_{}_{}_{}",
-        ident(&component.name),
-        ident(&block.name),
-        ident(&register_file.name)
+    ral_class_name(
+        "ral_regfile",
+        class_path_parts(
+            component,
+            include_component,
+            &[&block.name, &register_file.name],
+        ),
     )
 }
 
@@ -1126,139 +1052,43 @@ fn register_file_alternate_class_name(
     register_file: &RegisterFile,
     register: &Register,
     alternate: &AlternateRegister,
+    include_component: bool,
 ) -> String {
-    format!(
-        "uvmreg_reg_{}_{}_{}_{}_{}",
-        ident(&component.name),
-        ident(&block.name),
-        ident(&register_file.name),
-        ident(&register.name),
-        ident(&alternate.name)
+    ral_class_name(
+        "ral_reg",
+        class_path_parts(
+            component,
+            include_component,
+            &[
+                &block.name,
+                &register_file.name,
+                &register.name,
+                &alternate.name,
+            ],
+        ),
     )
 }
 
-fn component_metadata_params(component: &Component) -> Vec<ConstraintParamView> {
-    let mut params = Vec::new();
-    for (index, block) in all_blocks(component).enumerate() {
-        params.push(ConstraintParamView {
-            name: format!("BLOCK_{index}_NAME"),
-            type_expr: "string".into(),
-            value_expr: sv_string(&block.name),
-        });
-        if let Some(param) =
-            description_param(&format!("BLOCK_{index}_DESCRIPTION"), &block.description)
-        {
-            params.push(param);
-        }
-        params.extend(access_policy_metadata_params(
-            &format!("BLOCK_{index}_ACCESS_POLICY"),
-            &block.access_policies,
-        ));
-        for (file_index, register_file) in block.register_files.iter().enumerate() {
-            params.push(ConstraintParamView {
-                name: format!("BLOCK_{index}_REGISTER_FILE_{file_index}_NAME"),
-                type_expr: "string".into(),
-                value_expr: sv_string(&register_file.name),
-            });
-            if let Some(param) = description_param(
-                &format!("BLOCK_{index}_REGISTER_FILE_{file_index}_DESCRIPTION"),
-                &register_file.description,
-            ) {
-                params.push(param);
-            }
-        }
-    }
-    params.extend(subspace_metadata_params(
-        "SUBSPACE",
-        &component.subspace_maps,
-    ));
-    for (index, remap) in component.memory_remaps.iter().enumerate() {
-        params.push(ConstraintParamView {
-            name: format!("REMAP_{index}_NAME"),
-            type_expr: "string".into(),
-            value_expr: sv_string(&remap.name),
-        });
-        let mode_refs = mode_refs_string(&remap.mode_refs);
-        if !mode_refs.is_empty() {
-            params.push(ConstraintParamView {
-                name: format!("REMAP_{index}_MODES"),
-                type_expr: "string".into(),
-                value_expr: sv_string(&mode_refs),
-            });
-        }
-        params.extend(subspace_metadata_params(
-            &format!("REMAP_{index}_SUBSPACE"),
-            &remap.subspace_maps,
-        ));
-    }
-    params
+fn address_block_class_name(
+    component: &Component,
+    block: &AddressBlock,
+    include_component: bool,
+) -> String {
+    ral_class_name(
+        "ral_block",
+        class_path_parts(component, include_component, &[&block.name]),
+    )
 }
 
-fn block_metadata_params(block: &AddressBlock) -> Vec<ConstraintParamView> {
-    let mut params = Vec::new();
-    params.push(ConstraintParamView {
-        name: "ADDRESS_BLOCK_NAME".into(),
-        type_expr: "string".into(),
-        value_expr: sv_string(&block.name),
-    });
-    if let Some(param) = description_param("ADDRESS_BLOCK_DESCRIPTION", &block.description) {
-        params.push(param);
-    }
-    params.extend(access_policy_metadata_params(
-        "ADDRESS_BLOCK_ACCESS_POLICY",
-        &block.access_policies,
-    ));
-    for (file_index, register_file) in block.register_files.iter().enumerate() {
-        params.push(ConstraintParamView {
-            name: format!("REGISTER_FILE_{file_index}_NAME"),
-            type_expr: "string".into(),
-            value_expr: sv_string(&register_file.name),
-        });
-        if let Some(param) = description_param(
-            &format!("REGISTER_FILE_{file_index}_DESCRIPTION"),
-            &register_file.description,
-        ) {
-            params.push(param);
-        }
-    }
-    params
-}
-
-fn subspace_metadata_params(
-    prefix: &str,
-    subspace_maps: &[SubspaceMap],
-) -> Vec<ConstraintParamView> {
-    let mut params = Vec::new();
-    for (index, subspace) in subspace_maps.iter().enumerate() {
-        params.push(ConstraintParamView {
-            name: format!("{prefix}_{index}_NAME"),
-            type_expr: "string".into(),
-            value_expr: sv_string(&subspace.name),
-        });
-        params.push(ConstraintParamView {
-            name: format!("{prefix}_{index}_BASE"),
-            type_expr: "string".into(),
-            value_expr: sv_string(&subspace.base_address),
-        });
-        params.push(ConstraintParamView {
-            name: format!("{prefix}_{index}_ADDRESS_UNIT_BITS"),
-            type_expr: "int unsigned".into(),
-            value_expr: subspace.address_unit_bits.clone(),
-        });
-        params.push(ConstraintParamView {
-            name: format!("{prefix}_{index}_INITIATOR"),
-            type_expr: "string".into(),
-            value_expr: sv_string(&subspace.initiator_ref),
-        });
-        if let Some(segment_ref) = &subspace.segment_ref {
-            params.push(ConstraintParamView {
-                name: format!("{prefix}_{index}_SEGMENT"),
-                type_expr: "string".into(),
-                value_expr: sv_string(segment_ref),
-            });
-        }
-    }
-    params
+fn ral_class_name(prefix: &str, path_parts: Vec<String>) -> String {
+    format!(
+        "{prefix}_{}",
+        path_parts
+            .iter()
+            .map(|part| ident(part))
+            .collect::<Vec<_>>()
+            .join("_")
+    )
 }
 
 fn is_array_dim(dim: &str) -> Result<bool> {
@@ -1409,7 +1239,7 @@ fn map_layout_for_block(block: &AddressBlock) -> Result<MapLayout> {
 }
 
 fn address_unit_bytes(bits: u64) -> Result<u64> {
-    if bits % 8 == 0 {
+    if bits.is_multiple_of(8) {
         Ok((bits / 8).max(1))
     } else {
         Err(Error::InvalidNumber {
@@ -1474,6 +1304,7 @@ fn memory_instance(
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 fn register_file_instance_view(
     component: &Component,
     block: &AddressBlock,
@@ -1483,6 +1314,7 @@ fn register_file_instance_view(
     map_var_name: &str,
     used_names: &mut Vec<String>,
     prefix_with_block: bool,
+    include_component: bool,
 ) -> Result<RegisterFileInstance> {
     let create_name = if prefix_with_block {
         format!("{}_{}", block.name, register_file.name)
@@ -1490,7 +1322,7 @@ fn register_file_instance_view(
         register_file.name.clone()
     };
     let var_name = unique_ident(&create_name, used_names);
-    let class_name = register_file_class_name(component, block, register_file);
+    let class_name = register_file_class_name(component, block, register_file, include_component);
     let dims = if is_array_dim(&register_file.dim)? {
         parse_dims("registerFile dim", &register_file.dims)?
     } else {
@@ -1533,6 +1365,7 @@ fn register_file_instance_view(
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 fn register_file_build_code(
     var_name: &str,
     class_name: &str,
@@ -1681,6 +1514,7 @@ fn register_file_member_map_lines(
     lines
 }
 
+#[allow(clippy::too_many_arguments)]
 fn register_instance(
     component: &Component,
     block: &AddressBlock,
@@ -1689,6 +1523,7 @@ fn register_instance(
     map_var_name: &str,
     used_names: &mut Vec<String>,
     prefix_with_block: bool,
+    include_component: bool,
 ) -> Result<RegisterInstance> {
     let instance_name = if prefix_with_block {
         format!("{}_{}", block.name, register.name)
@@ -1697,7 +1532,7 @@ fn register_instance(
     };
     Ok(RegisterInstance {
         var_name: unique_ident(&instance_name, used_names),
-        class_name: register_class_name(component, block, register, None),
+        class_name: register_class_name(component, block, register, None, include_component),
         create_name: sv_string(&instance_name),
         configure_args: "this".into(),
         map_var_name: map_var_name.into(),
@@ -1710,6 +1545,7 @@ fn register_instance(
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 fn alternate_register_instance(
     component: &Component,
     block: &AddressBlock,
@@ -1719,6 +1555,7 @@ fn alternate_register_instance(
     map_var_name: &str,
     used_names: &mut Vec<String>,
     prefix_with_block: bool,
+    include_component: bool,
 ) -> Result<RegisterInstance> {
     let instance_name = if prefix_with_block {
         format!("{}_{}_{}", block.name, register.name, alternate.name)
@@ -1727,7 +1564,13 @@ fn alternate_register_instance(
     };
     Ok(RegisterInstance {
         var_name: unique_ident(&instance_name, used_names),
-        class_name: alternate_register_class_name(component, block, register, alternate),
+        class_name: alternate_register_class_name(
+            component,
+            block,
+            register,
+            alternate,
+            include_component,
+        ),
         create_name: sv_string(&instance_name),
         configure_args: "this".into(),
         map_var_name: map_var_name.into(),
@@ -1748,6 +1591,7 @@ fn alternate_register_instance(
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 fn register_array(
     component: &Component,
     block: &AddressBlock,
@@ -1757,6 +1601,7 @@ fn register_array(
     map_var_name: &str,
     used_names: &mut Vec<String>,
     prefix_with_block: bool,
+    include_component: bool,
 ) -> Result<RegisterArray> {
     let create_name = if prefix_with_block {
         format!("{}_{}", block.name, register.name)
@@ -1764,7 +1609,7 @@ fn register_array(
         register.name.clone()
     };
     let var_name = unique_ident(&create_name, used_names);
-    let class_name = register_class_name(component, block, register, None);
+    let class_name = register_class_name(component, block, register, None, include_component);
     let dims = parse_dims("register dim", &register.dims)?;
     let hdl_slices = hdl_slices(
         register,
@@ -1794,6 +1639,7 @@ fn register_array(
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 fn alternate_register_array(
     component: &Component,
     block: &AddressBlock,
@@ -1804,6 +1650,7 @@ fn alternate_register_array(
     map_var_name: &str,
     used_names: &mut Vec<String>,
     prefix_with_block: bool,
+    include_component: bool,
 ) -> Result<RegisterArray> {
     let create_name = if prefix_with_block {
         format!("{}_{}_{}", block.name, register.name, alternate.name)
@@ -1811,7 +1658,8 @@ fn alternate_register_array(
         alternate.name.clone()
     };
     let var_name = unique_ident(&create_name, used_names);
-    let class_name = alternate_register_class_name(component, block, register, alternate);
+    let class_name =
+        alternate_register_class_name(component, block, register, alternate, include_component);
     let dims = parse_dims("register dim", &register.dims)?;
     let hdl_slices = hdl_slices_from_fields(
         &alternate.fields,
@@ -2072,68 +1920,6 @@ fn hdl_slices_from_fields(
     Ok(slices)
 }
 
-fn alternate_metadata_params(alternate: &AlternateRegister) -> Vec<ConstraintParamView> {
-    let groups_or_modes = mode_refs_string(&alternate.groups_or_modes);
-    if groups_or_modes.is_empty() {
-        return Vec::new();
-    }
-
-    vec![ConstraintParamView {
-        name: "ALTERNATE_GROUPS_OR_MODES".into(),
-        type_expr: "string".into(),
-        value_expr: sv_string(&groups_or_modes),
-    }]
-}
-
-fn description_param(name: &str, description: &str) -> Option<ConstraintParamView> {
-    let description = description.trim();
-    if description.is_empty() {
-        return None;
-    }
-
-    Some(ConstraintParamView {
-        name: name.into(),
-        type_expr: "string".into(),
-        value_expr: sv_string(description),
-    })
-}
-
-fn access_policy_metadata_params(
-    prefix: &str,
-    policies: &[AccessPolicy],
-) -> Vec<ConstraintParamView> {
-    let mut params = Vec::new();
-    for (index, policy) in policies.iter().enumerate() {
-        if let Some(access) = &policy.access {
-            params.push(ConstraintParamView {
-                name: format!("{prefix}_{index}_ACCESS"),
-                type_expr: "string".into(),
-                value_expr: sv_string(access),
-            });
-        }
-        let mode_refs = mode_refs_string(&policy.mode_refs);
-        if !mode_refs.is_empty() {
-            params.push(ConstraintParamView {
-                name: format!("{prefix}_{index}_MODES"),
-                type_expr: "string".into(),
-                value_expr: sv_string(&mode_refs),
-            });
-        }
-    }
-    params
-}
-
-fn mode_refs_string(mode_refs: &[ModeRef]) -> String {
-    mode_refs
-        .iter()
-        .map(|mode_ref| match &mode_ref.priority {
-            Some(priority) => format!("{}:{}", mode_ref.name, priority),
-            None => mode_ref.name.clone(),
-        })
-        .collect::<Vec<_>>()
-        .join(",")
-}
-
 fn hdl_path_expr(parent: Option<&str>, child: &str) -> String {
     match parent {
         Some(parent) if parent.trim().starts_with('`') => {
@@ -2263,15 +2049,6 @@ fn inherited_volatile(
 
 fn is_truthy_sv_bool(value: &str) -> bool {
     matches!(value.trim(), "true" | "1")
-}
-
-fn sv_bool_expr(value: &str) -> String {
-    if is_truthy_sv_bool(value) {
-        "1'b1"
-    } else {
-        "1'b0"
-    }
-    .into()
 }
 
 fn sv_bool_literal(value: bool) -> &'static str {

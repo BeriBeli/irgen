@@ -4,9 +4,8 @@ use quick_xml::Reader;
 use quick_xml::events::{BytesStart, Event};
 
 use crate::model::{
-    AccessPolicy, AccessRestriction, AddressBlock, AddressSpace, AlternateRegister, Broadcast,
-    Component, EnumeratedValue, Field, FieldReferenceSegment, MemoryRemap, ModeRef, Register,
-    RegisterFile, Reset, SubspaceMap, Testable, WriteValueConstraint,
+    AddressBlock, AddressSpace, AlternateRegister, Component, EnumeratedValue, Field, MemoryRemap,
+    Register, RegisterFile, Reset, Segment, SubspaceMap,
 };
 use crate::{Error, Result};
 
@@ -320,7 +319,7 @@ fn parse_component(root: &XmlNode, definitions: &Definitions) -> Result<Componen
                     block,
                     &map_name,
                     &address_unit_bits,
-                    &definitions,
+                    definitions,
                 )?);
             }
             for bank in source.children_named("bank") {
@@ -331,7 +330,7 @@ fn parse_component(root: &XmlNode, definitions: &Definitions) -> Result<Componen
                     None,
                     &map_name,
                     &address_unit_bits,
-                    &definitions,
+                    definitions,
                 )?);
             }
             for subspace_map in source.children_named("subspaceMap") {
@@ -347,7 +346,7 @@ fn parse_component(root: &XmlNode, definitions: &Definitions) -> Result<Componen
                     memory_remap,
                     &map_name,
                     &address_unit_bits,
-                    &definitions,
+                    definitions,
                     &initiator_address_spaces,
                 )?);
             }
@@ -377,6 +376,7 @@ fn parse_address_spaces(root: &XmlNode, definitions: &Definitions) -> Result<Vec
         let address_unit_bits = address_space
             .optional_child_text("addressUnitBits")
             .unwrap_or_else(|| "8".into());
+        let segments = parse_segments(address_space)?;
         let mut blocks = Vec::new();
 
         if let Some(local_memory_map) = address_space.child("localMemoryMap") {
@@ -404,11 +404,28 @@ fn parse_address_spaces(root: &XmlNode, definitions: &Definitions) -> Result<Vec
         address_spaces.push(AddressSpace {
             name,
             address_unit_bits,
+            segments,
             blocks,
         });
     }
 
     Ok(address_spaces)
+}
+
+fn parse_segments(address_space: &XmlNode) -> Result<Vec<Segment>> {
+    let Some(segments) = address_space.child("segments") else {
+        return Ok(Vec::new());
+    };
+
+    segments
+        .children_named("segment")
+        .map(|segment| {
+            Ok(Segment {
+                name: segment.child_text("name")?,
+                address_offset: segment.child_text("addressOffset")?,
+            })
+        })
+        .collect()
 }
 
 fn initiator_address_spaces(root: &XmlNode) -> HashMap<String, String> {
@@ -585,7 +602,6 @@ fn parse_subspace_map(
         map_name: map_name.into(),
         base_address: node.child_text("baseAddress")?,
         address_unit_bits: address_unit_bits.into(),
-        initiator_ref,
         address_space_ref,
         segment_ref: node.attribute_text("segmentRef"),
     })
@@ -639,23 +655,9 @@ fn parse_memory_remap(
         )?);
     }
 
-    let mode_refs = node
-        .children_named("modeRef")
-        .map(parse_mode_ref)
-        .collect::<Vec<_>>();
-    let mode_refs = if mode_refs.is_empty() {
-        source
-            .children_named("modeRef")
-            .map(parse_mode_ref)
-            .collect()
-    } else {
-        mode_refs
-    };
-
     Ok(MemoryRemap {
         name,
         map_name: map_name.into(),
-        mode_refs,
         blocks,
         subspace_maps,
     })
@@ -722,6 +724,7 @@ fn parse_address_block_at(
     )
 }
 
+#[allow(clippy::too_many_arguments)]
 fn parse_address_block_from(
     source: &XmlNode,
     instance: &XmlNode,
@@ -743,13 +746,8 @@ fn parse_address_block_from(
         }
     }
 
-    let access_policies = inherited_access_policies(instance, source);
     Ok(AddressBlock {
         name: name.into(),
-        description: instance
-            .optional_child_text("description")
-            .or_else(|| source.optional_child_text("description"))
-            .unwrap_or_default(),
         map_name: map_name.into(),
         base_address,
         range: instance
@@ -765,12 +763,11 @@ fn parse_address_block_from(
         volatile: instance
             .optional_child_text("volatile")
             .or_else(|| source.optional_child_text("volatile")),
-        access: selected_access(&access_policies).or_else(|| {
+        access: inherited_access_policy_access(instance, source).or_else(|| {
             instance
                 .optional_child_text("access")
                 .or_else(|| source.optional_child_text("access"))
         }),
-        access_policies,
         hdl_path: inherited_access_handle_path(parent_hdl_path, access_handle_path(instance)),
         registers,
         register_files,
@@ -883,10 +880,6 @@ fn parse_register_file(node: &XmlNode, definitions: &Definitions) -> Result<Regi
 
     Ok(RegisterFile {
         name: node.child_text("name")?,
-        description: node
-            .optional_child_text("description")
-            .or_else(|| source.optional_child_text("description"))
-            .unwrap_or_default(),
         address_offset: node.child_text("addressOffset")?,
         range: node
             .optional_child_text("range")
@@ -919,13 +912,8 @@ fn parse_register(node: &XmlNode, definitions: &Definitions) -> Result<Register>
         .transpose()?
         .unwrap_or_default();
 
-    let access_policies = inherited_access_policies(node, source);
     Ok(Register {
         name: node.child_text("name")?,
-        description: node
-            .optional_child_text("description")
-            .or_else(|| source.optional_child_text("description"))
-            .unwrap_or_default(),
         address_offset: node.child_text("addressOffset")?,
         size: node
             .optional_child_text("size")
@@ -936,11 +924,10 @@ fn parse_register(node: &XmlNode, definitions: &Definitions) -> Result<Register>
         volatile: node
             .optional_child_text("volatile")
             .or_else(|| source.optional_child_text("volatile")),
-        access: selected_access(&access_policies).or_else(|| {
+        access: inherited_access_policy_access(node, source).or_else(|| {
             node.optional_child_text("access")
                 .or_else(|| source.optional_child_text("access"))
         }),
-        access_policies,
         hdl_path: access_handle_path(node),
         fields,
         alternate_registers,
@@ -956,15 +943,11 @@ fn parse_alternate_register(
         .map(|field| parse_field(field, definitions))
         .collect::<Result<Vec<_>>>()?;
 
-    let access_policies = parse_access_policies(node);
     Ok(AlternateRegister {
         name: node.child_text("name")?,
-        description: node.optional_child_text("description").unwrap_or_default(),
         volatile: node.optional_child_text("volatile"),
-        access: selected_access(&access_policies).or_else(|| node.optional_child_text("access")),
-        access_policies,
+        access: access_policy_access(node).or_else(|| node.optional_child_text("access")),
         hdl_path: access_handle_path(node),
-        groups_or_modes: alternate_groups_or_modes(node),
         fields,
     })
 }
@@ -980,10 +963,6 @@ fn parse_field(node: &XmlNode, definitions: &Definitions) -> Result<Field> {
     } else {
         inline_policies
     };
-    let access_policies = policy_nodes
-        .iter()
-        .map(|policy| access_policy_from_node(policy))
-        .collect::<Vec<_>>();
     let policy = default_policy_node(&policy_nodes);
     let access = policy
         .and_then(|policy| policy.optional_child_text("access"))
@@ -997,30 +976,6 @@ fn parse_field(node: &XmlNode, definitions: &Definitions) -> Result<Field> {
         .and_then(|policy| policy.optional_child_text("readAction"))
         .or_else(|| source.optional_child_text("readAction"))
         .or_else(|| node.optional_child_text("readAction"));
-    let write_value_constraint = policy
-        .and_then(|policy| policy.child("writeValueConstraint"))
-        .or_else(|| source.child("writeValueConstraint"))
-        .or_else(|| node.child("writeValueConstraint"))
-        .map(parse_write_value_constraint);
-    let testable = policy
-        .and_then(|policy| policy.child("testable"))
-        .or_else(|| source.child("testable"))
-        .or_else(|| node.child("testable"))
-        .map(parse_testable);
-    let reserved = policy
-        .and_then(|policy| policy.optional_child_text("reserved"))
-        .or_else(|| source.optional_child_text("reserved"))
-        .or_else(|| node.optional_child_text("reserved"));
-    let access_restrictions = policy
-        .and_then(|policy| policy.child("accessRestrictions"))
-        .or_else(|| source.child("accessRestrictions"))
-        .map(parse_access_restrictions)
-        .unwrap_or_default();
-    let broadcasts = policy
-        .and_then(|policy| policy.child("broadcasts"))
-        .or_else(|| source.child("broadcasts"))
-        .map(parse_broadcasts)
-        .unwrap_or_default();
     let resets = node
         .child("resets")
         .or_else(|| source.child("resets"))
@@ -1041,16 +996,11 @@ fn parse_field(node: &XmlNode, definitions: &Definitions) -> Result<Field> {
 
     Ok(Field {
         name: node.child_text("name")?,
-        description: node
-            .optional_child_text("description")
-            .or_else(|| source.optional_child_text("description"))
-            .unwrap_or_default(),
         bit_offset: node.child_text("bitOffset")?,
         bit_width: node
             .optional_child_text("bitWidth")
             .unwrap_or(source.child_text("bitWidth")?),
         access,
-        access_policies,
         modified_write_value,
         read_action,
         volatile: node
@@ -1059,11 +1009,6 @@ fn parse_field(node: &XmlNode, definitions: &Definitions) -> Result<Field> {
         reset,
         resets,
         hdl_path: access_handle_path(node),
-        testable,
-        reserved,
-        write_value_constraint,
-        access_restrictions,
-        broadcasts,
         enumerated_values,
     })
 }
@@ -1073,29 +1018,12 @@ fn parse_resets(node: &XmlNode) -> Result<Vec<Reset>> {
         .map(|reset| {
             Ok(Reset {
                 value: reset.child_text("value")?,
-                mask: reset.optional_child_text("mask"),
                 reset_type: reset
                     .optional_child_text("resetTypeRef")
                     .or_else(|| reset.attribute_text("resetTypeRef")),
             })
         })
         .collect()
-}
-
-fn parse_testable(node: &XmlNode) -> Testable {
-    Testable {
-        value: node.text.trim().to_string(),
-        test_constraint: node.attribute_text("testConstraint"),
-    }
-}
-
-fn parse_write_value_constraint(node: &XmlNode) -> WriteValueConstraint {
-    WriteValueConstraint {
-        write_as_read: node.optional_child_text("writeAsRead"),
-        use_enumerated_values: node.optional_child_text("useEnumeratedValues"),
-        minimum: node.optional_child_text("minimum"),
-        maximum: node.optional_child_text("maximum"),
-    }
 }
 
 fn effective_field_policies<'a>(
@@ -1124,7 +1052,7 @@ fn default_policy_node<'a>(policies: &'a [&'a XmlNode]) -> Option<&'a XmlNode> {
     policies
         .iter()
         .copied()
-        .find(|policy| parse_mode_refs(policy).is_empty())
+        .find(|policy| !has_mode_ref(policy))
         .or_else(|| policies.first().copied())
 }
 
@@ -1143,87 +1071,9 @@ fn parse_enumerated_values(
             Ok(EnumeratedValue {
                 name: enumerated_value.child_text("name")?,
                 value: enumerated_value.child_text("value")?,
-                usage: enumerated_value.attribute_text("usage"),
             })
         })
         .collect()
-}
-
-fn parse_access_restrictions(node: &XmlNode) -> Vec<AccessRestriction> {
-    node.children_named("accessRestriction")
-        .map(|restriction| AccessRestriction {
-            mode_refs: restriction
-                .children_named("modeRef")
-                .map(|mode_ref| ModeRef {
-                    name: mode_ref.text.trim().to_string(),
-                    priority: mode_ref.attribute_text("priority"),
-                })
-                .collect(),
-            read_access_mask: restriction.optional_child_text("readAccessMask"),
-            write_access_mask: restriction.optional_child_text("writeAccessMask"),
-        })
-        .collect()
-}
-
-fn parse_broadcasts(node: &XmlNode) -> Vec<Broadcast> {
-    node.children_named("broadcastTo")
-        .map(|broadcast_to| Broadcast {
-            target: field_reference_segments(broadcast_to),
-        })
-        .collect()
-}
-
-fn alternate_groups_or_modes(node: &XmlNode) -> Vec<ModeRef> {
-    let mut refs = node
-        .children_named("modeRef")
-        .map(parse_mode_ref)
-        .collect::<Vec<_>>();
-
-    if let Some(alternate_groups) = node.child("alternateGroups") {
-        refs.extend(
-            alternate_groups
-                .children_named("alternateGroup")
-                .map(parse_mode_ref),
-        );
-    }
-
-    refs
-}
-
-fn parse_mode_ref(node: &XmlNode) -> ModeRef {
-    ModeRef {
-        name: node.text.trim().to_string(),
-        priority: node.attribute_text("priority"),
-    }
-}
-
-fn field_reference_segments(node: &XmlNode) -> Vec<FieldReferenceSegment> {
-    let ref_names = [
-        "addressSpaceRef",
-        "memoryMapRef",
-        "memoryRemapRef",
-        "bankRef",
-        "addressBlockRef",
-        "registerFileRef",
-        "registerRef",
-        "alternateRegisterRef",
-        "fieldRef",
-    ];
-    node.children
-        .iter()
-        .filter(|child| ref_names.contains(&child.name.as_str()))
-        .filter_map(|child| {
-            reference_name(child).map(|name| FieldReferenceSegment {
-                kind: child.name.clone(),
-                name,
-            })
-        })
-        .collect()
-}
-
-fn reference_name(node: &XmlNode) -> Option<String> {
-    node.attribute_text(&node.name)
-        .or_else(|| (!node.text.trim().is_empty()).then(|| node.text.trim().to_string()))
 }
 
 fn access_handle_path(node: &XmlNode) -> Option<String> {
@@ -1273,43 +1123,25 @@ fn addr_text(value: u64) -> String {
     format!("0x{value:x}")
 }
 
-fn inherited_access_policies(instance: &XmlNode, source: &XmlNode) -> Vec<AccessPolicy> {
-    let policies = parse_access_policies(instance);
-    if policies.is_empty() {
-        parse_access_policies(source)
-    } else {
-        policies
-    }
+fn inherited_access_policy_access(instance: &XmlNode, source: &XmlNode) -> Option<String> {
+    access_policy_access(instance).or_else(|| access_policy_access(source))
 }
 
-fn parse_access_policies(node: &XmlNode) -> Vec<AccessPolicy> {
-    node.child("accessPolicies")
-        .map(|policies| {
+fn access_policy_access(node: &XmlNode) -> Option<String> {
+    let policies = node.child("accessPolicies")?;
+    policies
+        .children_named("accessPolicy")
+        .find(|policy| !has_mode_ref(policy) && policy.child("access").is_some())
+        .or_else(|| {
             policies
                 .children_named("accessPolicy")
-                .map(access_policy_from_node)
-                .collect()
+                .find(|policy| policy.child("access").is_some())
         })
-        .unwrap_or_default()
+        .and_then(|policy| policy.optional_child_text("access"))
 }
 
-fn access_policy_from_node(node: &XmlNode) -> AccessPolicy {
-    AccessPolicy {
-        access: node.optional_child_text("access"),
-        mode_refs: parse_mode_refs(node),
-    }
-}
-
-fn selected_access(policies: &[AccessPolicy]) -> Option<String> {
-    policies
-        .iter()
-        .find(|policy| policy.mode_refs.is_empty() && policy.access.is_some())
-        .or_else(|| policies.iter().find(|policy| policy.access.is_some()))
-        .and_then(|policy| policy.access.clone())
-}
-
-fn parse_mode_refs(node: &XmlNode) -> Vec<ModeRef> {
-    node.children_named("modeRef").map(parse_mode_ref).collect()
+fn has_mode_ref(node: &XmlNode) -> bool {
+    node.child("modeRef").is_some()
 }
 
 fn definition_ref(node: &XmlNode, name: &str) -> Option<DefinitionReference> {

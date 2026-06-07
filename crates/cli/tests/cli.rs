@@ -112,6 +112,25 @@ fn accepts_ipxact_subcommand() {
         IpxactArgs {
             input: PathBuf::from("nested/input.xml"),
             output: Some(PathBuf::from("nested/uvmreg_demo.sv")),
+            coverage: false,
+        }
+    );
+}
+
+#[test]
+fn accepts_ipxact_coverage_option() {
+    let Command::Ipxact(parsed) =
+        parse_args(args(&["ip-xact", "nested/input.xml", "--coverage"])).unwrap()
+    else {
+        panic!("expected ip-xact command");
+    };
+
+    assert_eq!(
+        parsed,
+        IpxactArgs {
+            input: PathBuf::from("nested/input.xml"),
+            output: None,
+            coverage: true,
         }
     );
 }
@@ -344,13 +363,36 @@ fn generates_uvm_reg_from_ipxact_subcommand() {
     assert_eq!(result.as_deref(), Some(output.as_path()));
     let sv = fs::read_to_string(&output).unwrap();
     assert!(sv.contains("`ifndef RAL_DEMO_SV"));
-    assert!(sv.contains("class ral_sys_demo extends uvmreg_block_demo;"));
-    assert!(sv.contains("class uvmreg_block_demo_regs extends uvm_reg_block;"));
-    assert!(sv.contains("class uvmreg_reg_demo_regs_status extends uvm_reg;"));
+    assert!(sv.contains("class ral_sys_demo extends uvm_reg_block;"));
+    assert!(sv.contains("class ral_block_regs extends uvm_reg_block;"));
+    assert!(sv.contains("class ral_reg_regs_status extends uvm_reg;"));
+    assert!(!sv.contains("build_coverage(UVM_CVR_REG_BITS)"));
     assert!(sv.contains("default_map.add_reg(status, 64'h0, \"RO\");"));
     assert!(sv.contains("default_map.add_submap(regs.default_map, 64'h0);"));
+
+    let coverage_output = std::env::temp_dir().join(format!(
+        "irgen-cli-test-{}-uvmreg-cov.sv",
+        std::process::id()
+    ));
+    let result = run([
+        OsString::from("ip-xact"),
+        OsString::from(&input),
+        OsString::from("--coverage"),
+        OsString::from("-o"),
+        OsString::from(&coverage_output),
+    ]
+    .into_iter())
+    .unwrap();
+
+    assert_eq!(result.as_deref(), Some(coverage_output.as_path()));
+    let sv = fs::read_to_string(&coverage_output).unwrap();
+    assert!(sv.contains("covergroup cg_bits();"));
+    assert!(sv.contains("super.new(name, 32, build_coverage(UVM_CVR_REG_BITS));"));
+    assert!(sv.contains("add_coverage(build_coverage(UVM_CVR_REG_BITS));"));
+    assert!(sv.contains("virtual function void sample(uvm_reg_data_t data,"));
     let _ = fs::remove_file(input);
     let _ = fs::remove_file(output);
+    let _ = fs::remove_file(coverage_output);
 }
 
 #[test]
@@ -435,8 +477,8 @@ fn ipxact_subcommand_resolves_external_type_definitions_from_input_directory() {
     assert_eq!(result.as_deref(), Some(output.as_path()));
     let sv = fs::read_to_string(&output).unwrap();
     assert!(sv.contains("`ifndef RAL_EXTERNAL_TOP_SV"));
-    assert!(sv.contains("class ral_sys_external_top extends uvmreg_block_external_top;"));
-    assert!(sv.contains("localparam string BLOCK_0_DESCRIPTION = \"External CLI block\";"));
+    assert!(sv.contains("class ral_sys_external_top extends uvm_reg_block;"));
+    assert!(!sv.contains("localparam"));
     assert!(sv.contains("default_map.add_reg(status, 64'h4, \"RO\");"));
     assert!(sv.contains("default_map.add_submap(cfg.default_map, 64'h80);"));
     let _ = fs::remove_dir_all(dir);

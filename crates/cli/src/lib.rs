@@ -59,6 +59,7 @@ pub struct ConvertArgs {
 pub struct IpxactArgs {
     pub input: PathBuf,
     pub output: Option<PathBuf>,
+    pub coverage: bool,
 }
 
 #[derive(Debug)]
@@ -151,8 +152,13 @@ fn run_ipxact(args: IpxactArgs) -> Result<Option<PathBuf>, CliError> {
     let output_path = args
         .output
         .unwrap_or_else(|| default_ipxact_output_path(&component.name));
-    let content = irgen_uvmreg::serialize_uvm_reg(&component)
-        .map_err(|error| CliError::Runtime(error.to_string()))?;
+    let content = irgen_uvmreg::serialize_uvm_reg_with_options(
+        &component,
+        irgen_uvmreg::RenderOptions {
+            coverage: args.coverage,
+        },
+    )
+    .map_err(|error| CliError::Runtime(error.to_string()))?;
     write_text_output(&output_path, content)?;
     Ok(Some(output_path))
 }
@@ -434,6 +440,9 @@ struct RawIpxactArgs {
 
     #[arg(short = 'o', long = "output", value_name = "path")]
     output: Option<PathBuf>,
+
+    #[arg(long = "coverage")]
+    coverage: bool,
 }
 
 pub fn parse_args(args: impl Iterator<Item = OsString>) -> Result<Command, String> {
@@ -472,6 +481,7 @@ fn parse_ipxact_args(args: impl Iterator<Item = OsString>) -> Result<Command, St
         Ok(raw) => Ok(Command::Ipxact(IpxactArgs {
             input: raw.input,
             output: raw.output,
+            coverage: raw.coverage,
         })),
         Err(error)
             if matches!(
