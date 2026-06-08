@@ -10,7 +10,7 @@ software-facing headers, and hardware-facing register files should be added as
 explicit output formats or narrow crates rather than by introducing UI runtime
 dependencies.
 
-IP-XACT 2014 remains the default output version. SPIRIT 1.4, SPIRIT 1.5,
+IEEE 1685-2014 is the default IP-XACT output standard. SPIRIT 1.4, SPIRIT 1.5,
 IEEE 1685-2009, IEEE 1685-2014, and IEEE 1685-2022 are available for the
 current snapsheet register-table subset, but the project does not claim a
 complete general-purpose IP-XACT library for every root document and schema
@@ -37,7 +37,7 @@ Active dependency direction:
 
 ```text
 cli -> snapsheet -> model
-cli -> ipxact -> model
+cli -> ip-xact -> model
 cli -> docs -> model
 cli -> ralf -> model
 cli -> systemrdl -> model
@@ -58,10 +58,10 @@ model. This behavior is required for correct IP-XACT field emission.
 ## Current Capability
 
 - Converts `.xlsx` input into IP-XACT XML, RALF, and SystemRDL.
-- Supports `--format ipxact|ralf|systemrdl|html|all`.
-- Supports `--ipxact-version 1.4|1.5|2009|2014|2022`, with 2014 as the default
-  for IP-XACT output.
-- Supports `--snapsheet-spec <snapsheet.toml>`.
+- Supports `--format ip-xact|ralf|systemrdl|html|all`.
+- Supports `--standard spirit-1.4|spirit-1.5|ieee-1685-2009|ieee-1685-2014|ieee-1685-2022`,
+  with IEEE 1685-2014 as the default for IP-XACT output.
+- Supports `--config <snapsheet.toml>`.
 - Supports opt-in `--validate <schema.xsd>` for IP-XACT XML via `xmllint`.
 - Generates a static HTML register documentation site with shared assets, block
   index pages, register detail pages, deterministic anchors, and search data.
@@ -84,7 +84,7 @@ model. This behavior is required for correct IP-XACT field emission.
   limitations.
 - `docs/systemrdl-generation.md`: SystemRDL model coverage, snapsheet mapping,
   and limitations.
-- `docs/ipxact-generation.md`: supported IP-XACT versions, schema/codegen
+- `docs/ipxact-generation.md`: supported IP-XACT standards, schema/codegen
   layout, and current coverage.
 - `docs/uvmreg-generation.md`: direct IP-XACT input to UVM IEEE 2020 RAL
   generation coverage, five-version usability assessment, limitations, and
@@ -98,8 +98,8 @@ Current state:
 
 - The CLI emits schema-valid register-oriented component XML for SPIRIT 1.4,
   SPIRIT 1.5, IEEE 1685-2009, IEEE 1685-2014, and IEEE 1685-2022.
-- The `ipxact` crate owns conversion from `irgen_model` into versioned
-  IP-XACT XML.
+- The `ip-xact` crate owns conversion from `irgen_model` into
+  standard-specific IP-XACT XML.
 - The `model` crate stays independent of IP-XACT schema crates.
 - Multi-root, general-purpose IP-XACT authoring is intentionally out of scope
   for the current CLI path.
@@ -110,7 +110,7 @@ Status: Active.
 
 - Keep generated IP-XACT schema modules reproducible from
   `crates/ipxact/schema` and `crates/ipxact-codegen`.
-- Keep register-oriented exporters small and explicit so version-specific
+- Keep register-oriented exporters small and explicit so standard-specific
   behavior stays visible.
 - Add new `.xlsx` fixtures as parser failure modes are discovered.
 - Decide whether XML schema validation should remain opt-in CLI behavior or
@@ -157,14 +157,14 @@ Implemented:
 - Snapsheet parsing supports an optional `PATH` column. Blank path cells default
   non-reserved fields to the field name, `-` disables the path, and reserved
   fields do not emit HDL paths.
-- IP-XACT 2014 and 2022 emit field HDL paths through standard `accessHandles`;
-  IP-XACT 1.4, 1.5, and 2009 do not emit HDL paths because they lack the same
-  standard register-model access-handle structure. Generated blocks do not get
-  macro-backed HDL paths.
+- IEEE 1685-2014 and IEEE 1685-2022 emit field HDL paths through standard
+  `accessHandles`; SPIRIT 1.4, SPIRIT 1.5, and IEEE 1685-2009 do not emit HDL
+  paths because they lack the same standard register-model access-handle
+  structure. Generated blocks do not get macro-backed HDL paths.
 - RALF and SystemRDL outputs preserve field HDL paths; SystemRDL uses
   `hdl_path_slice` for fields.
 - Tests cover field-level paths, disabled paths, reserved-field suppression,
-  register-file array naming behavior, and IP-XACT version-specific emission.
+  register-file array naming behavior, and IP-XACT standard-specific emission.
 - Keep backdoor paths as verification metadata only; they must not imply RTL
   implementation, bus behavior, or generated software accessors.
 
@@ -207,15 +207,15 @@ Status: Partially active for UVM RAL.
   current milestone is common engineering usability for IP-XACT component XML;
   see `docs/uvmreg-generation.md` for scope and remaining gates.
 
-## P6: Multi-Version IP-XACT
+## P6: Multi-Standard IP-XACT
 
 Status: Active but intentionally narrow.
 
 - Current CLI support emits and validates the register-oriented component subset
   for SPIRIT 1.4, SPIRIT 1.5, IEEE 1685-2009, IEEE 1685-2014, and
   IEEE 1685-2022.
-- Expand individual versions beyond the current register-oriented component
-  subset before claiming complete coverage for that version.
+- Expand individual standards beyond the current register-oriented component
+  subset before claiming complete coverage for that standard.
 - Add representative schema validation for non-component root documents and
   optional schema branches only if the project starts exposing those documents
   through public APIs.
@@ -237,6 +237,6 @@ Release-oriented smoke checks:
 
 ```text
 cargo build --release --locked --bin irgen --offline
-target/release/irgen snapsheet example.xlsx --snapsheet-spec snapsheet.toml -o /tmp/irgen-example.xml
-target/release/irgen snapsheet example.xlsx --snapsheet-spec snapsheet.toml --validate crates/ipxact/schema/1685-2014/index.xsd
+target/release/irgen snapsheet example.xlsx --config snapsheet.toml -o /tmp/irgen-example.xml
+target/release/irgen snapsheet example.xlsx --config snapsheet.toml --standard ieee-1685-2014 --validate crates/ipxact/schema/1685-2014/index.xsd
 ```

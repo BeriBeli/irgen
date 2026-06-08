@@ -11,7 +11,7 @@ pub enum OutputFormat {
     All,
     #[value(name = "html")]
     Html,
-    #[value(name = "ipxact")]
+    #[value(name = "ip-xact")]
     Ipxact,
     #[value(name = "ralf")]
     Ralf,
@@ -32,16 +32,16 @@ impl OutputFormat {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
-pub enum IpxactVersion {
-    #[value(name = "1.4")]
+pub enum IpxactStandard {
+    #[value(name = "spirit-1.4")]
     V1_4,
-    #[value(name = "1.5")]
+    #[value(name = "spirit-1.5")]
     V1_5,
-    #[value(name = "2009")]
+    #[value(name = "ieee-1685-2009")]
     V2009,
-    #[value(name = "2014")]
+    #[value(name = "ieee-1685-2014")]
     V2014,
-    #[value(name = "2022")]
+    #[value(name = "ieee-1685-2022")]
     V2022,
 }
 
@@ -50,7 +50,7 @@ pub struct ConvertArgs {
     pub input: PathBuf,
     pub output: Option<PathBuf>,
     pub format: OutputFormat,
-    pub ipxact_version: IpxactVersion,
+    pub ipxact_standard: IpxactStandard,
     pub snapsheet_spec: Option<PathBuf>,
     pub validate_xsd: Option<PathBuf>,
 }
@@ -99,7 +99,7 @@ pub fn run(args: impl Iterator<Item = OsString>) -> Result<Option<PathBuf>, CliE
 fn run_convert(args: ConvertArgs) -> Result<Option<PathBuf>, CliError> {
     if args.format != OutputFormat::Ipxact && args.validate_xsd.is_some() {
         return Err(CliError::Usage(
-            "--validate can only be used with --format ipxact".into(),
+            "--validate can only be used with --format ip-xact".into(),
         ));
     }
 
@@ -131,7 +131,7 @@ fn run_convert(args: ConvertArgs) -> Result<Option<PathBuf>, CliError> {
     let content = match args.format {
         OutputFormat::All => unreachable!("ALL output is handled before string serialization"),
         OutputFormat::Html => unreachable!("HTML output is handled before string serialization"),
-        OutputFormat::Ipxact => serialize_ipxact(&loaded.compo, args.ipxact_version)?,
+        OutputFormat::Ipxact => serialize_ipxact(&loaded.compo, args.ipxact_standard)?,
         OutputFormat::Ralf => irgen_ralf::serialize_ralf(&loaded.compo)
             .map_err(|error| CliError::Runtime(error.to_string()))?,
         OutputFormat::SystemRdl => irgen_systemrdl::serialize_systemrdl(&loaded.compo)
@@ -222,24 +222,24 @@ fn write_all_outputs(
 
     let stem = component_file_stem(component);
     write_text_output(
-        &output.join(format!("{stem}-ipxact-1.4.xml")),
-        serialize_ipxact(component, IpxactVersion::V1_4)?,
+        &output.join(format!("{stem}-ip-xact-spirit-1.4.xml")),
+        serialize_ipxact(component, IpxactStandard::V1_4)?,
     )?;
     write_text_output(
-        &output.join(format!("{stem}-ipxact-1.5.xml")),
-        serialize_ipxact(component, IpxactVersion::V1_5)?,
+        &output.join(format!("{stem}-ip-xact-spirit-1.5.xml")),
+        serialize_ipxact(component, IpxactStandard::V1_5)?,
     )?;
     write_text_output(
-        &output.join(format!("{stem}-ipxact-2009.xml")),
-        serialize_ipxact(component, IpxactVersion::V2009)?,
+        &output.join(format!("{stem}-ip-xact-ieee-1685-2009.xml")),
+        serialize_ipxact(component, IpxactStandard::V2009)?,
     )?;
     write_text_output(
-        &output.join(format!("{stem}-ipxact-2014.xml")),
-        serialize_ipxact(component, IpxactVersion::V2014)?,
+        &output.join(format!("{stem}-ip-xact-ieee-1685-2014.xml")),
+        serialize_ipxact(component, IpxactStandard::V2014)?,
     )?;
     write_text_output(
-        &output.join(format!("{stem}-ipxact-2022.xml")),
-        serialize_ipxact(component, IpxactVersion::V2022)?,
+        &output.join(format!("{stem}-ip-xact-ieee-1685-2022.xml")),
+        serialize_ipxact(component, IpxactStandard::V2022)?,
     )?;
     write_text_output(
         &output.join(format!("{stem}.ralf")),
@@ -257,22 +257,22 @@ fn write_all_outputs(
 
 fn serialize_ipxact(
     component: &irgen_model::base::Component,
-    version: IpxactVersion,
+    standard: IpxactStandard,
 ) -> Result<String, CliError> {
-    match version {
-        IpxactVersion::V1_4 => {
+    match standard {
+        IpxactStandard::V1_4 => {
             ip_xact::serialize_1_4(component).map_err(|error| CliError::Runtime(error.to_string()))
         }
-        IpxactVersion::V1_5 => {
+        IpxactStandard::V1_5 => {
             ip_xact::serialize_1_5(component).map_err(|error| CliError::Runtime(error.to_string()))
         }
-        IpxactVersion::V2009 => {
+        IpxactStandard::V2009 => {
             ip_xact::serialize_2009(component).map_err(|error| CliError::Runtime(error.to_string()))
         }
-        IpxactVersion::V2014 => {
+        IpxactStandard::V2014 => {
             ip_xact::serialize_2014(component).map_err(|error| CliError::Runtime(error.to_string()))
         }
-        IpxactVersion::V2022 => {
+        IpxactStandard::V2022 => {
             ip_xact::serialize_2022(component).map_err(|error| CliError::Runtime(error.to_string()))
         }
     }
@@ -413,15 +413,15 @@ struct RawSnapsheetArgs {
         short = 'f',
         long = "format",
         value_enum,
-        default_value = "ipxact",
+        default_value = "ip-xact",
         value_name = "name"
     )]
     format: OutputFormat,
 
-    #[arg(long = "ipxact-version", value_enum, value_name = "version")]
-    ipxact_version: Option<IpxactVersion>,
+    #[arg(long = "standard", value_enum, value_name = "standard")]
+    ipxact_standard: Option<IpxactStandard>,
 
-    #[arg(long = "snapsheet-spec", value_name = "snapsheet.toml")]
+    #[arg(long = "config", value_name = "snapsheet.toml")]
     snapsheet_spec: Option<PathBuf>,
 
     #[arg(long = "validate", value_name = "schema.xsd")]
@@ -544,15 +544,15 @@ fn parse_ipxact_args(args: impl Iterator<Item = OsString>) -> Result<Command, St
 }
 
 fn convert_raw_args(raw: RawSnapsheetArgs) -> Result<Command, String> {
-    if raw.format != OutputFormat::Ipxact && raw.ipxact_version.is_some() {
-        return Err("--ipxact-version can only be used with --format ipxact".into());
+    if raw.format != OutputFormat::Ipxact && raw.ipxact_standard.is_some() {
+        return Err("--standard can only be used with --format ip-xact".into());
     }
-    let ipxact_version = raw.ipxact_version.unwrap_or(IpxactVersion::V2014);
+    let ipxact_standard = raw.ipxact_standard.unwrap_or(IpxactStandard::V2014);
     Ok(Command::Convert(ConvertArgs {
         input: raw.input,
         output: raw.output,
         format: raw.format,
-        ipxact_version,
+        ipxact_standard,
         snapsheet_spec: raw.snapsheet_spec,
         validate_xsd: raw.validate_xsd,
     }))
@@ -577,7 +577,7 @@ mod tests {
             input: PathBuf::from("input.xlsx"),
             output,
             format,
-            ipxact_version: IpxactVersion::V2014,
+            ipxact_standard: IpxactStandard::V2014,
             snapsheet_spec: None,
             validate_xsd: None,
         }

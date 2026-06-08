@@ -29,11 +29,11 @@ IEEE 1685-2009, IEEE 1685-2014, and IEEE 1685-2022 can also be specified
 explicitly for the current register-oriented subset:
 
 ```sh
-./irgen snapsheet example_simple.xlsx --ipxact-version 1.4
-./irgen snapsheet example_simple.xlsx --ipxact-version 1.5
-./irgen snapsheet example_simple.xlsx --ipxact-version 2009
-./irgen snapsheet example_simple.xlsx --ipxact-version 2014
-./irgen snapsheet example_simple.xlsx --ipxact-version 2022
+./irgen snapsheet example_simple.xlsx --standard spirit-1.4
+./irgen snapsheet example_simple.xlsx --standard spirit-1.5
+./irgen snapsheet example_simple.xlsx --standard ieee-1685-2009
+./irgen snapsheet example_simple.xlsx --standard ieee-1685-2014
+./irgen snapsheet example_simple.xlsx --standard ieee-1685-2022
 ```
 
 The IP-XACT emitters cover the register-oriented component subset produced by
@@ -43,11 +43,12 @@ They are not complete models for every IP-XACT root document or schema feature.
 SPIRIT 1.4 does not define `registerFile`, so register-file arrays are flattened
 into ordinary registers in 1.4 output.
 
-Field HDL backdoor paths in IP-XACT 2014 and 2022 are emitted through standard
-`accessHandles`. The 1.4, 1.5, and 2009 emitters do not carry HDL paths because
-those versions do not provide the same standard register-model access-handle
-structure. Generated IP-XACT does not add macro-backed block HDL paths or emit
-Synopsys `snps:*` vendor extensions.
+Field HDL backdoor paths in IEEE 1685-2014 and IEEE 1685-2022 are emitted
+through standard `accessHandles`. The SPIRIT 1.4, SPIRIT 1.5, and IEEE
+1685-2009 emitters do not carry HDL paths because those standards do not
+provide the same standard register-model access-handle structure. Generated
+IP-XACT does not add macro-backed block HDL paths or emit Synopsys `snps:*`
+vendor extensions.
 
 Generate RALF or SystemRDL:
 
@@ -69,10 +70,12 @@ Generate every supported output format at once:
 ./irgen snapsheet example_simple.xlsx --format all
 ```
 
-The all-output directory contains `<component>-ipxact-1.4.xml`,
-`<component>-ipxact-1.5.xml`, `<component>-ipxact-2009.xml`,
-`<component>-ipxact-2014.xml`, `<component>-ipxact-2022.xml`,
-`<component>.ralf`, `<component>.rdl`, and an `html/` documentation directory.
+The all-output directory contains `<component>-ip-xact-spirit-1.4.xml`,
+`<component>-ip-xact-spirit-1.5.xml`,
+`<component>-ip-xact-ieee-1685-2009.xml`,
+`<component>-ip-xact-ieee-1685-2014.xml`,
+`<component>-ip-xact-ieee-1685-2022.xml`, `<component>.ralf`,
+`<component>.rdl`, and an `html/` documentation directory.
 
 Write to a specific output path:
 
@@ -86,16 +89,16 @@ Use a TOML snapsheet specification for custom sheet names, column names, array
 syntax, inherited cells, and stricter validation:
 
 ```sh
-./irgen snapsheet example.xlsx --snapsheet-spec snapsheet.toml
+./irgen snapsheet example.xlsx --config snapsheet.toml
 ```
 
 Validate generated IP-XACT XML with `xmllint` and an explicit XSD:
 
 ```sh
-./irgen snapsheet example_simple.xlsx --ipxact-version 1.5 --validate crates/ipxact/schema/1.5/index.xsd
+./irgen snapsheet example_simple.xlsx --standard spirit-1.5 --validate crates/ipxact/schema/1.5/index.xsd
 ```
 
-`--validate` and `--ipxact-version` are only available with `--format ipxact`.
+`--validate` and `--standard` are only available with `--format ip-xact`.
 
 Generate UVM RAL SystemVerilog from an IP-XACT component XML file:
 
@@ -123,7 +126,7 @@ must still enable UVM RAL coverage collection for coverage to appear in reports.
   mapping, and current limitations.
 - [SystemRDL generation](docs/systemrdl-generation.md): SystemRDL model
   coverage, snapsheet mapping, and current limitations.
-- [IP-XACT generation](docs/ipxact-generation.md): supported schema versions,
+- [IP-XACT generation](docs/ipxact-generation.md): supported schema standards,
   crate layout, and current register-oriented coverage.
 - [UVM register model generation](docs/uvmreg-generation.md): IP-XACT input to
   UVM IEEE 2020 RAL coverage, five-version usability assessment, and remaining

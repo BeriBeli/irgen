@@ -2079,7 +2079,7 @@ fn parse_u64(field: &'static str, value: &str) -> Result<u64> {
 }
 
 fn addr_literal(value: u64) -> String {
-    format!("64'h{value:x}")
+    format!("`UVM_REG_ADDR_WIDTH'h{value:x}")
 }
 
 fn sv_string(value: &str) -> String {

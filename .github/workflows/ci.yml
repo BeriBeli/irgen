@@ -51,17 +51,17 @@ jobs:
       - name: Build CLI
         run: cargo build --release --locked --bin irgen
       - name: Smoke test IP-XACT conversion
-        run: cargo run --locked -p irgen-cli -- example_simple.xlsx -o target/irgen-simple.xml
+        run: cargo run --locked -p irgen-cli -- snapsheet example_simple.xlsx -o target/irgen-simple.xml
       - name: Smoke test RALF conversion
-        run: cargo run --locked -p irgen-cli -- example_simple.xlsx --format ralf -o target/irgen-simple.ralf
+        run: cargo run --locked -p irgen-cli -- snapsheet example_simple.xlsx --format ralf -o target/irgen-simple.ralf
       - name: Smoke test SystemRDL conversion
-        run: cargo run --locked -p irgen-cli -- example_simple.xlsx --format systemrdl -o target/irgen-simple.rdl
+        run: cargo run --locked -p irgen-cli -- snapsheet example_simple.xlsx --format systemrdl -o target/irgen-simple.rdl
       - name: Smoke test configured snapsheet IP-XACT conversion
-        run: cargo run --locked -p irgen-cli -- example.xlsx --snapsheet-spec snapsheet.toml -o target/irgen-configured-example.xml
+        run: cargo run --locked -p irgen-cli -- snapsheet example.xlsx --config snapsheet.toml -o target/irgen-configured-example.xml
       - name: Smoke test configured snapsheet RALF conversion
-        run: cargo run --locked -p irgen-cli -- example.xlsx --snapsheet-spec snapsheet.toml --format ralf -o target/irgen-configured-example.ralf
+        run: cargo run --locked -p irgen-cli -- snapsheet example.xlsx --config snapsheet.toml --format ralf -o target/irgen-configured-example.ralf
       - name: Smoke test configured snapsheet SystemRDL conversion
-        run: cargo run --locked -p irgen-cli -- example.xlsx --snapsheet-spec snapsheet.toml --format systemrdl -o target/irgen-configured-example.rdl
+        run: cargo run --locked -p irgen-cli -- snapsheet example.xlsx --config snapsheet.toml --format systemrdl -o target/irgen-configured-example.rdl
       - uses: actions/setup-python@v6
         if: runner.os == 'Linux'
         with:
@@ -93,4 +93,4 @@ jobs:
         run: cargo test --locked -p ip-xact --test ipxact_xml
       - name: Validate IP-XACT against official XSD
         if: runner.os == 'Linux'
-        run: cargo run --locked -p irgen-cli -- example.xlsx --snapsheet-spec snapsheet.toml -o target/irgen-configured-example.xml --validate crates/ipxact/schema/1685-2014/index.xsd
+        run: cargo run --locked -p irgen-cli -- snapsheet example.xlsx --config snapsheet.toml --standard ieee-1685-2014 -o target/irgen-configured-example.xml --validate crates/ipxact/schema/1685-2014/index.xsd

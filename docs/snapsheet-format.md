@@ -6,7 +6,7 @@
 
 - Default mode parses `example_simple.xlsx` without a TOML specification.
 - Configured mode parses `example.xlsx` with `snapsheet.toml` or another
-  `--snapsheet-spec <snapsheet.toml>` file.
+  `--config <snapsheet.toml>` file.
 
 Default mode expects each register row to provide its own `ADDR`, `REG`, and
 `FIELD`. It does not enable array syntax, inherited cells, blank field names
@@ -27,7 +27,7 @@ cargo run -p irgen-cli -- snapsheet example_simple.xlsx
 Use a TOML snapsheet specification:
 
 ```sh
-cargo run -p irgen-cli -- snapsheet example.xlsx --snapsheet-spec snapsheet.toml
+cargo run -p irgen-cli -- snapsheet example.xlsx --config snapsheet.toml
 ```
 
 The root `snapsheet.toml` matches the richer workbook example and can be copied
@@ -246,9 +246,9 @@ Configured mode can reject common workbook issues before output generation:
 - register arrays that exceed `max_array_elements`
 
 IP-XACT XSD validation is a separate CLI step enabled with `--validate` and is
-only available for `--format ipxact`. IP-XACT output defaults to version 2014;
-versions 1.4, 1.5, 2009, 2014, and 2022 can be selected with
-`--ipxact-version`.
+only available for `--format ip-xact`. IP-XACT output defaults to
+`ieee-1685-2014`; supported standards are `spirit-1.4`, `spirit-1.5`,
+`ieee-1685-2009`, `ieee-1685-2014`, and `ieee-1685-2022`.
 
 The IP-XACT emitters cover the register-oriented component subset produced from
 snapsheets: memory maps, address blocks, registers, register-file arrays where

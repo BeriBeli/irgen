@@ -505,12 +505,12 @@ fn renders_uvm_ieee_2020_register_model() {
     assert!(sv.contains("rand ral_block_regs regs;"));
     assert!(sv.contains("done.configure(this, 1, 0, \"RO\", 1'b0, 1'h1, 1'b1, 1'b0, 1);"));
     assert!(sv.contains("status.add_hdl_path_slice({`REGS_HDL_PATH, \".done_q\"}, 0, 1, 1'b1);"));
-    assert!(sv.contains("default_map.add_reg(status, 64'h4, \"RO\");"));
-    assert!(sv.contains("default_map.add_submap(regs.default_map, 64'h1000);"));
+    assert!(sv.contains("default_map.add_reg(status, `UVM_REG_ADDR_WIDTH'h4, \"RO\");"));
+    assert!(sv.contains("default_map.add_submap(regs.default_map, `UVM_REG_ADDR_WIDTH'h1000);"));
     assert!(sv.contains("rand ral_reg_regs_lane_ctrl ctrl;"));
     assert!(sv.contains("ctrl.add_hdl_path_slice(\"top.u_regs.lane.enable_q\", 0, 1, 1'b1);"));
-    assert!(sv.contains("mp.add_reg(ctrl, offset + 64'h0, \"RW\");"));
-    assert!(sv.contains("lane[i].map(default_map, 64'h20 + i * 64'h10);"));
+    assert!(sv.contains("mp.add_reg(ctrl, offset + `UVM_REG_ADDR_WIDTH'h0, \"RW\");"));
+    assert!(sv.contains("lane[i].map(default_map, `UVM_REG_ADDR_WIDTH'h20 + i * `UVM_REG_ADDR_WIDTH'h10);"));
 }
 
 #[test]
@@ -558,7 +558,7 @@ fn renders_ipxact_alternate_registers() {
     assert!(sv.contains("class ral_reg_regs_irq_debug_irq extends uvm_reg;"));
     assert!(sv.contains("raw.configure(this, 8, 0, \"RO\", 1'b0, 8'h0, 1'b0, 1'b0, 1);"));
     assert!(sv.contains("rand ral_reg_regs_irq_debug_irq debug_irq;"));
-    assert!(sv.contains("default_map.add_reg(debug_irq, 64'h0, \"RO\");"));
+    assert!(sv.contains("default_map.add_reg(debug_irq, `UVM_REG_ADDR_WIDTH'h0, \"RO\");"));
 }
 
 #[test]
@@ -580,9 +580,9 @@ fn inherits_block_and_register_access_policies() {
     assert!(sv.contains("STATE_IDLE = 4'h0,"));
     assert!(sv.contains("STATE_BUSY = 4'h1"));
     assert!(sv.contains("} state_e;"));
-    assert!(sv.contains("default_map.add_reg(block_status, 64'h4, \"RO\");"));
+    assert!(sv.contains("default_map.add_reg(block_status, `UVM_REG_ADDR_WIDTH'h4, \"RO\");"));
     assert!(sv.contains("doorbell.configure(this, 1, 0, \"WO\", 1'b0, 1'h0, 1'b0, 1'b1, 1);"));
-    assert!(sv.contains("default_map.add_reg(gate, 64'h20, \"WO\");"));
+    assert!(sv.contains("default_map.add_reg(gate, `UVM_REG_ADDR_WIDTH'h20, \"WO\");"));
 }
 
 #[test]
@@ -599,8 +599,8 @@ fn renders_ipxact_memory_blocks_as_uvm_mem() {
     assert!(sv.contains("uvm_mem packet_mem;"));
     assert!(sv.contains("packet_mem = new(\"packet_mem\", 64, 32, \"RO\", UVM_NO_COVERAGE);"));
     assert!(sv.contains("packet_mem.configure(this, `PKT_MEM_HDL_PATH);"));
-    assert!(sv.contains("default_map.add_mem(packet_mem, 64'h0, \"RO\");"));
-    assert!(sv.contains("default_map.add_submap(packet_mem.default_map, 64'h2000);"));
+    assert!(sv.contains("default_map.add_mem(packet_mem, `UVM_REG_ADDR_WIDTH'h0, \"RO\");"));
+    assert!(sv.contains("default_map.add_submap(packet_mem.default_map, `UVM_REG_ADDR_WIDTH'h2000);"));
 }
 
 #[test]
@@ -627,8 +627,8 @@ fn expands_local_address_block_and_register_definitions() {
     assert!(sv.contains("READY_NOT_READY = 2'h0,"));
     assert!(sv.contains("READY_READY = 2'h1"));
     assert!(sv.contains("ready.configure(this, 2, 0, \"RC\", 1'b1, 2'h1, 1'b1, 1'b0, 1);"));
-    assert!(sv.contains("default_map.add_reg(status_from_def, 64'h0, \"RO\");"));
-    assert!(sv.contains("default_map.add_submap(from_definition.default_map, 64'h2400);"));
+    assert!(sv.contains("default_map.add_reg(status_from_def, `UVM_REG_ADDR_WIDTH'h0, \"RO\");"));
+    assert!(sv.contains("default_map.add_submap(from_definition.default_map, `UVM_REG_ADDR_WIDTH'h2400);"));
 }
 
 #[test]
@@ -645,10 +645,10 @@ fn flattens_serial_banks_into_address_blocks() {
 
     let sv = ipxact_to_uvm_reg(IPXACT_2022).unwrap();
     assert!(sv.contains("class ral_reg_banked_ctl_mode extends uvm_reg;"));
-    assert!(sv.contains("default_map.add_reg(mode, 64'h0, \"RW\");"));
-    assert!(sv.contains("default_map.add_reg(value, 64'h4, \"RO\");"));
-    assert!(sv.contains("default_map.add_submap(banked_ctl.default_map, 64'h3000);"));
-    assert!(sv.contains("default_map.add_submap(banked_stat.default_map, 64'h3010);"));
+    assert!(sv.contains("default_map.add_reg(mode, `UVM_REG_ADDR_WIDTH'h0, \"RW\");"));
+    assert!(sv.contains("default_map.add_reg(value, `UVM_REG_ADDR_WIDTH'h4, \"RO\");"));
+    assert!(sv.contains("default_map.add_submap(banked_ctl.default_map, `UVM_REG_ADDR_WIDTH'h3000);"));
+    assert!(sv.contains("default_map.add_submap(banked_stat.default_map, `UVM_REG_ADDR_WIDTH'h3010);"));
 }
 
 #[test]
@@ -676,7 +676,7 @@ fn preserves_memory_remaps_and_generates_their_registers() {
     let sv = ipxact_to_uvm_reg(IPXACT_2022).unwrap();
     assert!(sv.contains("class ral_reg_low_power_lp_regs_wake extends uvm_reg;"));
     assert!(sv.contains("rand ral_reg_low_power_lp_regs_wake low_power_lp_regs_wake;"));
-    assert!(sv.contains("default_map.add_reg(low_power_lp_regs_wake, 64'h4000, \"RO\");"));
+    assert!(sv.contains("default_map.add_reg(low_power_lp_regs_wake, `UVM_REG_ADDR_WIDTH'h4000, \"RO\");"));
 }
 
 #[test]
@@ -698,7 +698,7 @@ fn renders_ipxact_register_arrays() {
     assert!(sv.contains("counter[i0][i1] = ral_reg_regs_counter::type_id::create($sformatf(\"counter_%0d_%0d\", i0, i1));"));
     assert!(
         sv.contains(
-            "default_map.add_reg(counter[i0][i1], 64'h10 + (i0 * 1 + i1) * 64'h8, \"RW\");"
+            "default_map.add_reg(counter[i0][i1], `UVM_REG_ADDR_WIDTH'h10 + (i0 * 1 + i1) * `UVM_REG_ADDR_WIDTH'h8, \"RW\");"
         )
     );
 }
@@ -749,13 +749,13 @@ fn respects_memory_map_address_unit_bits() {
 
     let sv = ipxact_to_uvm_reg(xml).unwrap();
     assert!(
-        sv.contains("default_map = create_map(\"default_map\", 0, 4, UVM_LITTLE_ENDIAN, 1'b0);")
+        sv.contains("default_map = create_map(\"default_map\", 0, 4, UVM_LITTLE_ENDIAN);")
     );
-    assert!(sv.contains("default_map.add_reg(ctrl, 64'h2, \"RW\");"));
-    assert!(sv.contains("default_map.add_submap(cfg.default_map, 64'h20);"));
+    assert!(sv.contains("default_map.add_reg(ctrl, `UVM_REG_ADDR_WIDTH'h2, \"RW\");"));
+    assert!(sv.contains("default_map.add_submap(cfg.default_map, `UVM_REG_ADDR_WIDTH'h20);"));
     assert!(sv.contains("ram = new(\"ram\", 4, 32, \"RW\", UVM_NO_COVERAGE);"));
-    assert!(sv.contains("default_map.add_mem(ram, 64'h0, \"RW\");"));
-    assert!(sv.contains("default_map.add_submap(ram.default_map, 64'h40);"));
+    assert!(sv.contains("default_map.add_mem(ram, `UVM_REG_ADDR_WIDTH'h0, \"RW\");"));
+    assert!(sv.contains("default_map.add_submap(ram.default_map, `UVM_REG_ADDR_WIDTH'h40);"));
 }
 
 #[test]
@@ -819,13 +819,13 @@ fn renders_multiple_memory_maps() {
     let sv = ipxact_to_uvm_reg(xml).unwrap();
     assert!(sv.contains("uvm_reg_map status_map;"));
     assert!(
-        sv.contains("default_map = create_map(\"default_map\", 0, 4, UVM_LITTLE_ENDIAN, 1'b1);")
+        sv.contains("default_map = create_map(\"default_map\", 0, 4, UVM_LITTLE_ENDIAN);")
     );
-    assert!(sv.contains("status_map = create_map(\"status\", 0, 4, UVM_LITTLE_ENDIAN, 1'b0);"));
-    assert!(sv.contains("default_map.add_reg(enable, 64'h0, \"RW\");"));
-    assert!(sv.contains("default_map.add_reg(count, 64'h2, \"RO\");"));
-    assert!(sv.contains("default_map.add_submap(ctrls.default_map, 64'h100);"));
-    assert!(sv.contains("status_map.add_submap(stats.default_map, 64'h10);"));
+    assert!(sv.contains("status_map = create_map(\"status\", 0, 4, UVM_LITTLE_ENDIAN);"));
+    assert!(sv.contains("default_map.add_reg(enable, `UVM_REG_ADDR_WIDTH'h0, \"RW\");"));
+    assert!(sv.contains("default_map.add_reg(count, `UVM_REG_ADDR_WIDTH'h2, \"RO\");"));
+    assert!(sv.contains("default_map.add_submap(ctrls.default_map, `UVM_REG_ADDR_WIDTH'h100);"));
+    assert!(sv.contains("status_map.add_submap(stats.default_map, `UVM_REG_ADDR_WIDTH'h10);"));
     assert!(!sv.contains("default_map.add_submap(stats.default_map"));
 }
 
@@ -889,9 +889,9 @@ fn renders_scalar_register_files_without_array_loop() {
     assert!(sv.contains("rand ral_reg_cfg_local_status status;"));
     assert!(sv.contains("status = ral_reg_cfg_local_status::type_id::create(\"status\");"));
     assert!(sv.contains("status.configure(get_block(), this);"));
-    assert!(sv.contains("mp.add_reg(status, offset + 64'h4, \"RO\");"));
+    assert!(sv.contains("mp.add_reg(status, offset + `UVM_REG_ADDR_WIDTH'h4, \"RO\");"));
     assert!(sv.contains("rand ral_reg_cfg_local_status_shadow shadow;"));
-    assert!(sv.contains("mp.add_reg(shadow, offset + 64'h4, \"RW\");"));
+    assert!(sv.contains("mp.add_reg(shadow, offset + `UVM_REG_ADDR_WIDTH'h4, \"RW\");"));
     assert!(!sv.contains("status[1]"));
     assert!(!sv.contains("$sformatf(\"status_%0d\""));
 }
@@ -969,7 +969,7 @@ fn renders_register_arrays_inside_register_files() {
         "counter[i] = ral_reg_cfg_local_counter::type_id::create($sformatf(\"counter_%0d\", i));"
     ));
     assert!(sv.contains("counter[i].configure(get_block(), this);"));
-    assert!(sv.contains("mp.add_reg(counter[i], offset + 64'h4 + i * 64'h4, \"RW\");"));
+    assert!(sv.contains("mp.add_reg(counter[i], offset + `UVM_REG_ADDR_WIDTH'h4 + i * `UVM_REG_ADDR_WIDTH'h4, \"RW\");"));
     assert!(sv.contains("ral_regfile_cfg_lane lane[2];"));
     assert!(
         sv.contains("lane[i] = ral_regfile_cfg_lane::type_id::create($sformatf(\"lane_%0d\", i));")
@@ -980,7 +980,7 @@ fn renders_register_arrays_inside_register_files() {
         "sample[i] = ral_reg_cfg_lane_sample::type_id::create($sformatf(\"sample_%0d\", i));"
     ));
     assert!(sv.contains("sample[i].configure(get_block(), this);"));
-    assert!(sv.contains("mp.add_reg(sample[i], offset + 64'h8 + i * 64'h4, \"RW\");"));
+    assert!(sv.contains("mp.add_reg(sample[i], offset + `UVM_REG_ADDR_WIDTH'h8 + i * `UVM_REG_ADDR_WIDTH'h4, \"RW\");"));
 }
 
 #[test]
@@ -1307,8 +1307,8 @@ fn resolves_external_type_definitions_with_resolver() {
 
     let sv = irgen_uvmreg::serialize_uvm_reg(&component).unwrap();
     assert!(!sv.contains("localparam"));
-    assert!(sv.contains("default_map.add_reg(status, 64'h4, \"RO\");"));
-    assert!(sv.contains("default_map.add_submap(cfg.default_map, 64'h40);"));
+    assert!(sv.contains("default_map.add_reg(status, `UVM_REG_ADDR_WIDTH'h4, \"RO\");"));
+    assert!(sv.contains("default_map.add_submap(cfg.default_map, `UVM_REG_ADDR_WIDTH'h40);"));
 }
 
 #[test]
@@ -1415,11 +1415,11 @@ fn renders_address_space_local_memory_map_as_uvm_submap() {
     assert!(sv.contains("class ral_sys_bridge_dma_space extends uvm_reg_block;"));
     assert!(sv.contains("class ral_sys_bridge extends uvm_reg_block;"));
     assert!(sv.contains("rand ral_reg_bridge_dma_space_dma_regs_doorbell doorbell;"));
-    assert!(sv.contains("default_map.add_reg(doorbell, 64'h4, \"WO\");"));
-    assert!(sv.contains("default_map.add_submap(dma_regs.default_map, 64'h20);"));
+    assert!(sv.contains("default_map.add_reg(doorbell, `UVM_REG_ADDR_WIDTH'h4, \"WO\");"));
+    assert!(sv.contains("default_map.add_submap(dma_regs.default_map, `UVM_REG_ADDR_WIDTH'h20);"));
     assert!(sv.contains("rand ral_sys_bridge_dma_space dma_window;"));
     assert!(sv.contains("dma_window = ral_sys_bridge_dma_space::type_id::create(\"dma_window\");"));
-    assert!(sv.contains("default_map.add_submap(dma_window.default_map, 64'hfe0);"));
+    assert!(sv.contains("default_map.add_submap(dma_window.default_map, `UVM_REG_ADDR_WIDTH'hfe0);"));
 }
 
 #[test]
@@ -1513,11 +1513,11 @@ fn expands_scoped_memory_map_definitions() {
 
     let sv = ipxact_to_uvm_reg(xml).unwrap();
     assert!(
-        sv.contains("default_map = create_map(\"default_map\", 0, 4, UVM_LITTLE_ENDIAN, 1'b0);")
+        sv.contains("default_map = create_map(\"default_map\", 0, 4, UVM_LITTLE_ENDIAN);")
     );
-    assert!(sv.contains("default_map.add_reg(status, 64'h1, \"RO\");"));
-    assert!(sv.contains("default_map.add_submap(b_regs.default_map, 64'h2);"));
-    assert!(sv.contains("default_map.add_reg(debug_dbg_regs_ctrl, 64'h8, \"RW\");"));
+    assert!(sv.contains("default_map.add_reg(status, `UVM_REG_ADDR_WIDTH'h1, \"RO\");"));
+    assert!(sv.contains("default_map.add_submap(b_regs.default_map, `UVM_REG_ADDR_WIDTH'h2);"));
+    assert!(sv.contains("default_map.add_reg(debug_dbg_regs_ctrl, `UVM_REG_ADDR_WIDTH'h8, \"RW\");"));
     assert!(!sv.contains("a_regs"));
 }
 
@@ -1632,9 +1632,9 @@ fn expands_scoped_bank_and_memory_remap_definitions() {
     assert_eq!(component.memory_remaps[0].blocks[0].base_address, "0x200");
 
     let sv = ipxact_to_uvm_reg(xml).unwrap();
-    assert!(sv.contains("default_map.add_reg(status, 64'h4, \"RO\");"));
-    assert!(sv.contains("default_map.add_submap(banked_def_regs.default_map, 64'h100);"));
-    assert!(sv.contains("default_map.add_reg(lowpower_lp_regs_ctrl, 64'h200, \"RW\");"));
+    assert!(sv.contains("default_map.add_reg(status, `UVM_REG_ADDR_WIDTH'h4, \"RO\");"));
+    assert!(sv.contains("default_map.add_submap(banked_def_regs.default_map, `UVM_REG_ADDR_WIDTH'h100);"));
+    assert!(sv.contains("default_map.add_reg(lowpower_lp_regs_ctrl, `UVM_REG_ADDR_WIDTH'h200, \"RW\");"));
     assert!(!sv.contains("a_bank_block"));
     assert!(!sv.contains("a_remap_block"));
 }

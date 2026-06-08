@@ -18,7 +18,7 @@ cargo run -p irgen-cli -- snapsheet example_simple.xlsx --format systemrdl
 
 When `-o/--output` is omitted, SystemRDL output is written in the current
 directory as `<component>.rdl`. IP-XACT XSD validation remains scoped to
-`--format ipxact`; `--validate` is rejected for SystemRDL output.
+`--format ip-xact`; `--validate` is rejected for SystemRDL output.
 
 ## Model Coverage
 

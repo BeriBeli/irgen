@@ -3,7 +3,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::process::Command as ProcessCommand;
 
-use irgen_cli::{Command, IpxactArgs, IpxactVersion, OutputFormat, parse_args, run};
+use irgen_cli::{Command, IpxactArgs, IpxactStandard, OutputFormat, parse_args, run};
 
 fn args(values: &[&str]) -> impl Iterator<Item = OsString> {
     values
@@ -121,15 +121,18 @@ fn accepts_explicit_output_path() {
 }
 
 #[test]
-fn accepts_explicit_ipxact_format() {
-    let Command::Convert(parsed) =
-        parse_args(snapsheet_args(&["nested/input.xlsx", "--format", "ipxact"])).unwrap()
-    else {
+fn accepts_explicit_ip_xact_format() {
+    let Command::Convert(parsed) = parse_args(snapsheet_args(&[
+        "nested/input.xlsx",
+        "--format",
+        "ip-xact",
+    ]))
+    .unwrap() else {
         panic!("expected conversion command");
     };
 
     assert_eq!(parsed.format, OutputFormat::Ipxact);
-    assert_eq!(parsed.ipxact_version, IpxactVersion::V2014);
+    assert_eq!(parsed.ipxact_standard, IpxactStandard::V2014);
     assert_eq!(parsed.output, None);
 }
 
@@ -214,77 +217,86 @@ fn accepts_explicit_all_format() {
 }
 
 #[test]
-fn defaults_ipxact_version_to_2014() {
+fn defaults_ipxact_standard_to_2014() {
     let Command::Convert(parsed) = parse_args(snapsheet_args(&["input.xlsx"])).unwrap() else {
         panic!("expected conversion command");
     };
 
     assert_eq!(parsed.format, OutputFormat::Ipxact);
-    assert_eq!(parsed.ipxact_version, IpxactVersion::V2014);
+    assert_eq!(parsed.ipxact_standard, IpxactStandard::V2014);
 }
 
 #[test]
-fn accepts_explicit_ipxact_2014_version() {
-    let Command::Convert(parsed) =
-        parse_args(snapsheet_args(&["input.xlsx", "--ipxact-version", "2014"])).unwrap()
-    else {
+fn accepts_explicit_ipxact_2014_standard() {
+    let Command::Convert(parsed) = parse_args(snapsheet_args(&[
+        "input.xlsx",
+        "--standard",
+        "ieee-1685-2014",
+    ]))
+    .unwrap() else {
         panic!("expected conversion command");
     };
 
     assert_eq!(parsed.format, OutputFormat::Ipxact);
-    assert_eq!(parsed.ipxact_version, IpxactVersion::V2014);
+    assert_eq!(parsed.ipxact_standard, IpxactStandard::V2014);
     assert_eq!(parsed.output, None);
 }
 
 #[test]
-fn accepts_explicit_ipxact_1_4_version() {
+fn accepts_explicit_ipxact_1_4_standard() {
     let Command::Convert(parsed) =
-        parse_args(snapsheet_args(&["input.xlsx", "--ipxact-version", "1.4"])).unwrap()
+        parse_args(snapsheet_args(&["input.xlsx", "--standard", "spirit-1.4"])).unwrap()
     else {
         panic!("expected conversion command");
     };
 
     assert_eq!(parsed.format, OutputFormat::Ipxact);
-    assert_eq!(parsed.ipxact_version, IpxactVersion::V1_4);
+    assert_eq!(parsed.ipxact_standard, IpxactStandard::V1_4);
     assert_eq!(parsed.output, None);
 }
 
 #[test]
-fn accepts_explicit_ipxact_1_5_version() {
+fn accepts_explicit_ipxact_1_5_standard() {
     let Command::Convert(parsed) =
-        parse_args(snapsheet_args(&["input.xlsx", "--ipxact-version", "1.5"])).unwrap()
+        parse_args(snapsheet_args(&["input.xlsx", "--standard", "spirit-1.5"])).unwrap()
     else {
         panic!("expected conversion command");
     };
 
     assert_eq!(parsed.format, OutputFormat::Ipxact);
-    assert_eq!(parsed.ipxact_version, IpxactVersion::V1_5);
+    assert_eq!(parsed.ipxact_standard, IpxactStandard::V1_5);
     assert_eq!(parsed.output, None);
 }
 
 #[test]
-fn accepts_explicit_ipxact_2009_version() {
-    let Command::Convert(parsed) =
-        parse_args(snapsheet_args(&["input.xlsx", "--ipxact-version", "2009"])).unwrap()
-    else {
+fn accepts_explicit_ipxact_2009_standard() {
+    let Command::Convert(parsed) = parse_args(snapsheet_args(&[
+        "input.xlsx",
+        "--standard",
+        "ieee-1685-2009",
+    ]))
+    .unwrap() else {
         panic!("expected conversion command");
     };
 
     assert_eq!(parsed.format, OutputFormat::Ipxact);
-    assert_eq!(parsed.ipxact_version, IpxactVersion::V2009);
+    assert_eq!(parsed.ipxact_standard, IpxactStandard::V2009);
     assert_eq!(parsed.output, None);
 }
 
 #[test]
-fn accepts_explicit_ipxact_2022_version() {
-    let Command::Convert(parsed) =
-        parse_args(snapsheet_args(&["input.xlsx", "--ipxact-version", "2022"])).unwrap()
-    else {
+fn accepts_explicit_ipxact_2022_standard() {
+    let Command::Convert(parsed) = parse_args(snapsheet_args(&[
+        "input.xlsx",
+        "--standard",
+        "ieee-1685-2022",
+    ]))
+    .unwrap() else {
         panic!("expected conversion command");
     };
 
     assert_eq!(parsed.format, OutputFormat::Ipxact);
-    assert_eq!(parsed.ipxact_version, IpxactVersion::V2022);
+    assert_eq!(parsed.ipxact_standard, IpxactStandard::V2022);
     assert_eq!(parsed.output, None);
 }
 
@@ -604,14 +616,16 @@ fn generates_all_outputs() {
     .unwrap();
 
     assert_eq!(result.as_deref(), Some(output_dir.as_path()));
-    let ipxact_1_4 = fs::read_to_string(output_dir.join("example_simple-ipxact-1.4.xml")).unwrap();
-    let ipxact_1_5 = fs::read_to_string(output_dir.join("example_simple-ipxact-1.5.xml")).unwrap();
+    let ipxact_1_4 =
+        fs::read_to_string(output_dir.join("example_simple-ip-xact-spirit-1.4.xml")).unwrap();
+    let ipxact_1_5 =
+        fs::read_to_string(output_dir.join("example_simple-ip-xact-spirit-1.5.xml")).unwrap();
     let ipxact_2009 =
-        fs::read_to_string(output_dir.join("example_simple-ipxact-2009.xml")).unwrap();
+        fs::read_to_string(output_dir.join("example_simple-ip-xact-ieee-1685-2009.xml")).unwrap();
     let ipxact_2014 =
-        fs::read_to_string(output_dir.join("example_simple-ipxact-2014.xml")).unwrap();
+        fs::read_to_string(output_dir.join("example_simple-ip-xact-ieee-1685-2014.xml")).unwrap();
     let ipxact_2022 =
-        fs::read_to_string(output_dir.join("example_simple-ipxact-2022.xml")).unwrap();
+        fs::read_to_string(output_dir.join("example_simple-ip-xact-ieee-1685-2022.xml")).unwrap();
     let ralf = fs::read_to_string(output_dir.join("example_simple.ralf")).unwrap();
     let rdl = fs::read_to_string(output_dir.join("example_simple.rdl")).unwrap();
     let html = fs::read_to_string(output_dir.join("html/index.html")).unwrap();
@@ -653,7 +667,7 @@ fn generates_and_validates_ipxact_output() {
     let result = run([
         OsString::from("snapsheet"),
         OsString::from(input),
-        OsString::from("--snapsheet-spec"),
+        OsString::from("--config"),
         OsString::from(spec),
         OsString::from("-o"),
         OsString::from(&output),
@@ -681,7 +695,7 @@ fn generates_and_validates_ipxact_output() {
 #[test]
 fn generates_and_validates_complex_ipxact_1_4_output() {
     generate_and_validate_complex_ipxact(
-        "1.4",
+        "spirit-1.4",
         "crates/ipxact/schema/1.4/index.xsd",
         "http://www.spiritconsortium.org/XMLSchema/SPIRIT/1.4",
         "<spirit:register><spirit:name>reg1</spirit:name>",
@@ -691,7 +705,7 @@ fn generates_and_validates_complex_ipxact_1_4_output() {
 #[test]
 fn generates_and_validates_complex_ipxact_1_5_output() {
     generate_and_validate_complex_ipxact(
-        "1.5",
+        "spirit-1.5",
         "crates/ipxact/schema/1.5/index.xsd",
         "http://www.spiritconsortium.org/XMLSchema/SPIRIT/1.5",
         "<spirit:register><spirit:name>reg1</spirit:name>",
@@ -701,7 +715,7 @@ fn generates_and_validates_complex_ipxact_1_5_output() {
 #[test]
 fn generates_and_validates_complex_ipxact_2009_output() {
     generate_and_validate_complex_ipxact(
-        "2009",
+        "ieee-1685-2009",
         "crates/ipxact/schema/1685-2009/index.xsd",
         "http://www.spiritconsortium.org/XMLSchema/SPIRIT/1685-2009",
         "<spirit:register><spirit:name>reg1</spirit:name>",
@@ -711,7 +725,7 @@ fn generates_and_validates_complex_ipxact_2009_output() {
 #[test]
 fn generates_and_validates_complex_ipxact_2022_output() {
     generate_and_validate_complex_ipxact(
-        "2022",
+        "ieee-1685-2022",
         "crates/ipxact/schema/1685-2022/index.xsd",
         "http://www.accellera.org/XMLSchema/IPXACT/1685-2022",
         "<ipxact:register><ipxact:name>reg1</ipxact:name>",
@@ -719,7 +733,7 @@ fn generates_and_validates_complex_ipxact_2022_output() {
 }
 
 fn generate_and_validate_complex_ipxact(
-    version_arg: &str,
+    standard_arg: &str,
     schema_rel: &str,
     namespace: &str,
     register_needle: &str,
@@ -729,7 +743,9 @@ fn generate_and_validate_complex_ipxact(
         .output()
         .is_err()
     {
-        eprintln!("skipping CLI IP-XACT {version_arg} validation because xmllint is not installed");
+        eprintln!(
+            "skipping CLI IP-XACT {standard_arg} validation because xmllint is not installed"
+        );
         return;
     }
 
@@ -738,7 +754,7 @@ fn generate_and_validate_complex_ipxact(
     let spec = root.join("snapsheet.toml");
     let schema = root.join(schema_rel);
     let output = std::env::temp_dir().join(format!(
-        "irgen-cli-test-{}-complex-{version_arg}.xml",
+        "irgen-cli-test-{}-complex-{standard_arg}.xml",
         std::process::id()
     ));
     let _ = fs::remove_file(&output);
@@ -746,10 +762,10 @@ fn generate_and_validate_complex_ipxact(
     let result = run([
         OsString::from("snapsheet"),
         OsString::from(input),
-        OsString::from("--snapsheet-spec"),
+        OsString::from("--config"),
         OsString::from(spec),
-        OsString::from("--ipxact-version"),
-        OsString::from(version_arg),
+        OsString::from("--standard"),
+        OsString::from(standard_arg),
         OsString::from("-o"),
         OsString::from(&output),
         OsString::from("--validate"),
@@ -792,7 +808,7 @@ fn rejects_validation_for_non_ipxact_before_loading_workbook() {
 
     assert_eq!(
         error.to_string(),
-        "--validate can only be used with --format ipxact"
+        "--validate can only be used with --format ip-xact"
     );
 }
 
@@ -809,7 +825,7 @@ fn rejects_validation_for_all_before_loading_workbook() {
 
     assert_eq!(
         error.to_string(),
-        "--validate can only be used with --format ipxact"
+        "--validate can only be used with --format ip-xact"
     );
 }
 
@@ -863,7 +879,7 @@ fn rejects_missing_validation_schema_before_writing_output() {
 fn accepts_explicit_snapsheet_spec() {
     let Command::Convert(parsed) = parse_args(snapsheet_args(&[
         "input.xlsx",
-        "--snapsheet-spec",
+        "--config",
         "snapsheet.toml",
     ]))
     .unwrap() else {
@@ -876,8 +892,8 @@ fn accepts_explicit_snapsheet_spec() {
 #[test]
 fn rejects_missing_snapsheet_spec_path() {
     assert_snapsheet_parse_error_contains(
-        &["input.xlsx", "--snapsheet-spec"],
-        &["a value is required", "--snapsheet-spec"],
+        &["input.xlsx", "--config"],
+        &["a value is required", "--config"],
     );
 }
 
@@ -886,12 +902,12 @@ fn rejects_duplicate_snapsheet_spec() {
     assert_snapsheet_parse_error_contains(
         &[
             "input.xlsx",
-            "--snapsheet-spec",
+            "--config",
             "first.toml",
-            "--snapsheet-spec",
+            "--config",
             "second.toml",
         ],
-        &["cannot be used multiple times", "--snapsheet-spec"],
+        &["cannot be used multiple times", "--config"],
     );
 }
 
@@ -899,77 +915,77 @@ fn rejects_duplicate_snapsheet_spec() {
 fn rejects_regvue_format() {
     assert_snapsheet_parse_error_contains(
         &["input.xlsx", "--format", "regvue"],
-        &["invalid value", "regvue", "ipxact"],
+        &["invalid value", "regvue", "ip-xact"],
     );
 }
 
 #[test]
-fn rejects_missing_ipxact_version() {
+fn rejects_missing_ipxact_standard() {
     assert_snapsheet_parse_error_contains(
-        &["input.xlsx", "--ipxact-version"],
-        &["a value is required", "--ipxact-version"],
+        &["input.xlsx", "--standard"],
+        &["a value is required", "--standard"],
     );
 }
 
 #[test]
-fn rejects_duplicate_ipxact_version() {
+fn rejects_duplicate_ipxact_standard() {
     assert_snapsheet_parse_error_contains(
         &[
             "input.xlsx",
-            "--ipxact-version",
-            "2014",
-            "--ipxact-version",
-            "2014",
+            "--standard",
+            "ieee-1685-2014",
+            "--standard",
+            "ieee-1685-2014",
         ],
-        &["cannot be used multiple times", "--ipxact-version"],
+        &["cannot be used multiple times", "--standard"],
     );
 }
 
 #[test]
-fn rejects_unsupported_ipxact_version() {
+fn rejects_unsupported_ipxact_standard() {
     assert_snapsheet_parse_error_contains(
-        &["input.xlsx", "--ipxact-version", "2020"],
+        &["input.xlsx", "--standard", "2020"],
         &[
             "invalid value",
             "2020",
-            "1.4",
-            "1.5",
-            "2009",
-            "2014",
-            "2022",
+            "spirit-1.4",
+            "spirit-1.5",
+            "ieee-1685-2009",
+            "ieee-1685-2014",
+            "ieee-1685-2022",
         ],
     );
 }
 
 #[test]
-fn rejects_ipxact_version_for_non_ipxact_format() {
+fn rejects_ipxact_standard_for_non_ipxact_format() {
     assert_eq!(
         parse_args(snapsheet_args(&[
             "input.xlsx",
             "--format",
             "systemrdl",
-            "--ipxact-version",
-            "2014",
+            "--standard",
+            "ieee-1685-2014",
         ]))
         .err()
         .as_deref(),
-        Some("--ipxact-version can only be used with --format ipxact")
+        Some("--standard can only be used with --format ip-xact")
     );
 }
 
 #[test]
-fn rejects_ipxact_version_for_all_format() {
+fn rejects_ipxact_standard_for_all_format() {
     assert_eq!(
         parse_args(snapsheet_args(&[
             "input.xlsx",
             "--format",
             "all",
-            "--ipxact-version",
-            "2014",
+            "--standard",
+            "ieee-1685-2014",
         ]))
         .err()
         .as_deref(),
-        Some("--ipxact-version can only be used with --format ipxact")
+        Some("--standard can only be used with --format ip-xact")
     );
 }
 
