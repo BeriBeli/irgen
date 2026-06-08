@@ -4,8 +4,16 @@
 import uvm_pkg::*;
 `include "uvm_macros.svh"
 
+{% for include in includes %}
+`include "{{ include }}"
+
+{% endfor %}
 {% for reg in register_classes %}
 {% include "register_class.sv" %}
+
+{% endfor %}
+{% for mem in memory_classes %}
+{% include "memory_class.sv" %}
 
 {% endfor %}
 {% for reg_file_class in register_file_classes %}

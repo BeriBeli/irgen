@@ -22,6 +22,7 @@ pub struct AddressSpace {
 pub struct Segment {
     pub name: String,
     pub address_offset: String,
+    pub range: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -81,8 +82,23 @@ pub struct Register {
     pub volatile: Option<String>,
     pub access: Option<String>,
     pub hdl_path: Option<String>,
+    pub indexed_hdl_paths: Vec<IndexedHdlPath>,
     pub fields: Vec<Field>,
     pub alternate_registers: Vec<AlternateRegister>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IndexedHdlPath {
+    pub indices: Vec<String>,
+    pub path: String,
+    pub slices: Vec<HdlPathSlice>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HdlPathSlice {
+    pub path: String,
+    pub left: Option<String>,
+    pub right: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -103,9 +119,13 @@ pub struct Field {
     pub modified_write_value: Option<String>,
     pub read_action: Option<String>,
     pub volatile: Option<String>,
+    pub testable: Option<String>,
+    pub reserved: Option<String>,
     pub reset: Option<String>,
     pub resets: Vec<Reset>,
     pub hdl_path: Option<String>,
+    pub hdl_path_slices: Vec<HdlPathSlice>,
+    pub indexed_hdl_paths: Vec<IndexedHdlPath>,
     pub enumerated_values: Vec<EnumeratedValue>,
 }
 

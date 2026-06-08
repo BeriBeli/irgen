@@ -40,6 +40,9 @@ class {{ reg.class_name }} extends uvm_reg;
 {%- for field in reg.fields %}
       {{ field.var_name }} = uvm_reg_field::type_id::create({{ field.create_name }});
       {{ field.var_name }}.configure(this, {{ field.width }}, {{ field.lsb }}, {{ field.access }}, {{ field.volatile }}, {{ field.reset_literal }}, {{ field.has_reset }}, {{ field.is_rand }}, 1);
+{%- if field.compare_needs_set %}
+      {{ field.var_name }}.set_compare({{ field.compare_check }});
+{%- endif %}
 {%- for reset in field.extra_resets %}
       {{ field.var_name }}.set_reset({{ reset.value_literal }}, {{ reset.kind }});
 {%- endfor %}

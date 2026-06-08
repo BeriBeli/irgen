@@ -3,18 +3,35 @@ use std::collections::BTreeMap;
 use askama::Template;
 
 use crate::model::{
-    AddressBlock, AlternateRegister, Component, EnumeratedValue, Field, Register, RegisterFile,
-    SubspaceMap,
+    AddressBlock, AlternateRegister, Component, EnumeratedValue, Field, HdlPathSlice, Register,
+    RegisterFile, SubspaceMap,
 };
+use crate::numeric::parse_u64_expr;
 use crate::{Error, Result};
 
 #[derive(Template)]
 #[template(path = "package.sv", escape = "none")]
 struct PackageTemplate<'a> {
     guard: &'a str,
+    includes: &'a [String],
     register_classes: &'a [RegisterClass],
+    memory_classes: &'a [MemoryClass],
     register_file_classes: &'a [RegisterFileClass],
     block_classes: &'a [BlockClass],
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RenderedFile {
+    pub path: String,
+    pub content: String,
+}
+
+#[derive(Debug, Default)]
+struct ClassSet {
+    register_classes: Vec<RegisterClass>,
+    memory_classes: Vec<MemoryClass>,
+    register_file_classes: Vec<RegisterFileClass>,
+    block_classes: Vec<BlockClass>,
 }
 
 #[derive(Debug)]
@@ -43,6 +60,8 @@ struct FieldView {
     reset_literal: String,
     has_reset: &'static str,
     is_rand: &'static str,
+    compare_check: &'static str,
+    compare_needs_set: bool,
     extra_resets: Vec<ResetView>,
 }
 
@@ -50,6 +69,16 @@ struct FieldView {
 struct ResetView {
     value_literal: String,
     kind: String,
+}
+
+#[derive(Debug)]
+struct MemoryClass {
+    class_name: String,
+    default_name: String,
+    size_words: u64,
+    width_bits: u64,
+    rights: String,
+    coverage_model: &'static str,
 }
 
 #[derive(Debug)]
@@ -110,6 +139,7 @@ struct MapInstance {
 
 #[derive(Debug)]
 struct MemoryInstance {
+    class_name: String,
     var_name: String,
     create_name: String,
     map_var_name: String,
@@ -118,6 +148,7 @@ struct MemoryInstance {
     offset_literal: String,
     rights: String,
     hdl_path_expr: String,
+    coverage_enabled: bool,
 }
 
 #[derive(Debug)]
@@ -156,6 +187,12 @@ struct HdlSlice {
     first: &'static str,
 }
 
+#[derive(Debug)]
+struct IndexedHdlSlices {
+    indices: Vec<u64>,
+    slices: Vec<HdlSlice>,
+}
+
 #[derive(Debug, Clone, Copy)]
 struct MapLayout {
     n_bytes: u64,
@@ -181,25 +218,215 @@ pub fn serialize_uvm_reg_with_options(
     component: &Component,
     options: RenderOptions,
 ) -> Result<String> {
-    let guard = format!("RAL_{}_SV", ident(&component.name).to_ascii_uppercase());
-    let register_classes = register_classes_with_options(component, options)?;
-    let register_file_classes = register_file_classes(component)?;
-    let block_classes = block_classes(component)?;
-    let rendered = PackageTemplate {
-        guard: &guard,
-        register_classes: &register_classes,
-        register_file_classes: &register_file_classes,
-        block_classes: &block_classes,
-    }
-    .render()?;
-    Ok(normalize_class_spacing(rendered))
+    let classes = class_set(component, options)?;
+    validate_unique_class_names(&classes)?;
+    render_class_set(&single_file_guard(component), &[], &classes)
 }
 
-fn normalize_class_spacing(mut sv: String) -> String {
-    while sv.contains("endclass\n\n\n\nclass ") {
-        sv = sv.replace("endclass\n\n\n\nclass ", "endclass\n\n\nclass ");
+pub fn serialize_uvm_reg_by_block_with_options(
+    component: &Component,
+    options: RenderOptions,
+) -> Result<Vec<RenderedFile>> {
+    validate_unique_class_names(&class_set(component, options)?)?;
+
+    let mut files = Vec::new();
+    let mut top_includes = Vec::new();
+
+    for address_space in &component.address_spaces {
+        let scoped_component =
+            scoped_component(component, &address_space.name, &address_space.blocks);
+        let mut address_space_includes = Vec::new();
+        for block in &scoped_component.blocks {
+            let file = address_block_file(&scoped_component, block, true, options)?;
+            address_space_includes.push(file.path.clone());
+            files.push(file);
+        }
+        let file = address_space_file(&scoped_component, address_space_includes, options)?;
+        top_includes.push(file.path.clone());
+        files.push(file);
+    }
+
+    for block in &component.blocks {
+        let file = address_block_file(component, block, false, options)?;
+        top_includes.push(file.path.clone());
+        files.push(file);
+    }
+
+    files.push(top_file(component, top_includes, options)?);
+    Ok(files)
+}
+
+pub fn serialize_uvm_reg_by_block(component: &Component) -> Result<Vec<RenderedFile>> {
+    serialize_uvm_reg_by_block_with_options(component, RenderOptions::default())
+}
+
+fn class_set(component: &Component, options: RenderOptions) -> Result<ClassSet> {
+    Ok(ClassSet {
+        register_classes: register_classes_with_options(component, options)?,
+        memory_classes: memory_classes_with_options(component, options)?,
+        register_file_classes: register_file_classes(component)?,
+        block_classes: block_classes(component, options)?,
+    })
+}
+
+fn render_class_set(guard: &str, includes: &[String], classes: &ClassSet) -> Result<String> {
+    let rendered = PackageTemplate {
+        guard,
+        includes,
+        register_classes: &classes.register_classes,
+        memory_classes: &classes.memory_classes,
+        register_file_classes: &classes.register_file_classes,
+        block_classes: &classes.block_classes,
+    }
+    .render()?;
+    Ok(normalize_spacing(rendered))
+}
+
+fn validate_unique_class_names(classes: &ClassSet) -> Result<()> {
+    let mut used = Vec::new();
+    for name in classes
+        .register_classes
+        .iter()
+        .map(|class| &class.class_name)
+        .chain(classes.memory_classes.iter().map(|class| &class.class_name))
+        .chain(
+            classes
+                .register_file_classes
+                .iter()
+                .map(|class| &class.class_name),
+        )
+        .chain(classes.block_classes.iter().map(|class| &class.class_name))
+    {
+        if used.iter().any(|used_name| used_name == name) {
+            return Err(Error::DuplicateGeneratedClassName { name: name.clone() });
+        }
+        used.push(name.clone());
+    }
+    Ok(())
+}
+
+fn normalize_spacing(mut sv: String) -> String {
+    while sv.contains("\n\n\n") {
+        sv = sv.replace("\n\n\n", "\n\n");
+    }
+    while sv.contains("`include \"uvm_macros.svh\"\n\n`include ") {
+        sv = sv.replace(
+            "`include \"uvm_macros.svh\"\n\n`include ",
+            "`include \"uvm_macros.svh\"\n`include ",
+        );
+    }
+    while sv.contains(".sv\"\n\n`include ") {
+        sv = sv.replace(".sv\"\n\n`include ", ".sv\"\n`include ");
     }
     sv
+}
+
+fn address_block_file(
+    component: &Component,
+    block: &AddressBlock,
+    include_component: bool,
+    options: RenderOptions,
+) -> Result<RenderedFile> {
+    let class_name = address_block_class_name(component, block, include_component);
+    let mut classes = ClassSet::default();
+    register_classes_for_block(
+        component,
+        block,
+        &mut classes.register_classes,
+        include_component,
+        options,
+    )?;
+    if options.coverage {
+        memory_classes_for_block(
+            component,
+            block,
+            &mut classes.memory_classes,
+            include_component,
+        )?;
+    }
+    register_file_classes_for_block(
+        component,
+        block,
+        &mut classes.register_file_classes,
+        include_component,
+    )?;
+    classes.block_classes.push(address_block_class(
+        component,
+        block,
+        include_component,
+        options,
+    )?);
+    render_file(class_file_name(&class_name), Vec::new(), classes)
+}
+
+fn address_space_file(
+    component: &Component,
+    includes: Vec<String>,
+    options: RenderOptions,
+) -> Result<RenderedFile> {
+    let class_name = format!("ral_sys_{}", ident(&component.name));
+    let mut classes = ClassSet::default();
+    classes
+        .block_classes
+        .push(block_class(component, Vec::new(), true, options)?);
+    render_file(class_file_name(&class_name), includes, classes)
+}
+
+fn top_file(
+    component: &Component,
+    includes: Vec<String>,
+    options: RenderOptions,
+) -> Result<RenderedFile> {
+    let mut classes = ClassSet::default();
+    for remap in &component.memory_remaps {
+        for block in &remap.blocks {
+            register_classes_for_block(
+                component,
+                block,
+                &mut classes.register_classes,
+                false,
+                options,
+            )?;
+            if options.coverage {
+                memory_classes_for_block(component, block, &mut classes.memory_classes, false)?;
+            }
+            register_file_classes_for_block(
+                component,
+                block,
+                &mut classes.register_file_classes,
+                false,
+            )?;
+        }
+    }
+    classes.block_classes.push(block_class(
+        component,
+        submap_instances(component)?,
+        false,
+        options,
+    )?);
+    render_file(top_file_name(component), includes, classes)
+}
+
+fn render_file(path: String, includes: Vec<String>, classes: ClassSet) -> Result<RenderedFile> {
+    let guard = file_guard(&path);
+    let content = render_class_set(&guard, &includes, &classes)?;
+    Ok(RenderedFile { path, content })
+}
+
+fn single_file_guard(component: &Component) -> String {
+    format!("RAL_{}_SV", ident(&component.name).to_ascii_uppercase())
+}
+
+fn file_guard(path: &str) -> String {
+    ident(path.trim_end_matches(".sv")).to_ascii_uppercase() + "_SV"
+}
+
+fn top_file_name(component: &Component) -> String {
+    format!("ral_{}.sv", ident(&component.name))
+}
+
+fn class_file_name(class_name: &str) -> String {
+    format!("{class_name}.sv")
 }
 
 fn register_classes_with_options(
@@ -223,6 +450,52 @@ fn register_classes_with_options(
         }
     }
     Ok(classes)
+}
+
+fn memory_classes_with_options(
+    component: &Component,
+    options: RenderOptions,
+) -> Result<Vec<MemoryClass>> {
+    let mut classes = Vec::new();
+    if !options.coverage {
+        return Ok(classes);
+    }
+    for block in &component.blocks {
+        memory_classes_for_block(component, block, &mut classes, false)?;
+    }
+    for remap in &component.memory_remaps {
+        for block in &remap.blocks {
+            memory_classes_for_block(component, block, &mut classes, false)?;
+        }
+    }
+    for address_space in &component.address_spaces {
+        let scoped_component =
+            scoped_component(component, &address_space.name, &address_space.blocks);
+        for block in &address_space.blocks {
+            memory_classes_for_block(&scoped_component, block, &mut classes, true)?;
+        }
+    }
+    Ok(classes)
+}
+
+fn memory_classes_for_block(
+    component: &Component,
+    block: &AddressBlock,
+    classes: &mut Vec<MemoryClass>,
+    include_component: bool,
+) -> Result<()> {
+    if is_memory_block(block) {
+        let width_bits = parse_u64("addressBlock width", &block.width)?;
+        classes.push(MemoryClass {
+            class_name: memory_class_name(component, block, include_component),
+            default_name: block.name.clone(),
+            size_words: memory_size_words(block)?,
+            width_bits,
+            rights: sv_string(&memory_rights(block)),
+            coverage_model: "build_coverage(UVM_CVR_ADDR_MAP)",
+        });
+    }
+    Ok(())
 }
 
 fn register_file_classes(component: &Component) -> Result<Vec<RegisterFileClass>> {
@@ -552,8 +825,31 @@ fn field_view(
         reset_literal: format!("{width}'h{reset_value:x}"),
         has_reset: sv_bool_literal(default_reset_index.is_some()),
         is_rand: sv_bool_literal(is_writable_access(&access)),
+        compare_check: field_compare_check(field),
+        compare_needs_set: field_compare_check(field) != "UVM_CHECK",
         extra_resets,
     })
+}
+
+fn field_compare_check(field: &Field) -> &'static str {
+    let testable = field
+        .testable
+        .as_deref()
+        .map(|value| value.trim().eq_ignore_ascii_case("false"))
+        .unwrap_or(false);
+    let reserved = field
+        .reserved
+        .as_deref()
+        .map(|value| {
+            let trimmed = value.trim();
+            trimmed.eq_ignore_ascii_case("true") || trimmed == "1"
+        })
+        .unwrap_or(false);
+    if testable || reserved {
+        "UVM_NO_CHECK"
+    } else {
+        "UVM_CHECK"
+    }
 }
 
 fn default_reset_index(field: &Field) -> Option<usize> {
@@ -603,20 +899,30 @@ fn enum_value_views(
         .collect()
 }
 
-fn block_classes(component: &Component) -> Result<Vec<BlockClass>> {
+fn block_classes(component: &Component, options: RenderOptions) -> Result<Vec<BlockClass>> {
     let mut classes = Vec::new();
     for address_space in &component.address_spaces {
         let scoped_component =
             scoped_component(component, &address_space.name, &address_space.blocks);
         for block in &scoped_component.blocks {
-            classes.push(address_block_class(&scoped_component, block, true)?);
+            classes.push(address_block_class(
+                &scoped_component,
+                block,
+                true,
+                options,
+            )?);
         }
-        classes.push(block_class(&scoped_component, Vec::new(), true)?);
+        classes.push(block_class(&scoped_component, Vec::new(), true, options)?);
     }
     for block in &component.blocks {
-        classes.push(address_block_class(component, block, false)?);
+        classes.push(address_block_class(component, block, false, options)?);
     }
-    classes.push(block_class(component, submap_instances(component)?, false)?);
+    classes.push(block_class(
+        component,
+        submap_instances(component)?,
+        false,
+        options,
+    )?);
     Ok(classes)
 }
 
@@ -646,6 +952,7 @@ fn block_class(
     component: &Component,
     submaps: Vec<SubmapInstance>,
     include_component: bool,
+    options: RenderOptions,
 ) -> Result<BlockClass> {
     let class_name = format!("ral_sys_{}", ident(&component.name));
     let mut memories = Vec::new();
@@ -675,6 +982,7 @@ fn block_class(
                 true,
                 true,
                 include_component,
+                options,
             )?;
         }
     }
@@ -696,6 +1004,7 @@ fn address_block_class(
     component: &Component,
     block: &AddressBlock,
     include_component: bool,
+    options: RenderOptions,
 ) -> Result<BlockClass> {
     let class_name = address_block_class_name(component, block, include_component);
     let mut memories = Vec::new();
@@ -725,6 +1034,7 @@ fn address_block_class(
         false,
         false,
         include_component,
+        options,
     )?;
 
     Ok(BlockClass {
@@ -857,6 +1167,7 @@ fn subspace_segment_offset(
     else {
         return Ok(0);
     };
+    validate_segment_ref_range(subspace, address_space, segment, parent_layout)?;
 
     map_offset_units_for_address_unit_bits(
         "addressSpace segment addressOffset",
@@ -867,6 +1178,56 @@ fn subspace_segment_offset(
             &address_space.address_unit_bits,
         )?,
     )
+}
+
+fn validate_segment_ref_range(
+    subspace: &SubspaceMap,
+    address_space: &crate::model::AddressSpace,
+    segment: &crate::model::Segment,
+    parent_layout: MapLayout,
+) -> Result<()> {
+    let address_unit_bits = parse_u64(
+        "addressSpace addressUnitBits",
+        &address_space.address_unit_bits,
+    )?;
+    let segment_base = map_offset_units_for_address_unit_bits(
+        "addressSpace segment addressOffset",
+        &segment.address_offset,
+        parent_layout,
+        address_unit_bits,
+    )?;
+    let segment_range = map_offset_units_for_address_unit_bits(
+        "addressSpace segment range",
+        &segment.range,
+        parent_layout,
+        address_unit_bits,
+    )?;
+    let segment_limit = segment_base.saturating_add(segment_range);
+
+    for block in &address_space.blocks {
+        let block_base = map_offset_units_for_address_unit_bits(
+            "addressBlock baseAddress",
+            &block.base_address,
+            parent_layout,
+            address_unit_bits,
+        )?;
+        let block_range = map_offset_units_for_address_unit_bits(
+            "addressBlock range",
+            &block.range,
+            parent_layout,
+            address_unit_bits,
+        )?;
+        let block_limit = block_base.saturating_add(block_range);
+        if block_base < segment_base || block_limit > segment_limit {
+            return Err(Error::SegmentRefRangeViolation {
+                subspace: subspace.name.clone(),
+                segment: segment.name.clone(),
+                block: block.name.clone(),
+            });
+        }
+    }
+
+    Ok(())
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -883,6 +1244,7 @@ fn block_instances(
     include_block_base: bool,
     prefix_with_block: bool,
     include_component: bool,
+    options: RenderOptions,
 ) -> Result<()> {
     let block_base = if include_block_base {
         map_offset_units(
@@ -896,10 +1258,13 @@ fn block_instances(
     };
     if is_memory_block(block) {
         memories.push(memory_instance(
+            component,
             block,
             block_base,
             map_var_name,
             used_names,
+            include_component,
+            options,
         )?);
     }
     for register in &block.registers {
@@ -1076,6 +1441,17 @@ fn address_block_class_name(
 ) -> String {
     ral_class_name(
         "ral_block",
+        class_path_parts(component, include_component, &[&block.name]),
+    )
+}
+
+fn memory_class_name(
+    component: &Component,
+    block: &AddressBlock,
+    include_component: bool,
+) -> String {
+    ral_class_name(
+        "ral_mem",
         class_path_parts(component, include_component, &[&block.name]),
     )
 }
@@ -1282,13 +1658,21 @@ fn range_bytes(block: &AddressBlock, field: &'static str, value: &str) -> Result
 }
 
 fn memory_instance(
+    component: &Component,
     block: &AddressBlock,
     offset: u64,
     map_var_name: &str,
     used_names: &mut Vec<String>,
+    include_component: bool,
+    options: RenderOptions,
 ) -> Result<MemoryInstance> {
     let width_bits = parse_u64("addressBlock width", &block.width)?;
     Ok(MemoryInstance {
+        class_name: if options.coverage {
+            memory_class_name(component, block, include_component)
+        } else {
+            "uvm_mem".into()
+        },
         var_name: unique_ident(&block.name, used_names),
         create_name: sv_string(&block.name),
         map_var_name: map_var_name.into(),
@@ -1301,6 +1685,7 @@ fn memory_instance(
             .as_ref()
             .map(|path| hdl_path_expr(None, path))
             .unwrap_or_else(|| sv_string("")),
+        coverage_enabled: options.coverage,
     })
 }
 
@@ -1615,6 +2000,7 @@ fn register_array(
         register,
         register.hdl_path.as_ref().or(block.hdl_path.as_ref()),
     )?;
+    let indexed_hdl_slices = indexed_hdl_slices(register, dims.len())?;
     let offset_groups = vec![ArrayOffsetGroup {
         first_dimension: 0,
         dimension_count: dims.len(),
@@ -1633,6 +2019,7 @@ fn register_array(
             map_var_name,
             rights: &register_rights(block, register),
             hdl_slices: &hdl_slices,
+            indexed_hdl_slices: &indexed_hdl_slices,
         }),
         var_name,
         class_name,
@@ -1688,6 +2075,7 @@ fn alternate_register_array(
             map_var_name,
             rights: &rights,
             hdl_slices: &hdl_slices,
+            indexed_hdl_slices: &[],
         }),
         var_name,
         class_name,
@@ -1705,6 +2093,7 @@ struct ArrayBuildSpec<'a> {
     map_var_name: &'a str,
     rights: &'a str,
     hdl_slices: &'a [HdlSlice],
+    indexed_hdl_slices: &'a [IndexedHdlSlices],
 }
 
 struct ArrayOffsetGroup {
@@ -1756,6 +2145,23 @@ fn array_build_code(spec: ArrayBuildSpec<'_>) -> String {
             "{body_indent}{element_ref}.add_hdl_path_slice({}, {}, {}, {});",
             slice.path_expr, slice.offset, slice.size, slice.first
         ));
+    }
+    for indexed in spec.indexed_hdl_slices {
+        lines.push(format!(
+            "{body_indent}if ({}) begin",
+            index_condition(&indices, &indexed.indices)
+        ));
+        for slice in &indexed.slices {
+            lines.push(format!(
+                "{}{element_ref}.add_hdl_path_slice({}, {}, {}, {});",
+                indent(indices.len() + 1),
+                slice.path_expr,
+                slice.offset,
+                slice.size,
+                slice.first
+            ));
+        }
+        lines.push(format!("{body_indent}end"));
     }
     lines.push(format!(
         "{body_indent}{}.add_reg({element_ref}, {} + {offset_expr}, {});",
@@ -1841,6 +2247,15 @@ fn linear_index_expr(dims: &[u64], indices: &[String]) -> String {
     expression
 }
 
+fn index_condition(index_names: &[String], index_values: &[u64]) -> String {
+    index_names
+        .iter()
+        .zip(index_values)
+        .map(|(name, value)| format!("{name} == {value}"))
+        .collect::<Vec<_>>()
+        .join(" && ")
+}
+
 fn indent(level: usize) -> String {
     "      ".to_string() + &"  ".repeat(level)
 }
@@ -1880,31 +2295,143 @@ fn hdl_slices(register: &Register, register_hdl_path: Option<&String>) -> Result
     hdl_slices_from_fields(&register.fields, register_hdl_path)
 }
 
+fn indexed_hdl_slices(register: &Register, dim_count: usize) -> Result<Vec<IndexedHdlSlices>> {
+    validate_unique_indexed_hdl_paths(&register.name, dim_count, &register.indexed_hdl_paths)?;
+    for field in &register.fields {
+        validate_unique_indexed_hdl_paths(
+            &format!("{}.{}", register.name, field.name),
+            dim_count,
+            &field.indexed_hdl_paths,
+        )?;
+    }
+
+    let mut indexed_slices = register
+        .indexed_hdl_paths
+        .iter()
+        .map(|indexed| {
+            Ok(IndexedHdlSlices {
+                indices: indexed_access_handle_indices(register, dim_count, indexed)?,
+                slices: hdl_slices_from_fields(&register.fields, Some(&indexed.path))?,
+            })
+        })
+        .collect::<Result<Vec<_>>>()?;
+
+    for field in &register.fields {
+        for indexed in &field.indexed_hdl_paths {
+            let indices = indexed_access_handle_indices(register, dim_count, indexed)?;
+            let slices = if indexed.slices.is_empty() {
+                vec![HdlPathSlice {
+                    path: indexed.path.clone(),
+                    left: None,
+                    right: None,
+                }]
+            } else {
+                indexed.slices.clone()
+            };
+            for slice in field_hdl_slices(field, None, &slices)? {
+                append_indexed_hdl_slice(&mut indexed_slices, indices.clone(), slice);
+            }
+        }
+    }
+
+    for indexed in &mut indexed_slices {
+        for (index, slice) in indexed.slices.iter_mut().enumerate() {
+            slice.first = sv_bool_literal(index == 0);
+        }
+    }
+
+    Ok(indexed_slices)
+}
+
+fn validate_unique_indexed_hdl_paths(
+    owner: &str,
+    dim_count: usize,
+    indexed_paths: &[crate::model::IndexedHdlPath],
+) -> Result<()> {
+    let mut used = Vec::new();
+    for indexed in indexed_paths {
+        let indices = parse_dims("accessHandle index", &indexed.indices)?;
+        if indices.len() != dim_count {
+            return Err(Error::AccessHandleIndexDimensionMismatch {
+                register: owner.into(),
+                expected: dim_count,
+                actual: indices.len(),
+            });
+        }
+        if used.iter().any(|used_indices| used_indices == &indices) {
+            return Err(Error::DuplicateAccessHandleIndices {
+                owner: owner.into(),
+                indices: indices
+                    .iter()
+                    .map(u64::to_string)
+                    .collect::<Vec<_>>()
+                    .join(","),
+            });
+        }
+        used.push(indices);
+    }
+    Ok(())
+}
+
+fn indexed_access_handle_indices(
+    register: &Register,
+    dim_count: usize,
+    indexed: &crate::model::IndexedHdlPath,
+) -> Result<Vec<u64>> {
+    let indices = parse_dims("accessHandle index", &indexed.indices)?;
+    if indices.len() != dim_count {
+        return Err(Error::AccessHandleIndexDimensionMismatch {
+            register: register.name.clone(),
+            expected: dim_count,
+            actual: indices.len(),
+        });
+    }
+    Ok(indices)
+}
+
+fn append_indexed_hdl_slice(
+    indexed_slices: &mut Vec<IndexedHdlSlices>,
+    indices: Vec<u64>,
+    slice: HdlSlice,
+) {
+    if let Some(indexed) = indexed_slices
+        .iter_mut()
+        .find(|indexed| indexed.indices == indices)
+    {
+        indexed.slices.push(slice);
+    } else {
+        indexed_slices.push(IndexedHdlSlices {
+            indices,
+            slices: vec![slice],
+        });
+    }
+}
+
 fn hdl_slices_from_fields(
     fields: &[Field],
     register_hdl_path: Option<&String>,
 ) -> Result<Vec<HdlSlice>> {
-    let mut slices = fields
-        .iter()
-        .filter_map(|field| {
-            field.hdl_path.as_ref().map(|field_hdl_path| {
-                Ok((
-                    hdl_path_expr(register_hdl_path.map(String::as_str), field_hdl_path),
-                    parse_u64("field bitOffset", &field.bit_offset)? as i64,
-                    parse_u64("field bitWidth", &field.bit_width)? as i64,
-                ))
-            })
-        })
-        .collect::<Result<Vec<_>>>()?
-        .into_iter()
-        .enumerate()
-        .map(|(index, (path_expr, offset, size))| HdlSlice {
-            path_expr,
-            offset,
-            size,
-            first: sv_bool_literal(index == 0),
-        })
-        .collect::<Vec<_>>();
+    let mut slices = Vec::new();
+    for field in fields {
+        if !field.hdl_path_slices.is_empty() {
+            slices.extend(field_hdl_slices(
+                field,
+                register_hdl_path.map(String::as_str),
+                &field.hdl_path_slices,
+            )?);
+        } else if let Some(field_hdl_path) = &field.hdl_path {
+            slices.push(HdlSlice {
+                path_expr: hdl_path_expr(register_hdl_path.map(String::as_str), field_hdl_path),
+                offset: parse_u64("field bitOffset", &field.bit_offset)? as i64,
+                size: parse_u64("field bitWidth", &field.bit_width)? as i64,
+                first: sv_bool_literal(true),
+            });
+        }
+    }
+
+    for (index, slice) in slices.iter_mut().enumerate() {
+        slice.first = sv_bool_literal(index == 0);
+    }
 
     if slices.is_empty()
         && let Some(register_hdl_path) = register_hdl_path
@@ -1918,6 +2445,75 @@ fn hdl_slices_from_fields(
     }
 
     Ok(slices)
+}
+
+fn field_hdl_slices(
+    field: &Field,
+    register_hdl_path: Option<&str>,
+    path_slices: &[HdlPathSlice],
+) -> Result<Vec<HdlSlice>> {
+    if path_slices.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let field_offset = parse_u64("field bitOffset", &field.bit_offset)?;
+    let field_width = parse_u64("field bitWidth", &field.bit_width)?;
+    let widths = path_slices
+        .iter()
+        .map(|slice| hdl_path_slice_width(field, slice, path_slices.len()))
+        .collect::<Result<Vec<_>>>()?;
+    let total_width = widths.iter().sum::<u64>();
+    if total_width != field_width {
+        return Err(Error::AccessHandleSliceWidthMismatch {
+            field: field.name.clone(),
+            expected: field_width,
+            actual: total_width,
+        });
+    }
+
+    let mut remaining_width = field_width;
+    path_slices
+        .iter()
+        .zip(widths)
+        .map(|(slice, width)| {
+            remaining_width -= width;
+            Ok(HdlSlice {
+                path_expr: hdl_path_expr(
+                    register_hdl_path,
+                    &hdl_path_slice_path("accessHandle slice range", slice)?,
+                ),
+                offset: (field_offset + remaining_width) as i64,
+                size: width as i64,
+                first: sv_bool_literal(true),
+            })
+        })
+        .collect()
+}
+
+fn hdl_path_slice_width(field: &Field, slice: &HdlPathSlice, slice_count: usize) -> Result<u64> {
+    match (slice.left.as_deref(), slice.right.as_deref()) {
+        (Some(left), Some(right)) => {
+            let left = parse_u64("accessHandle slice left", left)?;
+            let right = parse_u64("accessHandle slice right", right)?;
+            Ok(left.abs_diff(right) + 1)
+        }
+        (None, None) if slice_count == 1 => parse_u64("field bitWidth", &field.bit_width),
+        _ => Err(Error::AccessHandleSliceRangeMissing {
+            field: field.name.clone(),
+        }),
+    }
+}
+
+fn hdl_path_slice_path(field: &'static str, slice: &HdlPathSlice) -> Result<String> {
+    match (slice.left.as_deref(), slice.right.as_deref()) {
+        (Some(left), Some(right)) => Ok(format!(
+            "{}[{}:{}]",
+            slice.path.trim(),
+            parse_u64(field, left)?,
+            parse_u64(field, right)?
+        )),
+        _ => Ok(slice.path.clone()),
+    }
 }
 
 fn hdl_path_expr(parent: Option<&str>, child: &str) -> String {
@@ -2060,22 +2656,7 @@ fn bit_literal(field: &'static str, width: u64, value: &str) -> Result<String> {
 }
 
 fn parse_u64(field: &'static str, value: &str) -> Result<u64> {
-    let trimmed = value.trim();
-    let parsed = trimmed
-        .strip_prefix("0x")
-        .or_else(|| trimmed.strip_prefix("0X"))
-        .map(|hex| u64::from_str_radix(hex, 16))
-        .or_else(|| {
-            trimmed
-                .strip_prefix("0b")
-                .or_else(|| trimmed.strip_prefix("0B"))
-                .map(|binary| u64::from_str_radix(binary, 2))
-        })
-        .unwrap_or_else(|| trimmed.parse::<u64>());
-    parsed.map_err(|_| Error::InvalidNumber {
-        field,
-        value: value.into(),
-    })
+    parse_u64_expr(field, value)
 }
 
 fn addr_literal(value: u64) -> String {

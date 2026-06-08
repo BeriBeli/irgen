@@ -169,7 +169,11 @@ fn accepts_ipxact_subcommand() {
         IpxactArgs {
             input: PathBuf::from("nested/input.xml"),
             output: Some(PathBuf::from("nested/uvmreg_demo.sv")),
+            file_layout: irgen_cli::IpxactFileLayout::Single,
             coverage: false,
+            view: None,
+            mode: None,
+            library_paths: Vec::new(),
         }
     );
 }
@@ -187,9 +191,104 @@ fn accepts_ipxact_coverage_option() {
         IpxactArgs {
             input: PathBuf::from("nested/input.xml"),
             output: None,
+            file_layout: irgen_cli::IpxactFileLayout::Single,
             coverage: true,
+            view: None,
+            mode: None,
+            library_paths: Vec::new(),
         }
     );
+}
+
+#[test]
+fn accepts_ipxact_view_option() {
+    let Command::Ipxact(parsed) =
+        parse_args(args(&["ip-xact", "nested/input.xml", "--view", "gate"])).unwrap()
+    else {
+        panic!("expected ip-xact command");
+    };
+
+    assert_eq!(
+        parsed,
+        IpxactArgs {
+            input: PathBuf::from("nested/input.xml"),
+            output: None,
+            file_layout: irgen_cli::IpxactFileLayout::Single,
+            coverage: false,
+            view: Some("gate".into()),
+            mode: None,
+            library_paths: Vec::new(),
+        }
+    );
+}
+
+#[test]
+fn accepts_ipxact_mode_option() {
+    let Command::Ipxact(parsed) = parse_args(args(&[
+        "ip-xact",
+        "nested/input.xml",
+        "--mode",
+        "diagnostic",
+    ]))
+    .unwrap() else {
+        panic!("expected ip-xact command");
+    };
+
+    assert_eq!(
+        parsed,
+        IpxactArgs {
+            input: PathBuf::from("nested/input.xml"),
+            output: None,
+            file_layout: irgen_cli::IpxactFileLayout::Single,
+            coverage: false,
+            view: None,
+            mode: Some("diagnostic".into()),
+            library_paths: Vec::new(),
+        }
+    );
+}
+
+#[test]
+fn accepts_ipxact_library_path_option() {
+    let Command::Ipxact(parsed) = parse_args(args(&[
+        "ip-xact",
+        "nested/input.xml",
+        "--library-path",
+        "ipxact_lib",
+        "--library-path",
+        "more_ipxact",
+    ]))
+    .unwrap() else {
+        panic!("expected ip-xact command");
+    };
+
+    assert_eq!(
+        parsed,
+        IpxactArgs {
+            input: PathBuf::from("nested/input.xml"),
+            output: None,
+            file_layout: irgen_cli::IpxactFileLayout::Single,
+            coverage: false,
+            view: None,
+            mode: None,
+            library_paths: vec![PathBuf::from("ipxact_lib"), PathBuf::from("more_ipxact")],
+        }
+    );
+}
+
+#[test]
+fn accepts_ipxact_file_layout_option() {
+    let Command::Ipxact(parsed) = parse_args(args(&[
+        "ip-xact",
+        "nested/input.xml",
+        "--file-layout",
+        "blocks",
+    ]))
+    .unwrap() else {
+        panic!("expected ip-xact command");
+    };
+
+    assert_eq!(parsed.file_layout, irgen_cli::IpxactFileLayout::Blocks);
 }
 
 #[test]
@@ -408,14 +507,38 @@ fn generates_uvm_reg_from_ipxact_subcommand() {
       <ipxact:width>32</ipxact:width>
       <ipxact:register>
         <ipxact:name>status</ipxact:name>
+        <ipxact:accessHandles>
+          <ipxact:accessHandle>
+            <ipxact:viewRef>gate</ipxact:viewRef>
+            <ipxact:pathSegments><ipxact:pathSegment>gate.status</ipxact:pathSegment></ipxact:pathSegments>
+          </ipxact:accessHandle>
+          <ipxact:accessHandle>
+            <ipxact:pathSegments><ipxact:pathSegment>rtl.status</ipxact:pathSegment></ipxact:pathSegments>
+          </ipxact:accessHandle>
+        </ipxact:accessHandles>
         <ipxact:addressOffset>0</ipxact:addressOffset>
         <ipxact:size>32</ipxact:size>
         <ipxact:field>
           <ipxact:name>done</ipxact:name>
+          <ipxact:accessHandles>
+            <ipxact:accessHandle>
+              <ipxact:viewRef>gate</ipxact:viewRef>
+              <ipxact:slices><ipxact:slice><ipxact:pathSegments><ipxact:pathSegment>gate_done</ipxact:pathSegment></ipxact:pathSegments></ipxact:slice></ipxact:slices>
+            </ipxact:accessHandle>
+            <ipxact:accessHandle>
+              <ipxact:slices><ipxact:slice><ipxact:pathSegments><ipxact:pathSegment>done_q</ipxact:pathSegment></ipxact:pathSegments></ipxact:slice></ipxact:slices>
+            </ipxact:accessHandle>
+          </ipxact:accessHandles>
           <ipxact:bitOffset>0</ipxact:bitOffset>
           <ipxact:bitWidth>1</ipxact:bitWidth>
           <ipxact:resets><ipxact:reset><ipxact:value>0</ipxact:value></ipxact:reset></ipxact:resets>
-          <ipxact:fieldAccessPolicies><ipxact:fieldAccessPolicy><ipxact:access>read-only</ipxact:access></ipxact:fieldAccessPolicy></ipxact:fieldAccessPolicies>
+          <ipxact:fieldAccessPolicies>
+            <ipxact:fieldAccessPolicy>
+              <ipxact:modeRef>diagnostic</ipxact:modeRef>
+              <ipxact:access>write-only</ipxact:access>
+            </ipxact:fieldAccessPolicy>
+            <ipxact:fieldAccessPolicy><ipxact:access>read-only</ipxact:access></ipxact:fieldAccessPolicy>
+          </ipxact:fieldAccessPolicies>
         </ipxact:field>
       </ipxact:register>
     </ipxact:addressBlock>
@@ -440,8 +563,48 @@ fn generates_uvm_reg_from_ipxact_subcommand() {
     assert!(sv.contains("class ral_block_regs extends uvm_reg_block;"));
     assert!(sv.contains("class ral_reg_regs_status extends uvm_reg;"));
     assert!(!sv.contains("build_coverage(UVM_CVR_REG_BITS)"));
+    assert!(sv.contains("status.add_hdl_path_slice(\"rtl.status.done_q\", 0, 1, 1'b1);"));
     assert!(sv.contains("default_map.add_reg(status, `UVM_REG_ADDR_WIDTH'h0, \"RO\");"));
     assert!(sv.contains("default_map.add_submap(regs.default_map, `UVM_REG_ADDR_WIDTH'h0);"));
+
+    let view_output = std::env::temp_dir().join(format!(
+        "irgen-cli-test-{}-uvmreg-view.sv",
+        std::process::id()
+    ));
+    let result = run([
+        OsString::from("ip-xact"),
+        OsString::from(&input),
+        OsString::from("--view"),
+        OsString::from("gate"),
+        OsString::from("-o"),
+        OsString::from(&view_output),
+    ]
+    .into_iter())
+    .unwrap();
+
+    assert_eq!(result.as_deref(), Some(view_output.as_path()));
+    let sv = fs::read_to_string(&view_output).unwrap();
+    assert!(sv.contains("status.add_hdl_path_slice(\"gate.status.gate_done\", 0, 1, 1'b1);"));
+
+    let mode_output = std::env::temp_dir().join(format!(
+        "irgen-cli-test-{}-uvmreg-mode.sv",
+        std::process::id()
+    ));
+    let result = run([
+        OsString::from("ip-xact"),
+        OsString::from(&input),
+        OsString::from("--mode"),
+        OsString::from("diagnostic"),
+        OsString::from("-o"),
+        OsString::from(&mode_output),
+    ]
+    .into_iter())
+    .unwrap();
+
+    assert_eq!(result.as_deref(), Some(mode_output.as_path()));
+    let sv = fs::read_to_string(&mode_output).unwrap();
+    assert!(sv.contains("done.configure(this, 1, 0, \"WO\""));
+    assert!(sv.contains("default_map.add_reg(status, `UVM_REG_ADDR_WIDTH'h0, \"WO\");"));
 
     let coverage_output = std::env::temp_dir().join(format!(
         "irgen-cli-test-{}-uvmreg-cov.sv",
@@ -465,7 +628,106 @@ fn generates_uvm_reg_from_ipxact_subcommand() {
     assert!(sv.contains("virtual function void sample(uvm_reg_data_t data,"));
     let _ = fs::remove_file(input);
     let _ = fs::remove_file(output);
+    let _ = fs::remove_file(view_output);
+    let _ = fs::remove_file(mode_output);
     let _ = fs::remove_file(coverage_output);
+}
+
+#[test]
+fn generates_uvm_reg_by_block_from_ipxact_subcommand() {
+    let input = std::env::temp_dir().join(format!(
+        "irgen-cli-test-{}-uvmreg-blocks.xml",
+        std::process::id()
+    ));
+    let output = std::env::temp_dir().join(format!(
+        "irgen-cli-test-{}-uvmreg-blocks",
+        std::process::id()
+    ));
+    let _ = fs::remove_file(&input);
+    let _ = fs::remove_dir_all(&output);
+    fs::write(
+        &input,
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<ipxact:component xmlns:ipxact="http://www.accellera.org/XMLSchema/IPXACT/1685-2022">
+  <ipxact:vendor>example.com</ipxact:vendor>
+  <ipxact:library>ip</ipxact:library>
+  <ipxact:name>demo</ipxact:name>
+  <ipxact:version>1.0</ipxact:version>
+  <ipxact:memoryMaps>
+    <ipxact:memoryMap>
+      <ipxact:name>demo</ipxact:name>
+      <ipxact:addressBlock>
+        <ipxact:name>cfg</ipxact:name>
+        <ipxact:baseAddress>0</ipxact:baseAddress>
+        <ipxact:range>4</ipxact:range>
+        <ipxact:width>32</ipxact:width>
+        <ipxact:register>
+          <ipxact:name>ctrl</ipxact:name>
+          <ipxact:addressOffset>0</ipxact:addressOffset>
+          <ipxact:size>32</ipxact:size>
+          <ipxact:field>
+            <ipxact:name>enable</ipxact:name>
+            <ipxact:bitOffset>0</ipxact:bitOffset>
+            <ipxact:bitWidth>1</ipxact:bitWidth>
+            <ipxact:access>read-write</ipxact:access>
+          </ipxact:field>
+        </ipxact:register>
+      </ipxact:addressBlock>
+      <ipxact:addressBlock>
+        <ipxact:name>stat</ipxact:name>
+        <ipxact:baseAddress>0x100</ipxact:baseAddress>
+        <ipxact:range>4</ipxact:range>
+        <ipxact:width>32</ipxact:width>
+        <ipxact:register>
+          <ipxact:name>done</ipxact:name>
+          <ipxact:addressOffset>0</ipxact:addressOffset>
+          <ipxact:size>32</ipxact:size>
+          <ipxact:field>
+            <ipxact:name>value</ipxact:name>
+            <ipxact:bitOffset>0</ipxact:bitOffset>
+            <ipxact:bitWidth>1</ipxact:bitWidth>
+            <ipxact:access>read-only</ipxact:access>
+          </ipxact:field>
+        </ipxact:register>
+      </ipxact:addressBlock>
+    </ipxact:memoryMap>
+  </ipxact:memoryMaps>
+</ipxact:component>"#,
+    )
+    .unwrap();
+
+    let result = run([
+        OsString::from("ip-xact"),
+        OsString::from(&input),
+        OsString::from("--file-layout"),
+        OsString::from("blocks"),
+        OsString::from("-o"),
+        OsString::from(&output),
+    ]
+    .into_iter())
+    .unwrap();
+
+    assert_eq!(result.as_deref(), Some(output.as_path()));
+    let top = fs::read_to_string(output.join("ral_demo.sv")).unwrap();
+    let cfg = fs::read_to_string(output.join("ral_block_cfg.sv")).unwrap();
+    let stat = fs::read_to_string(output.join("ral_block_stat.sv")).unwrap();
+    assert!(top.contains(
+        "`include \"uvm_macros.svh\"\n`include \"ral_block_cfg.sv\"\n`include \"ral_block_stat.sv\"\n\nclass"
+    ));
+    assert!(top.contains("`include \"ral_block_cfg.sv\""));
+    assert!(top.contains("`include \"ral_block_stat.sv\""));
+    assert!(top.contains("class ral_sys_demo extends uvm_reg_block;"));
+    assert!(!top.contains("\n\n\n"));
+    assert!(cfg.contains("class ral_block_cfg extends uvm_reg_block;"));
+    assert!(cfg.contains("class ral_reg_cfg_ctrl extends uvm_reg;"));
+    assert!(!cfg.contains("class ral_block_stat extends uvm_reg_block;"));
+    assert!(!cfg.contains("\n\n\n"));
+    assert!(stat.contains("class ral_block_stat extends uvm_reg_block;"));
+    assert!(stat.contains("class ral_reg_stat_done extends uvm_reg;"));
+    assert!(!stat.contains("\n\n\n"));
+
+    let _ = fs::remove_file(input);
+    let _ = fs::remove_dir_all(output);
 }
 
 #[test]
@@ -554,6 +816,228 @@ fn ipxact_subcommand_resolves_external_type_definitions_from_input_directory() {
     assert!(!sv.contains("localparam"));
     assert!(sv.contains("default_map.add_reg(status, `UVM_REG_ADDR_WIDTH'h4, \"RO\");"));
     assert!(sv.contains("default_map.add_submap(cfg.default_map, `UVM_REG_ADDR_WIDTH'h80);"));
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
+fn ipxact_subcommand_resolves_external_type_definitions_from_catalog_library_path() {
+    let dir = std::env::temp_dir().join(format!(
+        "irgen-cli-test-{}-catalog-types",
+        std::process::id()
+    ));
+    let input_dir = dir.join("input");
+    let library_dir = dir.join("library");
+    let input = input_dir.join("top.xml");
+    let catalog = library_dir.join("catalog.xml");
+    let external = library_dir.join("defs/common_types.xml");
+    let output = dir.join("ral_catalog_top.sv");
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(external.parent().unwrap()).unwrap();
+    fs::create_dir_all(&input_dir).unwrap();
+    fs::write(
+        &external,
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<ipxact:typeDefinitions xmlns:ipxact="http://www.accellera.org/XMLSchema/IPXACT/1685-2022">
+  <ipxact:vendor>acme</ipxact:vendor>
+  <ipxact:library>catalog_types</ipxact:library>
+  <ipxact:name>shared_defs</ipxact:name>
+  <ipxact:version>1.0</ipxact:version>
+  <ipxact:addressBlockDefinitions>
+    <ipxact:addressBlockDefinition>
+      <ipxact:name>catalog_block</ipxact:name>
+      <ipxact:range>0x20</ipxact:range>
+      <ipxact:width>32</ipxact:width>
+      <ipxact:register>
+        <ipxact:name>mode</ipxact:name>
+        <ipxact:addressOffset>0x8</ipxact:addressOffset>
+        <ipxact:size>32</ipxact:size>
+        <ipxact:field>
+          <ipxact:name>enable</ipxact:name>
+          <ipxact:bitOffset>0</ipxact:bitOffset>
+          <ipxact:bitWidth>1</ipxact:bitWidth>
+          <ipxact:access>read-write</ipxact:access>
+        </ipxact:field>
+      </ipxact:register>
+    </ipxact:addressBlockDefinition>
+  </ipxact:addressBlockDefinitions>
+</ipxact:typeDefinitions>"#,
+    )
+    .unwrap();
+    fs::write(
+        &catalog,
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<ipxact:catalog xmlns:ipxact="http://www.accellera.org/XMLSchema/IPXACT/1685-2022">
+  <ipxact:vendor>acme</ipxact:vendor>
+  <ipxact:library>catalog</ipxact:library>
+  <ipxact:name>catalog</ipxact:name>
+  <ipxact:version>1.0</ipxact:version>
+  <ipxact:typeDefinitions>
+    <ipxact:ipxactFile>
+      <ipxact:vlnv vendor="acme" library="catalog_types" name="shared_defs" version="1.0"/>
+      <ipxact:name>defs/common_types.xml</ipxact:name>
+    </ipxact:ipxactFile>
+  </ipxact:typeDefinitions>
+</ipxact:catalog>"#,
+    )
+    .unwrap();
+    fs::write(
+        &input,
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<ipxact:component xmlns:ipxact="http://www.accellera.org/XMLSchema/IPXACT/1685-2022">
+  <ipxact:vendor>acme</ipxact:vendor>
+  <ipxact:library>ip</ipxact:library>
+  <ipxact:name>catalog_top</ipxact:name>
+  <ipxact:version>1.0</ipxact:version>
+  <ipxact:typeDefinitions>
+    <ipxact:name>local_types</ipxact:name>
+    <ipxact:externalTypeDefinitions>
+      <ipxact:name>catalog_types</ipxact:name>
+      <ipxact:typeDefinitionsRef vendor="acme" library="catalog_types" name="shared_defs" version="1.0"/>
+    </ipxact:externalTypeDefinitions>
+  </ipxact:typeDefinitions>
+  <ipxact:memoryMaps>
+    <ipxact:memoryMap>
+      <ipxact:name>regs</ipxact:name>
+      <ipxact:addressBlock>
+        <ipxact:name>cfg</ipxact:name>
+        <ipxact:baseAddress>0x40</ipxact:baseAddress>
+        <ipxact:addressBlockDefinitionRef typeDefinitions="catalog_types">catalog_block</ipxact:addressBlockDefinitionRef>
+      </ipxact:addressBlock>
+    </ipxact:memoryMap>
+  </ipxact:memoryMaps>
+</ipxact:component>"#,
+    )
+    .unwrap();
+
+    let result = run([
+        OsString::from("ip-xact"),
+        OsString::from(&input),
+        OsString::from("--library-path"),
+        OsString::from(&library_dir),
+        OsString::from("-o"),
+        OsString::from(&output),
+    ]
+    .into_iter())
+    .unwrap();
+
+    assert_eq!(result.as_deref(), Some(output.as_path()));
+    let sv = fs::read_to_string(&output).unwrap();
+    assert!(sv.contains("class ral_sys_catalog_top extends uvm_reg_block;"));
+    assert!(sv.contains("default_map.add_reg(mode, `UVM_REG_ADDR_WIDTH'h8, \"RW\");"));
+    assert!(sv.contains("default_map.add_submap(cfg.default_map, `UVM_REG_ADDR_WIDTH'h40);"));
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
+fn ipxact_subcommand_reports_external_type_definition_search_paths() {
+    let dir = std::env::temp_dir().join(format!(
+        "irgen-cli-test-{}-missing-external",
+        std::process::id()
+    ));
+    let input_dir = dir.join("input");
+    let library_dir = dir.join("library");
+    let input = input_dir.join("top.xml");
+    let output = dir.join("ral_missing.sv");
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&input_dir).unwrap();
+    fs::create_dir_all(&library_dir).unwrap();
+    fs::write(
+        &input,
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<ipxact:component xmlns:ipxact="http://www.accellera.org/XMLSchema/IPXACT/1685-2022">
+  <ipxact:vendor>acme</ipxact:vendor>
+  <ipxact:library>ip</ipxact:library>
+  <ipxact:name>missing_top</ipxact:name>
+  <ipxact:version>1.0</ipxact:version>
+  <ipxact:typeDefinitions>
+    <ipxact:name>local_types</ipxact:name>
+    <ipxact:externalTypeDefinitions>
+      <ipxact:name>missing_types</ipxact:name>
+      <ipxact:typeDefinitionsRef vendor="acme" library="missing" name="defs" version="1.0"/>
+    </ipxact:externalTypeDefinitions>
+  </ipxact:typeDefinitions>
+</ipxact:component>"#,
+    )
+    .unwrap();
+
+    let error = run([
+        OsString::from("ip-xact"),
+        OsString::from(&input),
+        OsString::from("--library-path"),
+        OsString::from(&library_dir),
+        OsString::from("-o"),
+        OsString::from(&output),
+    ]
+    .into_iter())
+    .unwrap_err();
+
+    let error = error.to_string();
+    assert!(error.contains("acme:missing:defs:1.0"));
+    assert!(error.contains("searched:"));
+    assert!(error.contains(&input_dir.display().to_string()));
+    assert!(error.contains(&library_dir.display().to_string()));
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
+fn ipxact_subcommand_reports_ambiguous_external_type_definitions() {
+    let dir = std::env::temp_dir().join(format!(
+        "irgen-cli-test-{}-ambiguous-external",
+        std::process::id()
+    ));
+    let input_dir = dir.join("input");
+    let library_dir = dir.join("library");
+    let input = input_dir.join("top.xml");
+    let first = library_dir.join("defs_a.xml");
+    let second = library_dir.join("defs_b.xml");
+    let output = dir.join("ral_ambiguous.sv");
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&input_dir).unwrap();
+    fs::create_dir_all(&library_dir).unwrap();
+    let external_xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<ipxact:typeDefinitions xmlns:ipxact="http://www.accellera.org/XMLSchema/IPXACT/1685-2022">
+  <ipxact:vendor>acme</ipxact:vendor>
+  <ipxact:library>dup_types</ipxact:library>
+  <ipxact:name>defs</ipxact:name>
+  <ipxact:version>1.0</ipxact:version>
+</ipxact:typeDefinitions>"#;
+    fs::write(&first, external_xml).unwrap();
+    fs::write(&second, external_xml).unwrap();
+    fs::write(
+        &input,
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<ipxact:component xmlns:ipxact="http://www.accellera.org/XMLSchema/IPXACT/1685-2022">
+  <ipxact:vendor>acme</ipxact:vendor>
+  <ipxact:library>ip</ipxact:library>
+  <ipxact:name>ambiguous_top</ipxact:name>
+  <ipxact:version>1.0</ipxact:version>
+  <ipxact:typeDefinitions>
+    <ipxact:name>local_types</ipxact:name>
+    <ipxact:externalTypeDefinitions>
+      <ipxact:name>dup_types</ipxact:name>
+      <ipxact:typeDefinitionsRef vendor="acme" library="dup_types" name="defs" version="1.0"/>
+    </ipxact:externalTypeDefinitions>
+  </ipxact:typeDefinitions>
+</ipxact:component>"#,
+    )
+    .unwrap();
+
+    let error = run([
+        OsString::from("ip-xact"),
+        OsString::from(&input),
+        OsString::from("--library-path"),
+        OsString::from(&library_dir),
+        OsString::from("-o"),
+        OsString::from(&output),
+    ]
+    .into_iter())
+    .unwrap_err();
+
+    let error = error.to_string();
+    assert!(error.contains("ambiguous"));
+    assert!(error.contains("acme:dup_types:defs:1.0"));
+    assert!(error.contains(&first.display().to_string()));
+    assert!(error.contains(&second.display().to_string()));
     let _ = fs::remove_dir_all(dir);
 }
 

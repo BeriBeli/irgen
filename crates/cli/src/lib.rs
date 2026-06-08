@@ -45,6 +45,14 @@ pub enum IpxactStandard {
     V2022,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum IpxactFileLayout {
+    #[value(name = "single")]
+    Single,
+    #[value(name = "blocks")]
+    Blocks,
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub struct ConvertArgs {
     pub input: PathBuf,
@@ -59,7 +67,11 @@ pub struct ConvertArgs {
 pub struct IpxactArgs {
     pub input: PathBuf,
     pub output: Option<PathBuf>,
+    pub file_layout: IpxactFileLayout,
     pub coverage: bool,
+    pub view: Option<String>,
+    pub mode: Option<String>,
+    pub library_paths: Vec<PathBuf>,
 }
 
 #[derive(Debug)]
@@ -148,65 +160,160 @@ fn run_ipxact(args: IpxactArgs) -> Result<Option<PathBuf>, CliError> {
     let xml = fs::read_to_string(&args.input).map_err(|error| {
         CliError::Runtime(format!("failed to read {}: {error}", args.input.display()))
     })?;
-    let component = parse_ipxact_with_directory_resolver(&args.input, &xml)?;
-    let output_path = args
-        .output
-        .unwrap_or_else(|| default_ipxact_output_path(&component.name));
-    let content = irgen_uvmreg::serialize_uvm_reg_with_options(
-        &component,
-        irgen_uvmreg::RenderOptions {
-            coverage: args.coverage,
-        },
-    )
-    .map_err(|error| CliError::Runtime(error.to_string()))?;
-    write_text_output(&output_path, content)?;
-    Ok(Some(output_path))
+    let component = parse_ipxact_with_directory_resolver(
+        &args.input,
+        &xml,
+        args.view.clone(),
+        args.mode.clone(),
+        &args.library_paths,
+    )?;
+    let render_options = irgen_uvmreg::RenderOptions {
+        coverage: args.coverage,
+    };
+    match args.file_layout {
+        IpxactFileLayout::Single => {
+            let output_path = args
+                .output
+                .unwrap_or_else(|| default_ipxact_output_path(&component.name));
+            let content = irgen_uvmreg::serialize_uvm_reg_with_options(&component, render_options)
+                .map_err(|error| CliError::Runtime(error.to_string()))?;
+            write_text_output(&output_path, content)?;
+            Ok(Some(output_path))
+        }
+        IpxactFileLayout::Blocks => {
+            let output_path = args
+                .output
+                .unwrap_or_else(|| default_ipxact_blocks_output_path(&component.name));
+            let files =
+                irgen_uvmreg::serialize_uvm_reg_by_block_with_options(&component, render_options)
+                    .map_err(|error| CliError::Runtime(error.to_string()))?;
+            write_rendered_files(&output_path, files)?;
+            Ok(Some(output_path))
+        }
+    }
 }
 
 fn parse_ipxact_with_directory_resolver(
     input: &Path,
     xml: &str,
+    preferred_view: Option<String>,
+    preferred_mode: Option<String>,
+    library_paths: &[PathBuf],
 ) -> Result<irgen_uvmreg::Component, CliError> {
     let base_dir = input.parent().unwrap_or_else(|| Path::new("."));
+    let mut search_paths = vec![base_dir.to_path_buf()];
+    search_paths.extend(library_paths.iter().cloned());
     let mut cache = Vec::<(irgen_uvmreg::LibraryRef, String)>::new();
 
-    irgen_uvmreg::parse_ipxact_with_resolver(xml, |reference| {
-        Ok(find_ipxact_by_vlnv(base_dir, reference, &mut cache))
-    })
+    irgen_uvmreg::parse_ipxact_with_options_and_resolver(
+        xml,
+        irgen_uvmreg::ParseOptions {
+            preferred_view,
+            preferred_mode,
+        },
+        |reference| find_ipxact_by_vlnv(&search_paths, reference, &mut cache),
+    )
     .map_err(|error| CliError::Runtime(error.to_string()))
 }
 
 fn find_ipxact_by_vlnv(
-    base_dir: &Path,
+    search_paths: &[PathBuf],
     reference: &irgen_uvmreg::LibraryRef,
     cache: &mut Vec<(irgen_uvmreg::LibraryRef, String)>,
-) -> Option<String> {
+) -> irgen_uvmreg::Result<Option<String>> {
     if let Some((_, xml)) = cache
         .iter()
         .find(|(library_ref, _)| library_ref == reference)
     {
-        return Some(xml.clone());
+        return Ok(Some(xml.clone()));
     }
 
-    let entries = fs::read_dir(base_dir).ok()?;
+    let mut matches = Vec::new();
+    for search_path in search_paths {
+        collect_ipxact_matches_in_path(search_path, reference, &mut matches);
+    }
+
+    match matches.len() {
+        0 => Err(irgen_uvmreg::Error::ExternalTypeDefinitionsNotFoundIn {
+            reference: reference.key(),
+            searched: search_paths
+                .iter()
+                .map(|path| path.display().to_string())
+                .collect(),
+        }),
+        1 => {
+            let resolved = matches.remove(0);
+            cache.push((reference.clone(), resolved.xml.clone()));
+            Ok(Some(resolved.xml))
+        }
+        _ => Err(irgen_uvmreg::Error::ExternalTypeDefinitionsAmbiguous {
+            reference: reference.key(),
+            matches: matches
+                .into_iter()
+                .map(|resolved| resolved.path.display().to_string())
+                .collect(),
+        }),
+    }
+}
+
+struct ResolvedIpxact {
+    path: PathBuf,
+    xml: String,
+}
+
+fn collect_ipxact_matches_in_path(
+    base_dir: &Path,
+    reference: &irgen_uvmreg::LibraryRef,
+    matches: &mut Vec<ResolvedIpxact>,
+) {
+    let Ok(entries) = fs::read_dir(base_dir) else {
+        return;
+    };
     for entry in entries.flatten() {
         let path = entry.path();
         if path.extension().and_then(|extension| extension.to_str()) != Some("xml") {
             continue;
         }
-        let Ok(xml) = fs::read_to_string(&path) else {
-            continue;
-        };
-        let Ok(library_ref) = irgen_uvmreg::document_library_ref(&xml) else {
-            continue;
-        };
-        cache.push((library_ref.clone(), xml.clone()));
-        if &library_ref == reference {
-            return Some(xml);
+        collect_ipxact_matches_in_file(base_dir, &path, reference, matches);
+    }
+}
+
+fn collect_ipxact_matches_in_file(
+    base_dir: &Path,
+    path: &Path,
+    reference: &irgen_uvmreg::LibraryRef,
+    matches: &mut Vec<ResolvedIpxact>,
+) {
+    let Ok(xml) = fs::read_to_string(path) else {
+        return;
+    };
+    if let Ok(catalog_files) = irgen_uvmreg::catalog_file_refs(&xml) {
+        let catalog_dir = path.parent().unwrap_or(base_dir);
+        for catalog_file in catalog_files {
+            let referenced_path = catalog_dir.join(&catalog_file.name);
+            if &catalog_file.library_ref == reference {
+                let Ok(referenced_xml) = fs::read_to_string(&referenced_path) else {
+                    continue;
+                };
+                matches.push(ResolvedIpxact {
+                    path: referenced_path,
+                    xml: referenced_xml,
+                });
+                continue;
+            }
+            collect_ipxact_matches_in_file(catalog_dir, &referenced_path, reference, matches);
         }
+        return;
     }
 
-    None
+    if let Ok(library_ref) = irgen_uvmreg::document_library_ref(&xml)
+        && &library_ref == reference
+    {
+        matches.push(ResolvedIpxact {
+            path: path.to_path_buf(),
+            xml,
+        });
+    }
 }
 
 fn write_all_outputs(
@@ -346,6 +453,10 @@ fn default_ipxact_output_path(component_name: &str) -> PathBuf {
     PathBuf::from(format!("ral_{}.sv", file_stem_from_name(component_name)))
 }
 
+fn default_ipxact_blocks_output_path(component_name: &str) -> PathBuf {
+    PathBuf::from(format!("ral_{}", file_stem_from_name(component_name)))
+}
+
 fn file_stem_from_name(name: &str) -> String {
     let stem = name
         .trim()
@@ -366,6 +477,22 @@ fn write_text_output(output: &Path, content: String) -> Result<(), CliError> {
     fs::write(output, content).map_err(|error| {
         CliError::Runtime(format!("failed to write {}: {error}", output.display()))
     })
+}
+
+fn write_rendered_files(
+    output: &Path,
+    files: Vec<irgen_uvmreg::RenderedFile>,
+) -> Result<(), CliError> {
+    fs::create_dir_all(output).map_err(|error| {
+        CliError::Runtime(format!(
+            "failed to create output directory {}: {error}",
+            output.display()
+        ))
+    })?;
+    for file in files {
+        write_text_output(&output.join(file.path), file.content)?;
+    }
+    Ok(())
 }
 
 fn validate_ipxact_xml(schema: &Path, output: &Path) -> Result<(), String> {
@@ -441,8 +568,26 @@ struct RawIpxactArgs {
     #[arg(short = 'o', long = "output", value_name = "path")]
     output: Option<PathBuf>,
 
+    #[arg(
+        long = "file-layout",
+        alias = "output-layout",
+        value_enum,
+        default_value = "single",
+        value_name = "layout"
+    )]
+    file_layout: IpxactFileLayout,
+
     #[arg(long = "coverage")]
     coverage: bool,
+
+    #[arg(long = "view", value_name = "viewRef")]
+    view: Option<String>,
+
+    #[arg(long = "mode", value_name = "modeRef")]
+    mode: Option<String>,
+
+    #[arg(long = "library-path", value_name = "path")]
+    library_paths: Vec<PathBuf>,
 }
 
 pub fn parse_args(args: impl Iterator<Item = OsString>) -> Result<Command, String> {
@@ -529,7 +674,11 @@ fn parse_ipxact_args(args: impl Iterator<Item = OsString>) -> Result<Command, St
         Ok(raw) => Ok(Command::Ipxact(IpxactArgs {
             input: raw.input,
             output: raw.output,
+            file_layout: raw.file_layout,
             coverage: raw.coverage,
+            view: raw.view,
+            mode: raw.mode,
+            library_paths: raw.library_paths,
         })),
         Err(error)
             if matches!(

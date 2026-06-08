@@ -110,13 +110,19 @@ Generate UVM RAL SystemVerilog from an IP-XACT component XML file:
 ./irgen ip-xact path/to/component.xml
 ./irgen ip-xact path/to/component.xml -o ral_component.sv
 ./irgen ip-xact path/to/component.xml --coverage
+./irgen ip-xact path/to/component.xml --file-layout blocks -o ral_component
 ```
 
 When `-o/--output` is omitted, the `ip-xact` subcommand writes
-`ral_<component-name>.sv` in the current directory. For IEEE 1685-2022
-`externalTypeDefinitions`, it scans XML files in the input file's directory and
-matches referenced documents by VLNV; catalog-backed search paths are not yet
-implemented.
+`ral_<component-name>.sv` in the current directory. Pass `--file-layout blocks`
+to write a directory instead: a top-level `ral_<component-name>.sv` that
+includes one `ral_block_<block-name>.sv` file per address block. With block
+layout and no `-o/--output`, the output directory defaults to
+`ral_<component-name>`.
+
+For IEEE 1685-2022 `externalTypeDefinitions`, the CLI scans XML files in the
+input file's directory and any `--library-path` directories. It matches
+referenced documents by VLNV and follows IP-XACT `catalog` files.
 
 Pass `--coverage` to emit UVM `UVM_CVR_REG_BITS` register bit coverage support
 in the generated register classes. The consuming testbench and simulator run

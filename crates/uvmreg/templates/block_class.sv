@@ -6,7 +6,7 @@ class {{ block.class_name }} extends uvm_reg_block;
 {%- endif %}
 {%- endfor %}
 {%- for mem in block.memories %}
-    uvm_mem {{ mem.var_name }};
+    {{ mem.class_name }} {{ mem.var_name }};
 {%- endfor %}
 {%- for reg_file in block.reg_files %}
     {{ reg_file.class_name }} {{ reg_file.var_name }}{{ reg_file.declaration_suffix }};
@@ -33,7 +33,11 @@ class {{ block.class_name }} extends uvm_reg_block;
       {{ map.var_name }} = create_map({{ map.create_name }}, 0, {{ map.n_bytes }}, UVM_LITTLE_ENDIAN);
 {%- endfor %}
 {%- for mem in block.memories %}
+{%- if mem.coverage_enabled %}
+      {{ mem.var_name }} = new({{ mem.create_name }});
+{%- else %}
       {{ mem.var_name }} = new({{ mem.create_name }}, {{ mem.size_words }}, {{ mem.width_bits }}, {{ mem.rights }}, UVM_NO_COVERAGE);
+{%- endif %}
       {{ mem.var_name }}.configure(this, {{ mem.hdl_path_expr }});
       {{ mem.map_var_name }}.add_mem({{ mem.var_name }}, {{ mem.offset_literal }}, {{ mem.rights }});
 {%- endfor %}
