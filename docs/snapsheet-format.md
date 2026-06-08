@@ -4,13 +4,17 @@
 
 `irgen` supports two snapsheet modes:
 
-- Default mode parses `example_simple.xlsx` without a TOML specification.
-- Configured mode parses `example.xlsx` with `snapsheet.toml` or another
+- Default mode parses `examples/example_simple.xlsx` without a TOML specification.
+- Configured mode parses `examples/example.xlsx` with `snapsheet.toml` or another
   `--config <snapsheet.toml>` file.
 
 Default mode expects each register row to provide its own `ADDR`, `REG`, and
 `FIELD`. It does not enable array syntax, inherited cells, blank field names
 that become register names, or reserved-name matching.
+
+Snapsheet input may be `.xlsx`, `.xlsm`, `.xls`, `.xlsb`, or `.ods`. The file
+format can vary, but the workbook still needs the same logical sheets and
+columns described below.
 
 Configured mode enables richer parser rules, including custom sheet and column
 names, inherited address/register cells, register-file arrays, reserved-field
@@ -21,13 +25,13 @@ matching, and stricter validation.
 Use the default parser:
 
 ```sh
-cargo run -p irgen-cli -- snapsheet example_simple.xlsx
+cargo run -p irgen-cli -- snapsheet examples/example_simple.xlsx
 ```
 
 Use a TOML snapsheet specification:
 
 ```sh
-cargo run -p irgen-cli -- snapsheet example.xlsx --config snapsheet.toml
+cargo run -p irgen-cli -- snapsheet examples/example.xlsx --config snapsheet.toml
 ```
 
 The root `snapsheet.toml` matches the richer workbook example and can be copied

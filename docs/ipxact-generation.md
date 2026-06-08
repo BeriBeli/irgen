@@ -62,7 +62,7 @@ standard selection.
 IP-XACT XSD validation is opt-in from the CLI:
 
 ```sh
-cargo run -p irgen-cli -- snapsheet example.xlsx --config snapsheet.toml --standard ieee-1685-2022 --validate crates/ipxact/schema/1685-2022/index.xsd
+cargo run -p irgen-cli -- snapsheet examples/example.xlsx --config snapsheet.toml --standard ieee-1685-2022 --validate crates/ipxact/schema/1685-2022/index.xsd
 ```
 
 Useful local gates:

@@ -14,7 +14,7 @@ represent. The RALF crate itself models a broader language surface.
 The CLI supports RALF output with:
 
 ```sh
-cargo run -p irgen-cli -- snapsheet example_simple.xlsx --format ralf
+cargo run -p irgen-cli -- snapsheet examples/example_simple.xlsx --format ralf
 ```
 
 When `-o/--output` is omitted, RALF output is written in the current directory

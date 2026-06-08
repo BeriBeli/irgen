@@ -1,14 +1,15 @@
 # irgen
 
-`irgen` is a CLI-first register spreadsheet converter. It reads structured
-Excel snapsheets and emits register-oriented SPIRIT/IP-XACT XML, RALF,
-SystemRDL, or HTML register documentation.
+`irgen` is a CLI-first register generation toolkit. It converts structured
+workbook snapsheets into register-oriented SPIRIT/IP-XACT XML, RALF, SystemRDL,
+or HTML register documentation, and it generates UVM RAL SystemVerilog from
+IP-XACT component XML.
 
 ## Quick Start
 
 `irgen` has two subcommands:
 
-- `snapsheet`: convert Excel snapsheets into IP-XACT, RALF, SystemRDL, HTML,
+- `snapsheet`: convert workbook snapsheets into IP-XACT, RALF, SystemRDL, HTML,
   or all supported outputs.
 - `ip-xact`: generate UVM register model SystemVerilog from an IP-XACT
   component XML file.
@@ -16,8 +17,11 @@ SystemRDL, or HTML register documentation.
 Generate IP-XACT XML:
 
 ```sh
-./irgen snapsheet example_simple.xlsx
+./irgen snapsheet examples/example_simple.xlsx
 ```
+
+Snapsheet input can be `.xlsx`, `.xlsm`, `.xls`, `.xlsb`, or `.ods` as long as
+the workbook uses the expected sheet and column layout.
 
 When `-o/--output` is omitted, IP-XACT, RALF, SystemRDL, and all-output paths
 are written in the current directory using the component name:
@@ -29,11 +33,11 @@ IEEE 1685-2009, IEEE 1685-2014, and IEEE 1685-2022 can also be specified
 explicitly for the current register-oriented subset:
 
 ```sh
-./irgen snapsheet example_simple.xlsx --standard spirit-1.4
-./irgen snapsheet example_simple.xlsx --standard spirit-1.5
-./irgen snapsheet example_simple.xlsx --standard ieee-1685-2009
-./irgen snapsheet example_simple.xlsx --standard ieee-1685-2014
-./irgen snapsheet example_simple.xlsx --standard ieee-1685-2022
+./irgen snapsheet examples/example_simple.xlsx --standard spirit-1.4
+./irgen snapsheet examples/example_simple.xlsx --standard spirit-1.5
+./irgen snapsheet examples/example_simple.xlsx --standard ieee-1685-2009
+./irgen snapsheet examples/example_simple.xlsx --standard ieee-1685-2014
+./irgen snapsheet examples/example_simple.xlsx --standard ieee-1685-2022
 ```
 
 The IP-XACT emitters cover the register-oriented component subset produced by
@@ -53,21 +57,21 @@ vendor extensions.
 Generate RALF or SystemRDL:
 
 ```sh
-./irgen snapsheet example_simple.xlsx --format ralf
-./irgen snapsheet example_simple.xlsx --format systemrdl
+./irgen snapsheet examples/example_simple.xlsx --format ralf
+./irgen snapsheet examples/example_simple.xlsx --format systemrdl
 ```
 
 Generate DWC-style HTML register documentation. HTML output is a directory with
 an `index.html`, shared assets, block index pages, and register detail pages:
 
 ```sh
-./irgen snapsheet example_simple.xlsx --format html
+./irgen snapsheet examples/example_simple.xlsx --format html
 ```
 
 Generate every supported output format at once:
 
 ```sh
-./irgen snapsheet example_simple.xlsx --format all
+./irgen snapsheet examples/example_simple.xlsx --format all
 ```
 
 The all-output directory contains `<component>-ip-xact-spirit-1.4.xml`,
@@ -80,22 +84,22 @@ The all-output directory contains `<component>-ip-xact-spirit-1.4.xml`,
 Write to a specific output path:
 
 ```sh
-./irgen snapsheet example_simple.xlsx -o output.xml
-./irgen snapsheet example_simple.xlsx --format html -o docs-html
-./irgen snapsheet example_simple.xlsx --format all -o generated
+./irgen snapsheet examples/example_simple.xlsx -o output.xml
+./irgen snapsheet examples/example_simple.xlsx --format html -o docs-html
+./irgen snapsheet examples/example_simple.xlsx --format all -o generated
 ```
 
 Use a TOML snapsheet specification for custom sheet names, column names, array
 syntax, inherited cells, and stricter validation:
 
 ```sh
-./irgen snapsheet example.xlsx --config snapsheet.toml
+./irgen snapsheet examples/example.xlsx --config snapsheet.toml
 ```
 
 Validate generated IP-XACT XML with `xmllint` and an explicit XSD:
 
 ```sh
-./irgen snapsheet example_simple.xlsx --standard spirit-1.5 --validate crates/ipxact/schema/1.5/index.xsd
+./irgen snapsheet examples/example_simple.xlsx --standard spirit-1.5 --validate crates/ipxact/schema/1.5/index.xsd
 ```
 
 `--validate` and `--standard` are only available with `--format ip-xact`.
@@ -136,5 +140,6 @@ must still enable UVM RAL coverage collection for coverage to appear in reports.
 
 ## Examples
 
-- `example_simple.xlsx` uses the default no-TOML workbook format.
-- `example.xlsx` plus `snapsheet.toml` shows the richer configurable format.
+- `examples/example_simple.xlsx` uses the default no-TOML workbook format.
+- `examples/example.xlsx` plus `snapsheet.toml` shows the richer configurable
+  format.

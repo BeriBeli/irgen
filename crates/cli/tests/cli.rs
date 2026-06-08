@@ -329,7 +329,8 @@ fn accepts_explicit_systemrdl_format() {
 
 #[test]
 fn generates_ralf_output() {
-    let input = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../example_simple.xlsx");
+    let input =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../examples/example_simple.xlsx");
     let output = std::env::temp_dir().join(format!(
         "irgen-cli-test-{}-example.ralf",
         std::process::id()
@@ -357,7 +358,8 @@ fn generates_ralf_output() {
 
 #[test]
 fn generates_systemrdl_output() {
-    let input = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../example_simple.xlsx");
+    let input =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../examples/example_simple.xlsx");
     let output =
         std::env::temp_dir().join(format!("irgen-cli-test-{}-example.rdl", std::process::id()));
     let _ = fs::remove_file(&output);
@@ -438,8 +440,8 @@ fn generates_uvm_reg_from_ipxact_subcommand() {
     assert!(sv.contains("class ral_block_regs extends uvm_reg_block;"));
     assert!(sv.contains("class ral_reg_regs_status extends uvm_reg;"));
     assert!(!sv.contains("build_coverage(UVM_CVR_REG_BITS)"));
-    assert!(sv.contains("default_map.add_reg(status, 64'h0, \"RO\");"));
-    assert!(sv.contains("default_map.add_submap(regs.default_map, 64'h0);"));
+    assert!(sv.contains("default_map.add_reg(status, `UVM_REG_ADDR_WIDTH'h0, \"RO\");"));
+    assert!(sv.contains("default_map.add_submap(regs.default_map, `UVM_REG_ADDR_WIDTH'h0);"));
 
     let coverage_output = std::env::temp_dir().join(format!(
         "irgen-cli-test-{}-uvmreg-cov.sv",
@@ -550,14 +552,15 @@ fn ipxact_subcommand_resolves_external_type_definitions_from_input_directory() {
     assert!(sv.contains("`ifndef RAL_EXTERNAL_TOP_SV"));
     assert!(sv.contains("class ral_sys_external_top extends uvm_reg_block;"));
     assert!(!sv.contains("localparam"));
-    assert!(sv.contains("default_map.add_reg(status, 64'h4, \"RO\");"));
-    assert!(sv.contains("default_map.add_submap(cfg.default_map, 64'h80);"));
+    assert!(sv.contains("default_map.add_reg(status, `UVM_REG_ADDR_WIDTH'h4, \"RO\");"));
+    assert!(sv.contains("default_map.add_submap(cfg.default_map, `UVM_REG_ADDR_WIDTH'h80);"));
     let _ = fs::remove_dir_all(dir);
 }
 
 #[test]
 fn generates_html_output() {
-    let input = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../example_simple.xlsx");
+    let input =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../examples/example_simple.xlsx");
     let output_dir = std::env::temp_dir().join(format!(
         "irgen-cli-test-{}-example-html",
         std::process::id()
@@ -599,7 +602,8 @@ fn generates_html_output() {
 
 #[test]
 fn generates_all_outputs() {
-    let input = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../example_simple.xlsx");
+    let input =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../examples/example_simple.xlsx");
     let output_dir =
         std::env::temp_dir().join(format!("irgen-cli-test-{}-example-all", std::process::id()));
     let _ = fs::remove_dir_all(&output_dir);
@@ -657,7 +661,7 @@ fn generates_and_validates_ipxact_output() {
     }
 
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let input = root.join("example.xlsx");
+    let input = root.join("examples/example.xlsx");
     let spec = root.join("snapsheet.toml");
     let schema = root.join("crates/ipxact/schema/1685-2014/index.xsd");
     let output =
@@ -750,7 +754,7 @@ fn generate_and_validate_complex_ipxact(
     }
 
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let input = root.join("example.xlsx");
+    let input = root.join("examples/example.xlsx");
     let spec = root.join("snapsheet.toml");
     let schema = root.join(schema_rel);
     let output = std::env::temp_dir().join(format!(
@@ -849,7 +853,8 @@ fn rejects_missing_validation_schema_before_loading_workbook() {
 
 #[test]
 fn rejects_missing_validation_schema_before_writing_output() {
-    let input = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../example_simple.xlsx");
+    let input =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../examples/example_simple.xlsx");
     let output = std::env::temp_dir().join(format!(
         "irgen-cli-test-{}-missing-schema.xml",
         std::process::id()
@@ -993,5 +998,5 @@ fn rejects_ipxact_standard_for_all_format() {
 fn reports_failing_spreadsheet_conversion() {
     let error = run(snapsheet_args(&["this-file-does-not-exist.xlsx"])).unwrap_err();
 
-    assert!(error.to_string().contains("Xlsx error"));
+    assert!(error.to_string().contains("Workbook error"));
 }

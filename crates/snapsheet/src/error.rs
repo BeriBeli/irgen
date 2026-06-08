@@ -73,11 +73,8 @@ impl std::fmt::Display for ValidationIssues {
 /// Errors produced while reading a register spreadsheet.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
-    #[error("Calamine error: {0}")]
+    #[error("Workbook error: {0}")]
     Calamine(#[from] calamine::Error),
-
-    #[error("Xlsx error: {0}")]
-    Xlsx(#[from] calamine::XlsxError),
 
     #[error("missing worksheet `{sheet}`")]
     MissingSheet { sheet: String },

@@ -10,7 +10,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use calamine::{Reader, Xlsx, open_workbook};
+use calamine::{Reader, open_workbook_auto};
 use irgen_model::base::Component;
 
 pub use config::SnapsheetConfig;
@@ -44,7 +44,7 @@ pub fn load_excel_with_config(input: &Path, config: &SnapsheetConfig) -> Result<
         .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
     let file = input.to_path_buf();
     let file_size = fs::metadata(input).map(|metadata| metadata.len()).ok();
-    let mut workbook: Xlsx<_> = open_workbook(input)?;
+    let mut workbook = open_workbook_auto(input)?;
     let sheets = workbook.worksheets();
     let sheet_count = Some(sheets.len());
 

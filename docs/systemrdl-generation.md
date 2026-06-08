@@ -13,7 +13,7 @@ can represent.
 The CLI supports SystemRDL output with:
 
 ```sh
-cargo run -p irgen-cli -- snapsheet example_simple.xlsx --format systemrdl
+cargo run -p irgen-cli -- snapsheet examples/example_simple.xlsx --format systemrdl
 ```
 
 When `-o/--output` is omitted, SystemRDL output is written in the current

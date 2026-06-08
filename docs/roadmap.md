@@ -2,13 +2,14 @@
 
 ## Direction
 
-The current product goal is a CLI-first register spreadsheet converter that
-emits register-oriented SPIRIT/IP-XACT, RALF, SystemRDL, and static register
-documentation. Future generated artifacts should stay CLI-first as well:
-additional documentation formats, verification-facing HDL backdoor metadata,
-software-facing headers, and hardware-facing register files should be added as
-explicit output formats or narrow crates rather than by introducing UI runtime
-dependencies.
+The current product goal is a CLI-first register generation toolkit. It
+converts workbook snapsheets into register-oriented SPIRIT/IP-XACT, RALF,
+SystemRDL, and static register documentation, and it generates UVM RAL
+SystemVerilog directly from IP-XACT component XML. Future generated artifacts
+should stay CLI-first as well: additional documentation formats,
+verification-facing HDL backdoor metadata, software-facing headers, and
+hardware-facing register files should be added as explicit output formats or
+narrow crates rather than by introducing UI runtime dependencies.
 
 IEEE 1685-2014 is the default IP-XACT output standard. SPIRIT 1.4, SPIRIT 1.5,
 IEEE 1685-2009, IEEE 1685-2014, and IEEE 1685-2022 are available for the
@@ -57,7 +58,8 @@ model. This behavior is required for correct IP-XACT field emission.
 
 ## Current Capability
 
-- Converts `.xlsx` input into IP-XACT XML, RALF, and SystemRDL.
+- Converts workbook input (`.xlsx`, `.xlsm`, `.xls`, `.xlsb`, or `.ods`) into
+  IP-XACT XML, RALF, and SystemRDL.
 - Supports `--format ip-xact|ralf|systemrdl|html|all`.
 - Supports `--standard spirit-1.4|spirit-1.5|ieee-1685-2009|ieee-1685-2014|ieee-1685-2022`,
   with IEEE 1685-2014 as the default for IP-XACT output.
@@ -112,7 +114,7 @@ Status: Active.
   `crates/ipxact/schema` and `crates/ipxact-codegen`.
 - Keep register-oriented exporters small and explicit so standard-specific
   behavior stays visible.
-- Add new `.xlsx` fixtures as parser failure modes are discovered.
+- Add new workbook fixtures as parser failure modes are discovered.
 - Decide whether XML schema validation should remain opt-in CLI behavior or
   become part of release verification only.
 
@@ -237,6 +239,6 @@ Release-oriented smoke checks:
 
 ```text
 cargo build --release --locked --bin irgen --offline
-target/release/irgen snapsheet example.xlsx --config snapsheet.toml -o /tmp/irgen-example.xml
-target/release/irgen snapsheet example.xlsx --config snapsheet.toml --standard ieee-1685-2014 --validate crates/ipxact/schema/1685-2014/index.xsd
+target/release/irgen snapsheet examples/example.xlsx --config snapsheet.toml -o /tmp/irgen-example.xml
+target/release/irgen snapsheet examples/example.xlsx --config snapsheet.toml --standard ieee-1685-2014 --validate crates/ipxact/schema/1685-2014/index.xsd
 ```
