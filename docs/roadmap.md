@@ -157,9 +157,10 @@ Implemented:
 - Snapsheet parsing supports an optional `PATH` column. Blank path cells default
   non-reserved fields to the field name, `-` disables the path, and reserved
   fields do not emit HDL paths.
-- IP-XACT 2014 and 2022 emit field and block HDL paths through standard
-  `accessHandles`; IP-XACT 1.4, 1.5, and 2009 do not emit HDL paths because
-  they lack the same standard register-model access-handle structure.
+- IP-XACT 2014 and 2022 emit field HDL paths through standard `accessHandles`;
+  IP-XACT 1.4, 1.5, and 2009 do not emit HDL paths because they lack the same
+  standard register-model access-handle structure. Generated blocks do not get
+  macro-backed HDL paths.
 - RALF and SystemRDL outputs preserve field HDL paths; SystemRDL uses
   `hdl_path_slice` for fields.
 - Tests cover field-level paths, disabled paths, reserved-field suppression,
@@ -236,6 +237,6 @@ Release-oriented smoke checks:
 
 ```text
 cargo build --release --locked --bin irgen --offline
-target/release/irgen example.xlsx --snapsheet-spec snapsheet.toml -o /tmp/irgen-example.xml
-target/release/irgen example.xlsx --snapsheet-spec snapsheet.toml --validate crates/ipxact/schema/1685-2014/index.xsd
+target/release/irgen snapsheet example.xlsx --snapsheet-spec snapsheet.toml -o /tmp/irgen-example.xml
+target/release/irgen snapsheet example.xlsx --snapsheet-spec snapsheet.toml --validate crates/ipxact/schema/1685-2014/index.xsd
 ```

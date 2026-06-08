@@ -40,8 +40,10 @@ serialization.
 
 SPIRIT 1.4, SPIRIT 1.5, and IEEE 1685-2009 outputs do not carry HDL backdoor
 paths because those schemas do not provide the same standard register-model
-`accessHandles` structure used by 2014 and 2022. RALF and SystemRDL outputs
-still preserve field HDL paths independently of IP-XACT version selection.
+`accessHandles` structure used by 2014 and 2022. IP-XACT 2014 and 2022 preserve
+field HDL paths, but generated address blocks/register files/registers do not
+receive macro-backed HDL paths. RALF and SystemRDL outputs still preserve field
+HDL paths independently of IP-XACT version selection.
 
 `--format all` writes one IP-XACT file for each supported version:
 
@@ -58,7 +60,7 @@ still preserve field HDL paths independently of IP-XACT version selection.
 IP-XACT XSD validation is opt-in from the CLI:
 
 ```sh
-cargo run -p irgen-cli -- example.xlsx --snapsheet-spec snapsheet.toml --ipxact-version 2022 --validate crates/ipxact/schema/1685-2022/index.xsd
+cargo run -p irgen-cli -- snapsheet example.xlsx --snapsheet-spec snapsheet.toml --ipxact-version 2022 --validate crates/ipxact/schema/1685-2022/index.xsd
 ```
 
 Useful local gates:

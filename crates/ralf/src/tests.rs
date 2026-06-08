@@ -121,8 +121,8 @@ fn omits_empty_blocks_from_system_instances() {
     assert!(ralf.contains("block regs {"));
     assert!(ralf.contains("block ctrl {"));
     assert!(ralf.contains("system example {"));
-    assert!(ralf.contains("block regs (`REGS_HDL_PATH) @'h100;"));
-    assert!(ralf.contains("block ctrl (`CTRL_HDL_PATH) @'h200;"));
+    assert!(ralf.contains("block regs @'h100;"));
+    assert!(ralf.contains("block ctrl @'h200;"));
 }
 
 #[test]

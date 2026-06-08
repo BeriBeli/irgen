@@ -21,13 +21,13 @@ matching, and stricter validation.
 Use the default parser:
 
 ```sh
-cargo run -p irgen-cli -- example_simple.xlsx
+cargo run -p irgen-cli -- snapsheet example_simple.xlsx
 ```
 
 Use a TOML snapsheet specification:
 
 ```sh
-cargo run -p irgen-cli -- example.xlsx --snapsheet-spec snapsheet.toml
+cargo run -p irgen-cli -- snapsheet example.xlsx --snapsheet-spec snapsheet.toml
 ```
 
 The root `snapsheet.toml` matches the richer workbook example and can be copied
@@ -255,6 +255,7 @@ snapsheets: memory maps, address blocks, registers, register-file arrays where
 the target schema supports them, fields, resets, and field access metadata.
 They are not complete implementations of every document type or schema feature
 in those standards. SPIRIT 1.4 does not define `registerFile`, so register-file
-arrays are flattened into ordinary registers in 1.4 output. HDL paths are
+arrays are flattened into ordinary registers in 1.4 output. Field HDL paths are
 preserved in IP-XACT 2014 and 2022 through standard `accessHandles`; 1.4, 1.5,
-and 2009 outputs do not carry HDL paths.
+and 2009 outputs do not carry HDL paths. Generated blocks do not get
+macro-backed HDL paths.

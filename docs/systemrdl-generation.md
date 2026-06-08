@@ -13,7 +13,7 @@ can represent.
 The CLI supports SystemRDL output with:
 
 ```sh
-cargo run -p irgen-cli -- example_simple.xlsx --format systemrdl
+cargo run -p irgen-cli -- snapsheet example_simple.xlsx --format systemrdl
 ```
 
 When `-o/--output` is omitted, SystemRDL output is written in the current
@@ -59,11 +59,11 @@ The crate is split across focused modules:
 - Field access attributes map to `sw`, `hw`, and when needed `onread` or
   `onwrite` properties.
 - Descriptions are intentionally not emitted in generated SystemRDL.
-- HDL backdoor paths use standard SystemRDL properties. Address-block
-  instances receive a built-in `hdl_path` assignment with a SystemVerilog macro
-  placeholder such as `` `REGS_HDL_PATH``. Fields receive `hdl_path_slice` with
-  their configured path, since the standard `hdl_path` property is not valid on
-  field components. Reserved fields do not receive `hdl_path_slice`.
+- HDL backdoor paths use standard SystemRDL properties. Fields receive
+  `hdl_path_slice` with their configured path, since the standard `hdl_path`
+  property is not valid on field components. Address-block instances do not
+  receive generated macro-backed `hdl_path` assignments. Reserved fields do not
+  receive `hdl_path_slice`.
 
 ## Address Ranges and Sparse Arrays
 

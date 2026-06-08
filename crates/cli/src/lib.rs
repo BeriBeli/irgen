@@ -448,10 +448,58 @@ struct RawIpxactArgs {
 pub fn parse_args(args: impl Iterator<Item = OsString>) -> Result<Command, String> {
     let args = args.collect::<Vec<_>>();
     match args.first().and_then(|value| value.to_str()) {
+        Some("--help") | Some("-h") => Ok(Command::Help(root_help())),
+        Some("--version") | Some("-V") => parse_snapsheet_args("irgen", args.into_iter()),
         Some("ip-xact") => parse_ipxact_args(args.into_iter().skip(1)),
         Some("snapsheet") => parse_snapsheet_args("irgen snapsheet", args.into_iter().skip(1)),
-        _ => parse_snapsheet_args("irgen", args.into_iter()),
+        Some(command) if command.starts_with('-') => Err(format!(
+            "unexpected argument '{command}'\n\n{}",
+            root_command_hint()
+        )),
+        Some(command) => Err(format!(
+            "unknown command '{command}'\n\n{}",
+            root_command_hint()
+        )),
+        None => Err(format!(
+            "a subcommand is required\n\n{}",
+            root_command_hint()
+        )),
     }
+}
+
+fn root_help() -> String {
+    concat!(
+        "irgen\n",
+        "\n",
+        "Convert register descriptions between supported file formats.\n",
+        "\n",
+        "Usage:\n",
+        "  irgen <COMMAND> [OPTIONS]\n",
+        "\n",
+        "Commands:\n",
+        "  snapsheet  Convert a register spreadsheet into IP-XACT, RALF, SystemRDL, HTML, or all outputs\n",
+        "  ip-xact    Generate UVM register model SystemVerilog from an IP-XACT component XML file\n",
+        "\n",
+        "Options:\n",
+        "  -h, --help     Print help\n",
+        "  -V, --version  Print version\n",
+        "\n",
+        "Run `irgen snapsheet --help` or `irgen ip-xact --help` for command-specific options.\n",
+    )
+    .into()
+}
+
+fn root_command_hint() -> &'static str {
+    concat!(
+        "Usage:\n",
+        "  irgen <COMMAND> [OPTIONS]\n",
+        "\n",
+        "Commands:\n",
+        "  snapsheet  Convert a register spreadsheet into IP-XACT, RALF, SystemRDL, HTML, or all outputs\n",
+        "  ip-xact    Generate UVM register model SystemVerilog from an IP-XACT component XML file\n",
+        "\n",
+        "Run `irgen --help` for more information.\n",
+    )
 }
 
 fn parse_snapsheet_args(

@@ -140,10 +140,8 @@ fn converts_base_component_to_systemrdl() {
     assert!(rdl.contains("reg status {"));
     assert!(rdl.contains("field ready {"));
     assert!(rdl.contains("hdl_path_slice = '{\"u_status.ready_q\"};"));
-    assert!(rdl.contains("regs->hdl_path = \"`REGS_HDL_PATH\";"));
     assert!(!rdl.contains("desc ="));
     assert!(!rdl.contains("hdl_path_slice = '{\"reserved0\"};"));
-    assert!(!rdl.contains("irgen_hdl_path"));
     assert!(rdl.contains("sw = r;"));
     assert!(rdl.contains("ready[0:0] = 0x1;"));
     assert!(rdl.contains("status @ 0x4;"));

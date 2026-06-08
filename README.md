@@ -6,10 +6,17 @@ SystemRDL, or HTML register documentation.
 
 ## Quick Start
 
+`irgen` has two subcommands:
+
+- `snapsheet`: convert Excel snapsheets into IP-XACT, RALF, SystemRDL, HTML,
+  or all supported outputs.
+- `ip-xact`: generate UVM register model SystemVerilog from an IP-XACT
+  component XML file.
+
 Generate IP-XACT XML:
 
 ```sh
-cargo run -p irgen-cli -- example_simple.xlsx
+./irgen snapsheet example_simple.xlsx
 ```
 
 When `-o/--output` is omitted, IP-XACT, RALF, SystemRDL, and all-output paths
@@ -22,11 +29,11 @@ IEEE 1685-2009, IEEE 1685-2014, and IEEE 1685-2022 can also be specified
 explicitly for the current register-oriented subset:
 
 ```sh
-cargo run -p irgen-cli -- example_simple.xlsx --ipxact-version 1.4
-cargo run -p irgen-cli -- example_simple.xlsx --ipxact-version 1.5
-cargo run -p irgen-cli -- example_simple.xlsx --ipxact-version 2009
-cargo run -p irgen-cli -- example_simple.xlsx --ipxact-version 2014
-cargo run -p irgen-cli -- example_simple.xlsx --ipxact-version 2022
+./irgen snapsheet example_simple.xlsx --ipxact-version 1.4
+./irgen snapsheet example_simple.xlsx --ipxact-version 1.5
+./irgen snapsheet example_simple.xlsx --ipxact-version 2009
+./irgen snapsheet example_simple.xlsx --ipxact-version 2014
+./irgen snapsheet example_simple.xlsx --ipxact-version 2022
 ```
 
 The IP-XACT emitters cover the register-oriented component subset produced by
@@ -36,29 +43,30 @@ They are not complete models for every IP-XACT root document or schema feature.
 SPIRIT 1.4 does not define `registerFile`, so register-file arrays are flattened
 into ordinary registers in 1.4 output.
 
-HDL backdoor paths in IP-XACT 2014 and 2022 are emitted through standard
+Field HDL backdoor paths in IP-XACT 2014 and 2022 are emitted through standard
 `accessHandles`. The 1.4, 1.5, and 2009 emitters do not carry HDL paths because
 those versions do not provide the same standard register-model access-handle
-structure. Generated IP-XACT does not emit Synopsys `snps:*` vendor extensions.
+structure. Generated IP-XACT does not add macro-backed block HDL paths or emit
+Synopsys `snps:*` vendor extensions.
 
 Generate RALF or SystemRDL:
 
 ```sh
-cargo run -p irgen-cli -- example_simple.xlsx --format ralf
-cargo run -p irgen-cli -- example_simple.xlsx --format systemrdl
+./irgen snapsheet example_simple.xlsx --format ralf
+./irgen snapsheet example_simple.xlsx --format systemrdl
 ```
 
 Generate DWC-style HTML register documentation. HTML output is a directory with
 an `index.html`, shared assets, block index pages, and register detail pages:
 
 ```sh
-cargo run -p irgen-cli -- example_simple.xlsx --format html
+./irgen snapsheet example_simple.xlsx --format html
 ```
 
 Generate every supported output format at once:
 
 ```sh
-cargo run -p irgen-cli -- example_simple.xlsx --format all
+./irgen snapsheet example_simple.xlsx --format all
 ```
 
 The all-output directory contains `<component>-ipxact-1.4.xml`,
@@ -69,25 +77,38 @@ The all-output directory contains `<component>-ipxact-1.4.xml`,
 Write to a specific output path:
 
 ```sh
-cargo run -p irgen-cli -- example_simple.xlsx -o output.xml
-cargo run -p irgen-cli -- example_simple.xlsx --format html -o docs-html
-cargo run -p irgen-cli -- example_simple.xlsx --format all -o generated
+./irgen snapsheet example_simple.xlsx -o output.xml
+./irgen snapsheet example_simple.xlsx --format html -o docs-html
+./irgen snapsheet example_simple.xlsx --format all -o generated
 ```
 
 Use a TOML snapsheet specification for custom sheet names, column names, array
 syntax, inherited cells, and stricter validation:
 
 ```sh
-cargo run -p irgen-cli -- example.xlsx --snapsheet-spec snapsheet.toml
+./irgen snapsheet example.xlsx --snapsheet-spec snapsheet.toml
 ```
 
 Validate generated IP-XACT XML with `xmllint` and an explicit XSD:
 
 ```sh
-cargo run -p irgen-cli -- example_simple.xlsx --ipxact-version 1.5 --validate crates/ipxact/schema/1.5/index.xsd
+./irgen snapsheet example_simple.xlsx --ipxact-version 1.5 --validate crates/ipxact/schema/1.5/index.xsd
 ```
 
 `--validate` and `--ipxact-version` are only available with `--format ipxact`.
+
+Generate UVM RAL SystemVerilog from an IP-XACT component XML file:
+
+```sh
+./irgen ip-xact path/to/component.xml
+./irgen ip-xact path/to/component.xml -o ral_component.sv
+```
+
+When `-o/--output` is omitted, the `ip-xact` subcommand writes
+`ral_<component-name>.sv` in the current directory. For IEEE 1685-2022
+`externalTypeDefinitions`, it scans XML files in the input file's directory and
+matches referenced documents by VLNV; catalog-backed search paths are not yet
+implemented.
 
 ## Documentation
 

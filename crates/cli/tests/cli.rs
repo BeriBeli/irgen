@@ -13,6 +13,13 @@ fn args(values: &[&str]) -> impl Iterator<Item = OsString> {
         .into_iter()
 }
 
+fn snapsheet_args(values: &[&str]) -> impl Iterator<Item = OsString> {
+    std::iter::once(OsString::from("snapsheet"))
+        .chain(args(values))
+        .collect::<Vec<_>>()
+        .into_iter()
+}
+
 fn compact_xml(xml: &str) -> String {
     xml.split_whitespace().collect()
 }
@@ -27,14 +34,61 @@ fn assert_parse_error_contains(values: &[&str], needles: &[&str]) {
     }
 }
 
+fn assert_snapsheet_parse_error_contains(values: &[&str], needles: &[&str]) {
+    let error = parse_args(snapsheet_args(values)).unwrap_err();
+    for needle in needles {
+        assert!(
+            error.contains(needle),
+            "expected parse error to contain {needle:?}, got {error:?}"
+        );
+    }
+}
+
 #[test]
-fn rejects_missing_input() {
-    assert_parse_error_contains(&[], &["required", "input.xlsx"]);
+fn rejects_missing_subcommand() {
+    assert_parse_error_contains(&[], &["subcommand is required", "snapsheet", "ip-xact"]);
+}
+
+#[test]
+fn rejects_bare_input_without_subcommand() {
+    assert_parse_error_contains(
+        &["input.xlsx"],
+        &["unknown command", "input.xlsx", "snapsheet"],
+    );
+}
+
+#[test]
+fn rejects_missing_snapsheet_input() {
+    assert_snapsheet_parse_error_contains(&[], &["required", "input.xlsx"]);
 }
 
 #[test]
 fn rejects_unknown_options() {
     assert_parse_error_contains(&["--wat"], &["unexpected argument", "--wat"]);
+}
+
+#[test]
+fn root_help_lists_subcommands() {
+    let Command::Help(output) = parse_args(args(&["--help"])).unwrap() else {
+        panic!("expected help output");
+    };
+
+    assert!(output.contains("Commands:"));
+    assert!(output.contains("snapsheet"));
+    assert!(output.contains("ip-xact"));
+    assert!(output.contains("irgen snapsheet --help"));
+    assert!(output.contains("irgen ip-xact --help"));
+}
+
+#[test]
+fn short_root_help_lists_subcommands() {
+    let Command::Help(output) = parse_args(args(&["-h"])).unwrap() else {
+        panic!("expected help output");
+    };
+
+    assert!(output.contains("Commands:"));
+    assert!(output.contains("snapsheet"));
+    assert!(output.contains("ip-xact"));
 }
 
 #[test]
@@ -58,7 +112,7 @@ fn accepts_short_version_flag() {
 #[test]
 fn accepts_explicit_output_path() {
     let Command::Convert(parsed) =
-        parse_args(args(&["input.xlsx", "-o", "nested/output.xml"])).unwrap()
+        parse_args(snapsheet_args(&["input.xlsx", "-o", "nested/output.xml"])).unwrap()
     else {
         panic!("expected conversion command");
     };
@@ -69,7 +123,7 @@ fn accepts_explicit_output_path() {
 #[test]
 fn accepts_explicit_ipxact_format() {
     let Command::Convert(parsed) =
-        parse_args(args(&["nested/input.xlsx", "--format", "ipxact"])).unwrap()
+        parse_args(snapsheet_args(&["nested/input.xlsx", "--format", "ipxact"])).unwrap()
     else {
         panic!("expected conversion command");
     };
@@ -138,7 +192,7 @@ fn accepts_ipxact_coverage_option() {
 #[test]
 fn accepts_explicit_html_format() {
     let Command::Convert(parsed) =
-        parse_args(args(&["nested/input.xlsx", "--format", "html"])).unwrap()
+        parse_args(snapsheet_args(&["nested/input.xlsx", "--format", "html"])).unwrap()
     else {
         panic!("expected conversion command");
     };
@@ -150,7 +204,7 @@ fn accepts_explicit_html_format() {
 #[test]
 fn accepts_explicit_all_format() {
     let Command::Convert(parsed) =
-        parse_args(args(&["nested/input.xlsx", "--format", "all"])).unwrap()
+        parse_args(snapsheet_args(&["nested/input.xlsx", "--format", "all"])).unwrap()
     else {
         panic!("expected conversion command");
     };
@@ -161,7 +215,7 @@ fn accepts_explicit_all_format() {
 
 #[test]
 fn defaults_ipxact_version_to_2014() {
-    let Command::Convert(parsed) = parse_args(args(&["input.xlsx"])).unwrap() else {
+    let Command::Convert(parsed) = parse_args(snapsheet_args(&["input.xlsx"])).unwrap() else {
         panic!("expected conversion command");
     };
 
@@ -172,7 +226,7 @@ fn defaults_ipxact_version_to_2014() {
 #[test]
 fn accepts_explicit_ipxact_2014_version() {
     let Command::Convert(parsed) =
-        parse_args(args(&["input.xlsx", "--ipxact-version", "2014"])).unwrap()
+        parse_args(snapsheet_args(&["input.xlsx", "--ipxact-version", "2014"])).unwrap()
     else {
         panic!("expected conversion command");
     };
@@ -185,7 +239,7 @@ fn accepts_explicit_ipxact_2014_version() {
 #[test]
 fn accepts_explicit_ipxact_1_4_version() {
     let Command::Convert(parsed) =
-        parse_args(args(&["input.xlsx", "--ipxact-version", "1.4"])).unwrap()
+        parse_args(snapsheet_args(&["input.xlsx", "--ipxact-version", "1.4"])).unwrap()
     else {
         panic!("expected conversion command");
     };
@@ -198,7 +252,7 @@ fn accepts_explicit_ipxact_1_4_version() {
 #[test]
 fn accepts_explicit_ipxact_1_5_version() {
     let Command::Convert(parsed) =
-        parse_args(args(&["input.xlsx", "--ipxact-version", "1.5"])).unwrap()
+        parse_args(snapsheet_args(&["input.xlsx", "--ipxact-version", "1.5"])).unwrap()
     else {
         panic!("expected conversion command");
     };
@@ -211,7 +265,7 @@ fn accepts_explicit_ipxact_1_5_version() {
 #[test]
 fn accepts_explicit_ipxact_2009_version() {
     let Command::Convert(parsed) =
-        parse_args(args(&["input.xlsx", "--ipxact-version", "2009"])).unwrap()
+        parse_args(snapsheet_args(&["input.xlsx", "--ipxact-version", "2009"])).unwrap()
     else {
         panic!("expected conversion command");
     };
@@ -224,7 +278,7 @@ fn accepts_explicit_ipxact_2009_version() {
 #[test]
 fn accepts_explicit_ipxact_2022_version() {
     let Command::Convert(parsed) =
-        parse_args(args(&["input.xlsx", "--ipxact-version", "2022"])).unwrap()
+        parse_args(snapsheet_args(&["input.xlsx", "--ipxact-version", "2022"])).unwrap()
     else {
         panic!("expected conversion command");
     };
@@ -237,7 +291,7 @@ fn accepts_explicit_ipxact_2022_version() {
 #[test]
 fn accepts_explicit_ralf_format() {
     let Command::Convert(parsed) =
-        parse_args(args(&["nested/input.xlsx", "--format", "ralf"])).unwrap()
+        parse_args(snapsheet_args(&["nested/input.xlsx", "--format", "ralf"])).unwrap()
     else {
         panic!("expected conversion command");
     };
@@ -248,9 +302,12 @@ fn accepts_explicit_ralf_format() {
 
 #[test]
 fn accepts_explicit_systemrdl_format() {
-    let Command::Convert(parsed) =
-        parse_args(args(&["nested/input.xlsx", "--format", "systemrdl"])).unwrap()
-    else {
+    let Command::Convert(parsed) = parse_args(snapsheet_args(&[
+        "nested/input.xlsx",
+        "--format",
+        "systemrdl",
+    ]))
+    .unwrap() else {
         panic!("expected conversion command");
     };
 
@@ -268,6 +325,7 @@ fn generates_ralf_output() {
     let _ = fs::remove_file(&output);
 
     let result = run([
+        OsString::from("snapsheet"),
         OsString::from(input),
         OsString::from("--format"),
         OsString::from("ralf"),
@@ -293,6 +351,7 @@ fn generates_systemrdl_output() {
     let _ = fs::remove_file(&output);
 
     let result = run([
+        OsString::from("snapsheet"),
         OsString::from(input),
         OsString::from("--format"),
         OsString::from("systemrdl"),
@@ -494,6 +553,7 @@ fn generates_html_output() {
     let _ = fs::remove_dir_all(&output_dir);
 
     let result = run([
+        OsString::from("snapsheet"),
         OsString::from(input),
         OsString::from("--format"),
         OsString::from("html"),
@@ -533,6 +593,7 @@ fn generates_all_outputs() {
     let _ = fs::remove_dir_all(&output_dir);
 
     let result = run([
+        OsString::from("snapsheet"),
         OsString::from(input),
         OsString::from("--format"),
         OsString::from("all"),
@@ -590,6 +651,7 @@ fn generates_and_validates_ipxact_output() {
     let _ = fs::remove_file(&output);
 
     let result = run([
+        OsString::from("snapsheet"),
         OsString::from(input),
         OsString::from("--snapsheet-spec"),
         OsString::from(spec),
@@ -682,6 +744,7 @@ fn generate_and_validate_complex_ipxact(
     let _ = fs::remove_file(&output);
 
     let result = run([
+        OsString::from("snapsheet"),
         OsString::from(input),
         OsString::from("--snapsheet-spec"),
         OsString::from(spec),
@@ -704,9 +767,12 @@ fn generate_and_validate_complex_ipxact(
 
 #[test]
 fn accepts_explicit_xsd_validation() {
-    let Command::Convert(parsed) =
-        parse_args(args(&["input.xlsx", "--validate", "schema/index.xsd"])).unwrap()
-    else {
+    let Command::Convert(parsed) = parse_args(snapsheet_args(&[
+        "input.xlsx",
+        "--validate",
+        "schema/index.xsd",
+    ]))
+    .unwrap() else {
         panic!("expected conversion command");
     };
 
@@ -715,7 +781,7 @@ fn accepts_explicit_xsd_validation() {
 
 #[test]
 fn rejects_validation_for_non_ipxact_before_loading_workbook() {
-    let error = run(args(&[
+    let error = run(snapsheet_args(&[
         "this-file-does-not-exist.xlsx",
         "--format",
         "ralf",
@@ -732,7 +798,7 @@ fn rejects_validation_for_non_ipxact_before_loading_workbook() {
 
 #[test]
 fn rejects_validation_for_all_before_loading_workbook() {
-    let error = run(args(&[
+    let error = run(snapsheet_args(&[
         "this-file-does-not-exist.xlsx",
         "--format",
         "all",
@@ -751,6 +817,7 @@ fn rejects_validation_for_all_before_loading_workbook() {
 fn rejects_missing_validation_schema_before_loading_workbook() {
     let missing_schema = PathBuf::from("schema/does-not-exist.xsd");
     let error = run([
+        OsString::from("snapsheet"),
         OsString::from("this-file-does-not-exist.xlsx"),
         OsString::from("--validate"),
         OsString::from(&missing_schema),
@@ -775,6 +842,7 @@ fn rejects_missing_validation_schema_before_writing_output() {
     let _ = fs::remove_file(&output);
 
     let error = run([
+        OsString::from("snapsheet"),
         OsString::from(input),
         OsString::from("-o"),
         OsString::from(&output),
@@ -793,9 +861,12 @@ fn rejects_missing_validation_schema_before_writing_output() {
 
 #[test]
 fn accepts_explicit_snapsheet_spec() {
-    let Command::Convert(parsed) =
-        parse_args(args(&["input.xlsx", "--snapsheet-spec", "snapsheet.toml"])).unwrap()
-    else {
+    let Command::Convert(parsed) = parse_args(snapsheet_args(&[
+        "input.xlsx",
+        "--snapsheet-spec",
+        "snapsheet.toml",
+    ]))
+    .unwrap() else {
         panic!("expected conversion command");
     };
 
@@ -804,7 +875,7 @@ fn accepts_explicit_snapsheet_spec() {
 
 #[test]
 fn rejects_missing_snapsheet_spec_path() {
-    assert_parse_error_contains(
+    assert_snapsheet_parse_error_contains(
         &["input.xlsx", "--snapsheet-spec"],
         &["a value is required", "--snapsheet-spec"],
     );
@@ -812,7 +883,7 @@ fn rejects_missing_snapsheet_spec_path() {
 
 #[test]
 fn rejects_duplicate_snapsheet_spec() {
-    assert_parse_error_contains(
+    assert_snapsheet_parse_error_contains(
         &[
             "input.xlsx",
             "--snapsheet-spec",
@@ -826,7 +897,7 @@ fn rejects_duplicate_snapsheet_spec() {
 
 #[test]
 fn rejects_regvue_format() {
-    assert_parse_error_contains(
+    assert_snapsheet_parse_error_contains(
         &["input.xlsx", "--format", "regvue"],
         &["invalid value", "regvue", "ipxact"],
     );
@@ -834,7 +905,7 @@ fn rejects_regvue_format() {
 
 #[test]
 fn rejects_missing_ipxact_version() {
-    assert_parse_error_contains(
+    assert_snapsheet_parse_error_contains(
         &["input.xlsx", "--ipxact-version"],
         &["a value is required", "--ipxact-version"],
     );
@@ -842,7 +913,7 @@ fn rejects_missing_ipxact_version() {
 
 #[test]
 fn rejects_duplicate_ipxact_version() {
-    assert_parse_error_contains(
+    assert_snapsheet_parse_error_contains(
         &[
             "input.xlsx",
             "--ipxact-version",
@@ -856,7 +927,7 @@ fn rejects_duplicate_ipxact_version() {
 
 #[test]
 fn rejects_unsupported_ipxact_version() {
-    assert_parse_error_contains(
+    assert_snapsheet_parse_error_contains(
         &["input.xlsx", "--ipxact-version", "2020"],
         &[
             "invalid value",
@@ -873,7 +944,7 @@ fn rejects_unsupported_ipxact_version() {
 #[test]
 fn rejects_ipxact_version_for_non_ipxact_format() {
     assert_eq!(
-        parse_args(args(&[
+        parse_args(snapsheet_args(&[
             "input.xlsx",
             "--format",
             "systemrdl",
@@ -889,7 +960,7 @@ fn rejects_ipxact_version_for_non_ipxact_format() {
 #[test]
 fn rejects_ipxact_version_for_all_format() {
     assert_eq!(
-        parse_args(args(&[
+        parse_args(snapsheet_args(&[
             "input.xlsx",
             "--format",
             "all",
@@ -904,7 +975,7 @@ fn rejects_ipxact_version_for_all_format() {
 
 #[test]
 fn reports_failing_spreadsheet_conversion() {
-    let error = run(args(&["this-file-does-not-exist.xlsx"])).unwrap_err();
+    let error = run(snapsheet_args(&["this-file-does-not-exist.xlsx"])).unwrap_err();
 
     assert!(error.to_string().contains("Xlsx error"));
 }

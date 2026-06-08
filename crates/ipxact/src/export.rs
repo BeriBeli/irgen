@@ -73,10 +73,10 @@ fn write_address_block(xml: &mut String, block: &Block, version: Version) -> Res
     element(xml, "range", block.range());
     element(xml, "width", block.size());
     for register in block.regs() {
-        write_register(xml, register, version, Some(block.name()), None, None)?;
+        write_register(xml, register, version, None, None)?;
     }
     for register_file in block.register_files() {
-        write_register_file(xml, register_file, version, block)?;
+        write_register_file(xml, register_file, version)?;
     }
 
     xml.push_str("</ipxact:addressBlock>");
@@ -87,7 +87,6 @@ fn write_register_file(
     xml: &mut String,
     register_file: &RegisterFile,
     version: Version,
-    block: &Block,
 ) -> Result<()> {
     if version == Version::V1_4 {
         for register in register_file.regs() {
@@ -97,7 +96,6 @@ fn write_register_file(
                 xml,
                 register,
                 version,
-                Some(block.name()),
                 Some(&name),
                 Some((&offset, Some(register_file.dim()))),
             )?;
@@ -107,7 +105,6 @@ fn write_register_file(
 
     xml.push_str("<ipxact:registerFile>");
     element(xml, "name", register_file.name());
-    write_block_access_handles(xml, Some(block.name()), version);
     match version {
         Version::V2022 => {
             xml.push_str("<ipxact:array>");
@@ -121,7 +118,7 @@ fn write_register_file(
     element(xml, "addressOffset", register_file.offset());
     element(xml, "range", register_file.range());
     for register in register_file.regs() {
-        write_register(xml, register, version, Some(block.name()), None, None)?;
+        write_register(xml, register, version, None, None)?;
     }
     xml.push_str("</ipxact:registerFile>");
     Ok(())
@@ -131,7 +128,6 @@ fn write_register(
     xml: &mut String,
     register: &Register,
     version: Version,
-    block_name: Option<&str>,
     name_override: Option<&str>,
     offset_and_dim_override: Option<(&str, Option<&str>)>,
 ) -> Result<()> {
@@ -142,7 +138,6 @@ fn write_register(
         name_override.unwrap_or_else(|| register.name()),
     );
     optional_element(xml, "description", register.desc());
-    write_block_access_handles(xml, block_name, version);
     if let Some((_, Some(dim))) = offset_and_dim_override {
         element(xml, "dim", dim);
     }
@@ -226,18 +221,6 @@ fn write_resets(xml: &mut String, reset: &str, version: Version) {
     xml.push_str("</ipxact:reset></ipxact:resets>");
 }
 
-fn write_block_access_handles(xml: &mut String, block_name: Option<&str>, version: Version) {
-    let Some(block_name) = block_name else {
-        return;
-    };
-    let path = block_hdl_path_macro(block_name);
-    match version {
-        Version::V1_4 | Version::V1_5 | Version::V2009 => {}
-        Version::V2014 => write_simple_access_handles_2014(xml, &path),
-        Version::V2022 => write_simple_access_handles_2022(xml, &path),
-    }
-}
-
 fn write_sliced_access_handles_2014(xml: &mut String, path: &str) {
     xml.push_str("<ipxact:accessHandles><ipxact:accessHandle><ipxact:slices><ipxact:slice><ipxact:pathSegments><ipxact:pathSegment>");
     element(xml, "pathSegmentName", path);
@@ -248,22 +231,6 @@ fn write_sliced_access_handles_2022(xml: &mut String, path: &str) {
     xml.push_str("<ipxact:accessHandles><ipxact:accessHandle><ipxact:slices><ipxact:slice><ipxact:pathSegments>");
     element(xml, "pathSegment", path);
     xml.push_str("</ipxact:pathSegments></ipxact:slice></ipxact:slices></ipxact:accessHandle></ipxact:accessHandles>");
-}
-
-fn write_simple_access_handles_2014(xml: &mut String, path: &str) {
-    xml.push_str(
-        "<ipxact:accessHandles><ipxact:accessHandle><ipxact:pathSegments><ipxact:pathSegment>",
-    );
-    element(xml, "pathSegmentName", path);
-    xml.push_str(
-        "</ipxact:pathSegment></ipxact:pathSegments></ipxact:accessHandle></ipxact:accessHandles>",
-    );
-}
-
-fn write_simple_access_handles_2022(xml: &mut String, path: &str) {
-    xml.push_str("<ipxact:accessHandles><ipxact:accessHandle><ipxact:pathSegments>");
-    element(xml, "pathSegment", path);
-    xml.push_str("</ipxact:pathSegments></ipxact:accessHandle></ipxact:accessHandles>");
 }
 
 fn element(xml: &mut String, name: &str, value: &str) {
@@ -385,19 +352,6 @@ fn is_reserved_field_name(field_name: &str) -> bool {
         .or_else(|| lower.strip_prefix("rsvd"));
 
     suffix.is_some_and(|suffix| !suffix.is_empty() && suffix.chars().all(|ch| ch.is_ascii_digit()))
-}
-
-fn block_hdl_path_macro(block_name: &str) -> String {
-    let mut macro_name = String::from("`");
-    for ch in block_name.chars() {
-        if ch.is_ascii_alphanumeric() {
-            macro_name.push(ch.to_ascii_uppercase());
-        } else {
-            macro_name.push('_');
-        }
-    }
-    macro_name.push_str("_HDL_PATH");
-    macro_name
 }
 
 impl Version {

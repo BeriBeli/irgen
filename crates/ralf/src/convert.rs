@@ -33,7 +33,6 @@ pub fn component_to_document(component: &base::Component) -> Result<Document, Er
         for block in blocks {
             system.body.blocks.push(BlockInstance {
                 name: block.name().into(),
-                hdl_path: Some(block_hdl_path_macro(block.name())),
                 offset: ralf_number("block offset", block.offset())?,
                 ..BlockInstance::default()
             });
@@ -147,19 +146,6 @@ fn field_hdl_path(field: &base::Field) -> Option<String> {
     }
 
     field.hdl_path().map(str::to_owned)
-}
-
-fn block_hdl_path_macro(block_name: &str) -> String {
-    let mut macro_name = String::from("`");
-    for ch in block_name.chars() {
-        if ch.is_ascii_alphanumeric() {
-            macro_name.push(ch.to_ascii_uppercase());
-        } else {
-            macro_name.push('_');
-        }
-    }
-    macro_name.push_str("_HDL_PATH");
-    macro_name
 }
 
 fn is_reserved_field_name(field_name: &str) -> bool {

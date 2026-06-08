@@ -132,10 +132,7 @@ fn emits_standard_hdl_paths_for_ipxact_versions_that_support_them() {
     );
 
     let access_handle_2014 = r#"<ipxact:accessHandles><ipxact:accessHandle><ipxact:slices><ipxact:slice><ipxact:pathSegments><ipxact:pathSegment><ipxact:pathSegmentName>u_status.done_q</ipxact:pathSegmentName></ipxact:pathSegment></ipxact:pathSegments></ipxact:slice></ipxact:slices></ipxact:accessHandle></ipxact:accessHandles>"#;
-    let block_access_handle_2014 =
-        r#"<ipxact:pathSegmentName>`REGS_HDL_PATH</ipxact:pathSegmentName>"#;
     let access_handle_2022 = r#"<ipxact:accessHandles><ipxact:accessHandle><ipxact:slices><ipxact:slice><ipxact:pathSegments><ipxact:pathSegment>u_status.done_q</ipxact:pathSegment></ipxact:pathSegments></ipxact:slice></ipxact:slices></ipxact:accessHandle></ipxact:accessHandles>"#;
-    let block_access_handle_2022 = r#"<ipxact:pathSegment>`REGS_HDL_PATH</ipxact:pathSegment>"#;
     let reserved_access_path_2014 = "<ipxact:pathSegmentName>reserved0</ipxact:pathSegmentName>";
     let disabled_access_path_2014 = "<ipxact:pathSegmentName>no_path</ipxact:pathSegmentName>";
     let reserved_access_path_2022 = "<ipxact:pathSegment>reserved0</ipxact:pathSegment>";
@@ -148,14 +145,8 @@ fn emits_standard_hdl_paths_for_ipxact_versions_that_support_them() {
     let compact_2022 = compact_xml(&ipxact_2022);
 
     assert!(compact_2014.contains(access_handle_2014));
-    assert!(compact_2014.contains(block_access_handle_2014));
     assert!(compact_2022.contains(access_handle_2022));
-    assert!(compact_2022.contains(block_access_handle_2022));
-    assert!(!ipxact_2009.contains("snps:"));
     assert!(!ipxact_2009.contains("u_status.done_q"));
-    assert!(!ipxact_2009.contains("`REGS_HDL_PATH"));
-    assert!(!ipxact_2014.contains("snps:"));
-    assert!(!ipxact_2022.contains("snps:"));
     assert!(!ipxact_2014.contains(reserved_access_path_2014));
     assert!(!ipxact_2014.contains(disabled_access_path_2014));
     assert!(!ipxact_2022.contains(reserved_access_path_2022));
