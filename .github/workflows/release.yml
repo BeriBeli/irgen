@@ -110,3 +110,6 @@ jobs:
           files: |
             dist/**/irgen-*
             snapsheet.toml
+            examples/*.xlsx
+            examples/*.xlsm
+            examples/*.ods

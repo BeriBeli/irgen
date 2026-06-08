@@ -16,6 +16,9 @@ Snapsheet input may be `.xlsx`, `.xlsm`, `.xls`, `.xlsb`, or `.ods`. The file
 format can vary, but the workbook still needs the same logical sheets and
 columns described below.
 
+The `examples/` directory includes `.xlsx`, `.xlsm`, and `.ods` versions of the
+default and configured snapsheets.
+
 Configured mode enables richer parser rules, including custom sheet and column
 names, inherited address/register cells, register-file arrays, reserved-field
 matching, and stricter validation.

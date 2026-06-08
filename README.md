@@ -143,3 +143,7 @@ must still enable UVM RAL coverage collection for coverage to appear in reports.
 - `examples/example_simple.xlsx` uses the default no-TOML workbook format.
 - `examples/example.xlsx` plus `snapsheet.toml` shows the richer configurable
   format.
+- `examples/example_simple.xlsm` and `examples/example_simple.ods` mirror the
+  default workbook in additional supported formats.
+- `examples/example.xlsm` and `examples/example.ods` mirror the configured
+  workbook in additional supported formats.
