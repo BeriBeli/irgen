@@ -102,6 +102,7 @@ Generate UVM RAL SystemVerilog from an IP-XACT component XML file:
 ```sh
 ./irgen ip-xact path/to/component.xml
 ./irgen ip-xact path/to/component.xml -o ral_component.sv
+./irgen ip-xact path/to/component.xml --coverage
 ```
 
 When `-o/--output` is omitted, the `ip-xact` subcommand writes
@@ -109,6 +110,10 @@ When `-o/--output` is omitted, the `ip-xact` subcommand writes
 `externalTypeDefinitions`, it scans XML files in the input file's directory and
 matches referenced documents by VLNV; catalog-backed search paths are not yet
 implemented.
+
+Pass `--coverage` to emit UVM `UVM_CVR_REG_BITS` register bit coverage support
+in the generated register classes. The consuming testbench and simulator run
+must still enable UVM RAL coverage collection for coverage to appear in reports.
 
 ## Documentation
 
