@@ -28,6 +28,19 @@ fn normalize_newlines(text: String) -> String {
     text.replace("\r\n", "\n").replace('\r', "\n")
 }
 
+fn assert_contains_before(haystack: &str, needle: &str, marker: &str) {
+    let needle_index = haystack
+        .find(needle)
+        .unwrap_or_else(|| panic!("expected output to contain {needle:?}"));
+    let marker_index = haystack
+        .find(marker)
+        .unwrap_or_else(|| panic!("expected output to contain {marker:?}"));
+    assert!(
+        needle_index < marker_index,
+        "expected {needle:?} to appear before {marker:?}"
+    );
+}
+
 fn assert_parse_error_contains(values: &[&str], needles: &[&str]) {
     let error = parse_args(args(values)).unwrap_err();
     for needle in needles {
@@ -715,11 +728,21 @@ fn generates_uvm_reg_by_block_from_ipxact_subcommand() {
     let top = normalize_newlines(fs::read_to_string(output.join("ral_demo.sv")).unwrap());
     let cfg = normalize_newlines(fs::read_to_string(output.join("ral_block_cfg.sv")).unwrap());
     let stat = normalize_newlines(fs::read_to_string(output.join("ral_block_stat.sv")).unwrap());
-    assert!(top.contains(
-        "`include \"uvm_macros.svh\"\n`include \"ral_block_cfg.sv\"\n`include \"ral_block_stat.sv\"\n\nclass"
-    ));
-    assert!(top.contains("`include \"ral_block_cfg.sv\""));
-    assert!(top.contains("`include \"ral_block_stat.sv\""));
+    assert_contains_before(
+        &top,
+        "`include \"uvm_macros.svh\"",
+        "class ral_sys_demo extends uvm_reg_block;",
+    );
+    assert_contains_before(
+        &top,
+        "`include \"ral_block_cfg.sv\"",
+        "class ral_sys_demo extends uvm_reg_block;",
+    );
+    assert_contains_before(
+        &top,
+        "`include \"ral_block_stat.sv\"",
+        "class ral_sys_demo extends uvm_reg_block;",
+    );
     assert!(top.contains("class ral_sys_demo extends uvm_reg_block;"));
     assert!(!top.contains("\n\n\n"));
     assert!(cfg.contains("class ral_block_cfg extends uvm_reg_block;"));
