@@ -306,6 +306,7 @@ fn validate_unique_class_names(classes: &ClassSet) -> Result<()> {
 }
 
 fn normalize_spacing(mut sv: String) -> String {
+    sv = sv.replace("\r\n", "\n").replace('\r', "\n");
     while sv.contains("\n\n\n") {
         sv = sv.replace("\n\n\n", "\n\n");
     }
