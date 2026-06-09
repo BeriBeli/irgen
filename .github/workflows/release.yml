@@ -13,7 +13,7 @@ jobs:
     name: Verify Tag Version
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6.0.3
       - name: Verify tag matches Cargo.toml version
         run: |
           python - <<'PY'
@@ -58,11 +58,11 @@ jobs:
             package: windows-x86_64
             target: x86_64-pc-windows-msvc
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6.0.3
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@v2.9.1
       - name: Install musl tools
         if: matrix.target == 'x86_64-unknown-linux-musl'
         run: sudo apt-get update && sudo apt-get install -y musl-tools
@@ -89,7 +89,7 @@ jobs:
           $artifact = "irgen-${env:GITHUB_REF_NAME}-${{ matrix.package }}.zip"
           Compress-Archive -Path dist\irgen.exe -DestinationPath "dist\$artifact"
       - name: Upload artifacts
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: dist-${{ matrix.package }}
           path: dist/irgen-*
@@ -99,12 +99,12 @@ jobs:
       - build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/download-artifact@v5
+      - uses: actions/checkout@v6.0.3
+      - uses: actions/download-artifact@v8.0.1
         with:
           path: dist
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@v3.0.0
         with:
           generate_release_notes: true
           files: |

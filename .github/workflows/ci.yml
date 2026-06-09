@@ -32,11 +32,11 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6.0.3
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@v2.9.1
       - name: Clippy
         run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
 
@@ -51,9 +51,9 @@ jobs:
           - macos-latest
           - windows-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6.0.3
       - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@v2.9.1
       - name: Test
         run: cargo test --workspace --locked
       - name: Build CLI
@@ -74,7 +74,7 @@ jobs:
         run: cargo run --locked -p irgen-cli -- snapsheet examples/example.xlsx --config snapsheet.toml --format ralf -o target/irgen-configured-example.ralf
       - name: Smoke test configured snapsheet SystemRDL conversion
         run: cargo run --locked -p irgen-cli -- snapsheet examples/example.xlsx --config snapsheet.toml --format systemrdl -o target/irgen-configured-example.rdl
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v6.2.0
         if: runner.os == 'Linux'
         with:
           python-version: "3.12"
