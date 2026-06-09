@@ -24,6 +24,10 @@ fn compact_xml(xml: &str) -> String {
     xml.split_whitespace().collect()
 }
 
+fn normalize_newlines(text: String) -> String {
+    text.replace("\r\n", "\n").replace('\r', "\n")
+}
+
 fn assert_parse_error_contains(values: &[&str], needles: &[&str]) {
     let error = parse_args(args(values)).unwrap_err();
     for needle in needles {
@@ -708,9 +712,9 @@ fn generates_uvm_reg_by_block_from_ipxact_subcommand() {
     .unwrap();
 
     assert_eq!(result.as_deref(), Some(output.as_path()));
-    let top = fs::read_to_string(output.join("ral_demo.sv")).unwrap();
-    let cfg = fs::read_to_string(output.join("ral_block_cfg.sv")).unwrap();
-    let stat = fs::read_to_string(output.join("ral_block_stat.sv")).unwrap();
+    let top = normalize_newlines(fs::read_to_string(output.join("ral_demo.sv")).unwrap());
+    let cfg = normalize_newlines(fs::read_to_string(output.join("ral_block_cfg.sv")).unwrap());
+    let stat = normalize_newlines(fs::read_to_string(output.join("ral_block_stat.sv")).unwrap());
     assert!(top.contains(
         "`include \"uvm_macros.svh\"\n`include \"ral_block_cfg.sv\"\n`include \"ral_block_stat.sv\"\n\nclass"
     ));
