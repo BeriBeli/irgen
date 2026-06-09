@@ -3,8 +3,8 @@ use std::collections::BTreeMap;
 use askama::Template;
 
 use crate::model::{
-    AddressBlock, AlternateRegister, Component, EnumeratedValue, Field, HdlPathSlice, Register,
-    RegisterFile, SubspaceMap,
+    AddressBlock, AddressSpace, AlternateRegister, Component, EnumeratedValue, Field, HdlPathSlice,
+    Register, RegisterFile, Reset, Segment, SubspaceMap,
 };
 use crate::numeric::parse_u64_expr;
 use crate::{Error, Result};
@@ -369,7 +369,7 @@ fn address_space_file(
     let mut classes = ClassSet::default();
     classes
         .block_classes
-        .push(block_class(component, Vec::new(), true, options)?);
+        .push(block_class(component, true, false, options)?);
     render_file(class_file_name(&class_name), includes, classes)
 }
 
@@ -399,12 +399,9 @@ fn top_file(
             )?;
         }
     }
-    classes.block_classes.push(block_class(
-        component,
-        submap_instances(component)?,
-        false,
-        options,
-    )?);
+    classes
+        .block_classes
+        .push(block_class(component, false, true, options)?);
     render_file(top_file_name(component), includes, classes)
 }
 
@@ -486,13 +483,13 @@ fn memory_classes_for_block(
     include_component: bool,
 ) -> Result<()> {
     if is_memory_block(block) {
-        let width_bits = parse_u64("addressBlock width", &block.width)?;
+        let width_bits = parse_address_block_width_bits(&block.width)?;
         classes.push(MemoryClass {
             class_name: memory_class_name(component, block, include_component),
             default_name: block.name.clone(),
             size_words: memory_size_words(block)?,
             width_bits,
-            rights: sv_string(&memory_rights(block)),
+            rights: sv_string(&memory_rights(block)?),
             coverage_model: "build_coverage(UVM_CVR_ADDR_MAP)",
         });
     }
@@ -546,12 +543,13 @@ fn register_file_class(
     let mut declarations = Vec::new();
     let mut build_lines = Vec::new();
     let mut map_lines = Vec::new();
-    let mut used_names = Vec::new();
+    let mut used_names = reserved_register_file_member_names();
     let layout = map_layout_for_block(block)?;
+    validate_register_file_member_layout(block, register_file, layout)?;
 
     for register in &register_file.registers {
         let register_dims = if is_array_dim(&register.dim)? {
-            parse_dims("register dim", &register.dims)?
+            parse_array_dims("register dim", &register.dims)?
         } else {
             Vec::new()
         };
@@ -749,7 +747,8 @@ fn register_class(
     fields: &[Field],
     options: RenderOptions,
 ) -> Result<RegisterClass> {
-    let size_bits = parse_u64("register size", size)?;
+    let size_bits = parse_register_size_bits(size)?;
+    validate_field_layout(default_name, size_bits, fields)?;
     let class_name = format!(
         "ral_reg_{}",
         path_parts
@@ -758,8 +757,8 @@ fn register_class(
             .collect::<Vec<_>>()
             .join("_")
     );
-    let mut used_field_names = Vec::new();
-    let mut used_enum_value_names = Vec::new();
+    let mut used_field_names = reserved_register_member_names(options.coverage);
+    let mut used_enum_value_names = reserved_register_member_names(options.coverage);
     let fields = fields
         .iter()
         .map(|field| {
@@ -788,6 +787,47 @@ fn register_class(
     })
 }
 
+fn validate_field_layout(register: &str, size_bits: u64, fields: &[Field]) -> Result<()> {
+    let mut ranges = Vec::<(&str, u64, u64)>::new();
+    for field in fields {
+        let lsb = parse_u64("field bitOffset", &field.bit_offset)?;
+        let width = parse_field_bit_width(&field.bit_width)?;
+        let msb = lsb.checked_add(width.saturating_sub(1)).ok_or_else(|| {
+            Error::FieldRangeExceedsRegisterSize {
+                register: register.into(),
+                field: field.name.clone(),
+                lsb,
+                msb: u64::MAX,
+                size: size_bits,
+            }
+        })?;
+        if msb >= size_bits {
+            return Err(Error::FieldRangeExceedsRegisterSize {
+                register: register.into(),
+                field: field.name.clone(),
+                lsb,
+                msb,
+                size: size_bits,
+            });
+        }
+        for (other, other_lsb, other_msb) in &ranges {
+            let overlap_lsb = lsb.max(*other_lsb);
+            let overlap_msb = msb.min(*other_msb);
+            if overlap_lsb <= overlap_msb {
+                return Err(Error::FieldRangeOverlap {
+                    register: register.into(),
+                    field: field.name.clone(),
+                    other: (*other).into(),
+                    lsb: overlap_lsb,
+                    msb: overlap_msb,
+                });
+            }
+        }
+        ranges.push((&field.name, lsb, msb));
+    }
+    Ok(())
+}
+
 fn field_view(
     block: &AddressBlock,
     register_volatile: Option<&str>,
@@ -796,15 +836,20 @@ fn field_view(
     used_names: &mut Vec<String>,
     used_enum_value_names: &mut Vec<String>,
 ) -> Result<FieldView> {
-    let width = parse_u64("field bitWidth", &field.bit_width)?;
+    let width = parse_field_bit_width(&field.bit_width)?;
     let default_reset_index = default_reset_index(field);
     let reset_value = default_reset_index
-        .map(|index| parse_u64("field reset", &field.resets[index].value))
+        .map(|index| effective_reset_value(&field.resets[index]))
         .transpose()?
         .unwrap_or(0);
     let extra_resets = extra_reset_views(field, width, default_reset_index)?;
-    let access = uvm_access(effective_access(block, register_access, field), field);
+    let access = uvm_access(effective_access(block, register_access, field), field)?;
     let var_name = unique_ident(&field.name, used_names);
+    let enum_type_name = if field.enumerated_values.is_empty() {
+        String::new()
+    } else {
+        unique_ident(&format!("{var_name}_e"), used_names)
+    };
     let enum_values = enum_value_views(
         &field.name,
         &field.enumerated_values,
@@ -812,7 +857,7 @@ fn field_view(
         used_enum_value_names,
     )?;
     Ok(FieldView {
-        enum_type_name: format!("{var_name}_e"),
+        enum_type_name,
         enum_msb: width.saturating_sub(1),
         has_enum_values: !enum_values.is_empty(),
         enum_values,
@@ -875,11 +920,20 @@ fn extra_reset_views(
         .filter(|(index, _)| Some(*index) != default_reset_index)
         .map(|(_, reset)| {
             Ok(ResetView {
-                value_literal: bit_literal("field reset", width, &reset.value)?,
+                value_literal: format!("{width}'h{:x}", effective_reset_value(reset)?),
                 kind: sv_string(reset.reset_type.as_deref().unwrap_or("HARD")),
             })
         })
         .collect()
+}
+
+fn effective_reset_value(reset: &Reset) -> Result<u64> {
+    let value = parse_u64("field reset", &reset.value)?;
+    reset
+        .mask
+        .as_deref()
+        .map(|mask| parse_u64("field reset mask", mask).map(|mask| value & mask))
+        .unwrap_or(Ok(value))
 }
 
 fn enum_value_views(
@@ -913,17 +967,12 @@ fn block_classes(component: &Component, options: RenderOptions) -> Result<Vec<Bl
                 options,
             )?);
         }
-        classes.push(block_class(&scoped_component, Vec::new(), true, options)?);
+        classes.push(block_class(&scoped_component, true, false, options)?);
     }
     for block in &component.blocks {
         classes.push(address_block_class(component, block, false, options)?);
     }
-    classes.push(block_class(
-        component,
-        submap_instances(component)?,
-        false,
-        options,
-    )?);
+    classes.push(block_class(component, false, true, options)?);
     Ok(classes)
 }
 
@@ -951,8 +1000,8 @@ fn class_path_parts(component: &Component, include_component: bool, parts: &[&st
 
 fn block_class(
     component: &Component,
-    submaps: Vec<SubmapInstance>,
     include_component: bool,
+    include_submaps: bool,
     options: RenderOptions,
 ) -> Result<BlockClass> {
     let class_name = format!("ral_sys_{}", ident(&component.name));
@@ -960,10 +1009,13 @@ fn block_class(
     let mut reg_files = Vec::new();
     let mut instances = Vec::new();
     let mut arrays = Vec::new();
-    let mut used_names = Vec::new();
     let maps = map_instances(component)?;
+    let mut used_names = reserved_block_member_names();
+    used_names.extend(maps.iter().map(|map| map.var_name.clone()));
     let layouts = map_layouts(component, &maps);
-    let child_blocks = child_block_instances(component, &layouts, include_component)?;
+    validate_map_member_layout(component, &layouts)?;
+    let child_blocks =
+        child_block_instances(component, &layouts, &mut used_names, include_component)?;
 
     for remap in &component.memory_remaps {
         for block in &remap.blocks {
@@ -987,6 +1039,11 @@ fn block_class(
             )?;
         }
     }
+    let submaps = if include_submaps {
+        submap_instances(component, &layouts, &mut used_names)?
+    } else {
+        Vec::new()
+    };
 
     Ok(BlockClass {
         class_name,
@@ -1012,7 +1069,6 @@ fn address_block_class(
     let mut reg_files = Vec::new();
     let mut instances = Vec::new();
     let mut arrays = Vec::new();
-    let mut used_names = Vec::new();
     let layout = map_layout_for_block(block)?;
     let maps = vec![MapInstance {
         var_name: "default_map".into(),
@@ -1021,6 +1077,8 @@ fn address_block_class(
         byte_addressing: sv_bool_literal(layout.byte_addressing),
         is_default: true,
     }];
+    let mut used_names = reserved_block_member_names();
+    used_names.extend(maps.iter().map(|map| map.var_name.clone()));
 
     block_instances(
         component,
@@ -1054,10 +1112,10 @@ fn address_block_class(
 fn child_block_instances(
     component: &Component,
     layouts: &BTreeMap<String, MapContext>,
+    used_names: &mut Vec<String>,
     include_component: bool,
 ) -> Result<Vec<ChildBlockInstance>> {
     let mut children = Vec::new();
-    let mut used_names = Vec::new();
     for block in &component.blocks {
         let map = layouts
             .get(&block.map_name)
@@ -1069,7 +1127,7 @@ fn child_block_instances(
             map.layout,
         )?;
         children.push(ChildBlockInstance {
-            var_name: unique_ident(&block.name, &mut used_names),
+            var_name: unique_ident(&block.name, used_names),
             class_name: address_block_class_name(component, block, include_component),
             create_name: sv_string(&block.name),
             map_var_name: map.var_name.clone(),
@@ -1084,16 +1142,12 @@ fn child_block_instances(
     Ok(children)
 }
 
-fn submap_instances(component: &Component) -> Result<Vec<SubmapInstance>> {
+fn submap_instances(
+    component: &Component,
+    layouts: &BTreeMap<String, MapContext>,
+    used_names: &mut Vec<String>,
+) -> Result<Vec<SubmapInstance>> {
     let mut submaps = Vec::new();
-    let mut used_names = Vec::new();
-    let maps = map_instances(component)?;
-    let layouts = map_layouts(component, &maps);
-    let address_space_names = component
-        .address_spaces
-        .iter()
-        .map(|address_space| address_space.name.as_str())
-        .collect::<Vec<_>>();
 
     for subspace in component.subspace_maps.iter().chain(
         component
@@ -1101,12 +1155,7 @@ fn submap_instances(component: &Component) -> Result<Vec<SubmapInstance>> {
             .iter()
             .flat_map(|remap| remap.subspace_maps.iter()),
     ) {
-        let Some(address_space_ref) = subspace.address_space_ref.as_deref() else {
-            continue;
-        };
-        if !address_space_names.contains(&address_space_ref) {
-            continue;
-        }
+        let address_space = local_address_space_for_subspace(component, subspace)?;
         let map = layouts
             .get(&subspace.map_name)
             .ok_or_else(|| Error::MissingElement("memoryMap"))?;
@@ -1127,11 +1176,11 @@ fn submap_instances(component: &Component) -> Result<Vec<SubmapInstance>> {
                     .unwrap_or_default()
                     .to_string(),
             })?;
-        let var_name = unique_ident(&subspace.name, &mut used_names);
+        let var_name = unique_ident(&subspace.name, used_names);
         submaps.push(SubmapInstance {
             class_name: format!(
                 "ral_sys_{}",
-                ident(&format!("{}_{}", component.name, address_space_ref))
+                ident(&format!("{}_{}", component.name, address_space.name))
             ),
             create_name: sv_string(&subspace.name),
             map_var_name: map.var_name.clone(),
@@ -1143,6 +1192,210 @@ fn submap_instances(component: &Component) -> Result<Vec<SubmapInstance>> {
     Ok(submaps)
 }
 
+fn validate_map_member_layout(
+    component: &Component,
+    layouts: &BTreeMap<String, MapContext>,
+) -> Result<()> {
+    let mut ranges_by_map = BTreeMap::<String, Vec<(String, u64, u64)>>::new();
+    append_map_block_ranges(component.blocks.iter(), layouts, &mut ranges_by_map)?;
+    append_map_subspace_ranges(
+        component,
+        component.subspace_maps.iter(),
+        layouts,
+        &mut ranges_by_map,
+    )?;
+
+    for remap in &component.memory_remaps {
+        let mut ranges_by_map = BTreeMap::<String, Vec<(String, u64, u64)>>::new();
+        append_map_block_ranges(remap.blocks.iter(), layouts, &mut ranges_by_map)?;
+        append_map_subspace_ranges(
+            component,
+            remap.subspace_maps.iter(),
+            layouts,
+            &mut ranges_by_map,
+        )?;
+    }
+
+    Ok(())
+}
+
+fn append_map_block_ranges<'a>(
+    blocks: impl Iterator<Item = &'a AddressBlock>,
+    layouts: &BTreeMap<String, MapContext>,
+    ranges_by_map: &mut BTreeMap<String, Vec<(String, u64, u64)>>,
+) -> Result<()> {
+    for block in blocks {
+        let map = layouts
+            .get(&block.map_name)
+            .ok_or_else(|| Error::MissingElement("memoryMap"))?;
+        let start = map_offset_units(
+            block,
+            "addressBlock baseAddress",
+            &block.base_address,
+            map.layout,
+        )?;
+        let length = map_offset_units(block, "addressBlock range", &block.range, map.layout)?;
+        append_map_address_range(
+            &block.map_name,
+            ranges_by_map.entry(block.map_name.clone()).or_default(),
+            &block.name,
+            start,
+            range_end_for_length("addressBlock range", &block.range, start, length)?,
+        )?;
+    }
+    Ok(())
+}
+
+fn append_map_subspace_ranges<'a>(
+    component: &Component,
+    subspaces: impl Iterator<Item = &'a SubspaceMap>,
+    layouts: &BTreeMap<String, MapContext>,
+    ranges_by_map: &mut BTreeMap<String, Vec<(String, u64, u64)>>,
+) -> Result<()> {
+    for subspace in subspaces {
+        let address_space = local_address_space_for_subspace(component, subspace)?;
+        let map = layouts
+            .get(&subspace.map_name)
+            .ok_or_else(|| Error::MissingElement("memoryMap"))?;
+        let start = subspace_parent_offset(component, subspace, map.layout)?;
+        let length = subspace_range_units(subspace, address_space, map.layout)?;
+        if length == 0 {
+            continue;
+        }
+        append_map_address_range(
+            &subspace.map_name,
+            ranges_by_map.entry(subspace.map_name.clone()).or_default(),
+            &subspace.name,
+            start,
+            range_end_for_length("subspaceMap range", &subspace.name, start, length)?,
+        )?;
+    }
+    Ok(())
+}
+
+fn subspace_parent_offset(
+    component: &Component,
+    subspace: &SubspaceMap,
+    parent_layout: MapLayout,
+) -> Result<u64> {
+    let offset = map_offset_units_for_address_unit_bits(
+        "subspaceMap baseAddress",
+        &subspace.base_address,
+        parent_layout,
+        parse_u64("memoryMap addressUnitBits", &subspace.address_unit_bits)?,
+    )?;
+    let segment_offset = subspace_segment_offset(component, subspace, parent_layout)?;
+    offset
+        .checked_sub(segment_offset)
+        .ok_or_else(|| Error::InvalidNumber {
+            field: "subspaceMap segmentRef addressOffset",
+            value: subspace
+                .segment_ref
+                .as_deref()
+                .unwrap_or_default()
+                .to_string(),
+        })
+}
+
+fn local_address_space_for_subspace<'a>(
+    component: &'a Component,
+    subspace: &SubspaceMap,
+) -> Result<&'a AddressSpace> {
+    let Some(address_space_ref) = subspace.address_space_ref.as_deref() else {
+        return Err(Error::SubspaceMapAddressSpaceNotFound {
+            subspace: subspace.name.clone(),
+            initiator: subspace.initiator_ref.clone(),
+        });
+    };
+    component
+        .address_spaces
+        .iter()
+        .find(|address_space| address_space.name == address_space_ref)
+        .ok_or_else(|| Error::SubspaceMapAddressSpaceNotFound {
+            subspace: subspace.name.clone(),
+            initiator: subspace.initiator_ref.clone(),
+        })
+}
+
+fn segment_for_subspace<'a>(
+    subspace: &SubspaceMap,
+    address_space: &'a AddressSpace,
+    segment_ref: &str,
+) -> Result<&'a Segment> {
+    address_space
+        .segments
+        .iter()
+        .find(|segment| segment.name == segment_ref)
+        .ok_or_else(|| Error::SubspaceMapSegmentNotFound {
+            subspace: subspace.name.clone(),
+            segment: segment_ref.into(),
+            address_space: address_space.name.clone(),
+        })
+}
+
+fn subspace_range_units(
+    subspace: &SubspaceMap,
+    address_space: &AddressSpace,
+    parent_layout: MapLayout,
+) -> Result<u64> {
+    if let Some(segment_ref) = subspace.segment_ref.as_deref() {
+        let segment = segment_for_subspace(subspace, address_space, segment_ref)?;
+        validate_segment_ref_range(subspace, address_space, segment, parent_layout)?;
+        return segment_range_units(address_space, segment, parent_layout);
+    }
+
+    address_space_span_units(address_space, parent_layout)
+}
+
+fn segment_range_units(
+    address_space: &AddressSpace,
+    segment: &Segment,
+    parent_layout: MapLayout,
+) -> Result<u64> {
+    map_offset_units_for_address_unit_bits(
+        "addressSpace segment range",
+        &segment.range,
+        parent_layout,
+        parse_u64(
+            "addressSpace addressUnitBits",
+            &address_space.address_unit_bits,
+        )?,
+    )
+}
+
+fn address_space_span_units(address_space: &AddressSpace, parent_layout: MapLayout) -> Result<u64> {
+    let address_unit_bits = parse_u64(
+        "addressSpace addressUnitBits",
+        &address_space.address_unit_bits,
+    )?;
+    let mut limit = 0;
+
+    for block in &address_space.blocks {
+        let start = map_offset_units_for_address_unit_bits(
+            "addressBlock baseAddress",
+            &block.base_address,
+            parent_layout,
+            address_unit_bits,
+        )?;
+        let length = map_offset_units_for_address_unit_bits(
+            "addressBlock range",
+            &block.range,
+            parent_layout,
+            address_unit_bits,
+        )?;
+        if length == 0 {
+            continue;
+        }
+        let end = range_end_for_length("addressBlock range", &block.range, start, length)?;
+        limit = limit.max(end.checked_add(1).ok_or_else(|| Error::InvalidNumber {
+            field: "addressSpace localMemoryMap range",
+            value: block.range.clone(),
+        })?);
+    }
+
+    Ok(limit)
+}
+
 fn subspace_segment_offset(
     component: &Component,
     subspace: &SubspaceMap,
@@ -1151,23 +1404,8 @@ fn subspace_segment_offset(
     let Some(segment_ref) = subspace.segment_ref.as_deref() else {
         return Ok(0);
     };
-    let Some(address_space_ref) = subspace.address_space_ref.as_deref() else {
-        return Ok(0);
-    };
-    let Some(address_space) = component
-        .address_spaces
-        .iter()
-        .find(|address_space| address_space.name == address_space_ref)
-    else {
-        return Ok(0);
-    };
-    let Some(segment) = address_space
-        .segments
-        .iter()
-        .find(|segment| segment.name == segment_ref)
-    else {
-        return Ok(0);
-    };
+    let address_space = local_address_space_for_subspace(component, subspace)?;
+    let segment = segment_for_subspace(subspace, address_space, segment_ref)?;
     validate_segment_ref_range(subspace, address_space, segment, parent_layout)?;
 
     map_offset_units_for_address_unit_bits(
@@ -1257,6 +1495,7 @@ fn block_instances(
     } else {
         0
     };
+    validate_block_member_layout(block, block_base, layout)?;
     if is_memory_block(block) {
         memories.push(memory_instance(
             component,
@@ -1342,6 +1581,311 @@ fn block_instances(
         )?);
     }
     Ok(())
+}
+
+fn validate_block_member_layout(
+    block: &AddressBlock,
+    block_base: u64,
+    layout: MapLayout,
+) -> Result<()> {
+    let mut ranges = Vec::<(String, u64, u64)>::new();
+
+    for register in &block.registers {
+        let start = block_base
+            + map_offset_units(
+                block,
+                "register addressOffset",
+                &register.address_offset,
+                layout,
+            )?;
+        let element_size = register_size_units(register, layout)?;
+        let count = total_element_count("register dim", &register.dims)?;
+        let stride = if count > 1 {
+            register_stride(block, register, layout)?
+        } else {
+            element_size
+        };
+        validate_array_stride(block, &register.name, start, count, stride, element_size)?;
+        append_address_range(
+            block,
+            &mut ranges,
+            &register.name,
+            start,
+            range_end(start, count, stride, element_size)?,
+        )?;
+    }
+
+    for register_file in &block.register_files {
+        let start = block_base
+            + map_offset_units(
+                block,
+                "registerFile addressOffset",
+                &register_file.address_offset,
+                layout,
+            )?;
+        let element_size =
+            positive_map_offset_units(block, "registerFile range", &register_file.range, layout)?;
+        let count = total_element_count("registerFile dim", &register_file.dims)?;
+        let stride = if count > 1 {
+            register_file_stride(block, register_file, layout)?
+        } else {
+            element_size
+        };
+        validate_array_stride(
+            block,
+            &register_file.name,
+            start,
+            count,
+            stride,
+            element_size,
+        )?;
+        append_address_range(
+            block,
+            &mut ranges,
+            &register_file.name,
+            start,
+            range_end(start, count, stride, element_size)?,
+        )?;
+    }
+
+    Ok(())
+}
+
+fn validate_register_file_member_layout(
+    block: &AddressBlock,
+    register_file: &RegisterFile,
+    layout: MapLayout,
+) -> Result<()> {
+    let register_file_range =
+        positive_map_offset_units(block, "registerFile range", &register_file.range, layout)?;
+    let mut ranges = Vec::<(String, u64, u64)>::new();
+
+    for register in &register_file.registers {
+        let start = map_offset_units(
+            block,
+            "register addressOffset",
+            &register.address_offset,
+            layout,
+        )?;
+        let element_size = register_size_units(register, layout)?;
+        let count = total_element_count("register dim", &register.dims)?;
+        let stride = if count > 1 {
+            register_stride(block, register, layout)?
+        } else {
+            element_size
+        };
+        validate_register_file_array_stride(
+            register_file,
+            &register.name,
+            start,
+            count,
+            stride,
+            element_size,
+        )?;
+        let end = range_end(start, count, stride, element_size)?;
+        if end >= register_file_range {
+            return Err(Error::RegisterFileRangeExceeded {
+                register_file: register_file.name.clone(),
+                name: register.name.clone(),
+                end,
+                range: register_file_range,
+            });
+        }
+        append_register_file_address_range(register_file, &mut ranges, &register.name, start, end)?;
+    }
+
+    Ok(())
+}
+
+fn validate_array_stride(
+    block: &AddressBlock,
+    name: &str,
+    start: u64,
+    count: u64,
+    stride: u64,
+    element_size: u64,
+) -> Result<()> {
+    if count > 1 && stride < element_size {
+        return Err(Error::AddressRangeOverlap {
+            block: block.name.clone(),
+            name: name.into(),
+            other: name.into(),
+            start: start + stride,
+            end: start + element_size - 1,
+        });
+    }
+    Ok(())
+}
+
+fn validate_register_file_array_stride(
+    register_file: &RegisterFile,
+    name: &str,
+    start: u64,
+    count: u64,
+    stride: u64,
+    element_size: u64,
+) -> Result<()> {
+    if count > 1 && stride < element_size {
+        return Err(Error::RegisterFileAddressRangeOverlap {
+            register_file: register_file.name.clone(),
+            name: name.into(),
+            other: name.into(),
+            start: start + stride,
+            end: start + element_size - 1,
+        });
+    }
+    Ok(())
+}
+
+fn append_address_range(
+    block: &AddressBlock,
+    ranges: &mut Vec<(String, u64, u64)>,
+    name: &str,
+    start: u64,
+    end: u64,
+) -> Result<()> {
+    for (other, other_start, other_end) in ranges.iter() {
+        let overlap_start = start.max(*other_start);
+        let overlap_end = end.min(*other_end);
+        if overlap_start <= overlap_end {
+            return Err(Error::AddressRangeOverlap {
+                block: block.name.clone(),
+                name: name.into(),
+                other: other.clone(),
+                start: overlap_start,
+                end: overlap_end,
+            });
+        }
+    }
+    ranges.push((name.into(), start, end));
+    Ok(())
+}
+
+fn append_register_file_address_range(
+    register_file: &RegisterFile,
+    ranges: &mut Vec<(String, u64, u64)>,
+    name: &str,
+    start: u64,
+    end: u64,
+) -> Result<()> {
+    for (other, other_start, other_end) in ranges.iter() {
+        let overlap_start = start.max(*other_start);
+        let overlap_end = end.min(*other_end);
+        if overlap_start <= overlap_end {
+            return Err(Error::RegisterFileAddressRangeOverlap {
+                register_file: register_file.name.clone(),
+                name: name.into(),
+                other: other.clone(),
+                start: overlap_start,
+                end: overlap_end,
+            });
+        }
+    }
+    ranges.push((name.into(), start, end));
+    Ok(())
+}
+
+fn append_map_address_range(
+    map: &str,
+    ranges: &mut Vec<(String, u64, u64)>,
+    name: &str,
+    start: u64,
+    end: u64,
+) -> Result<()> {
+    for (other, other_start, other_end) in ranges.iter() {
+        let overlap_start = start.max(*other_start);
+        let overlap_end = end.min(*other_end);
+        if overlap_start <= overlap_end {
+            return Err(Error::MapAddressRangeOverlap {
+                map: map.into(),
+                name: name.into(),
+                other: other.clone(),
+                start: overlap_start,
+                end: overlap_end,
+            });
+        }
+    }
+    ranges.push((name.into(), start, end));
+    Ok(())
+}
+
+fn range_end_for_length(field: &'static str, value: &str, start: u64, length: u64) -> Result<u64> {
+    if length == 0 {
+        return Err(Error::InvalidNumber {
+            field,
+            value: value.into(),
+        });
+    }
+    start
+        .checked_add(length - 1)
+        .ok_or_else(|| Error::InvalidNumber {
+            field: "address range",
+            value: format!("{start} + {length}"),
+        })
+}
+
+fn range_end(start: u64, count: u64, stride: u64, element_size: u64) -> Result<u64> {
+    let last_index = count.saturating_sub(1);
+    start
+        .checked_add(
+            last_index
+                .checked_mul(stride)
+                .ok_or_else(|| Error::InvalidNumber {
+                    field: "address range",
+                    value: format!("{count} * {stride}"),
+                })?,
+        )
+        .and_then(|last_start| last_start.checked_add(element_size.saturating_sub(1)))
+        .ok_or_else(|| Error::InvalidNumber {
+            field: "address range",
+            value: format!("{start} + {last_index} * {stride} + {element_size}"),
+        })
+}
+
+fn register_size_units(register: &Register, layout: MapLayout) -> Result<u64> {
+    let register_bytes = register_size_bytes(&register.size)?;
+    if layout.byte_addressing {
+        Ok(register_bytes)
+    } else {
+        Ok(register_bytes.div_ceil(layout.n_bytes).max(1))
+    }
+}
+
+fn register_size_bytes(size: &str) -> Result<u64> {
+    Ok(parse_register_size_bits(size)?.div_ceil(8))
+}
+
+fn parse_field_bit_width(width: &str) -> Result<u64> {
+    let width_bits = parse_u64("field bitWidth", width)?;
+    if width_bits == 0 {
+        return Err(Error::InvalidNumber {
+            field: "field bitWidth",
+            value: width.into(),
+        });
+    }
+    Ok(width_bits)
+}
+
+fn parse_register_size_bits(size: &str) -> Result<u64> {
+    let size_bits = parse_u64("register size", size)?;
+    if size_bits == 0 {
+        return Err(Error::InvalidNumber {
+            field: "register size",
+            value: size.into(),
+        });
+    }
+    Ok(size_bits)
+}
+
+fn total_element_count(field: &'static str, dims: &[String]) -> Result<u64> {
+    parse_array_dims(field, dims)?
+        .into_iter()
+        .try_fold(1u64, |total, dim| {
+            total.checked_mul(dim).ok_or_else(|| Error::InvalidNumber {
+                field,
+                value: dims.join("*"),
+            })
+        })
 }
 
 fn register_class_name(
@@ -1469,11 +2013,33 @@ fn ral_class_name(prefix: &str, path_parts: Vec<String>) -> String {
 }
 
 fn is_array_dim(dim: &str) -> Result<bool> {
-    Ok(parse_u64("array dim", dim)? > 1)
+    let dim = parse_u64("array dim", dim)?;
+    if dim == 0 {
+        return Err(Error::InvalidNumber {
+            field: "array dim",
+            value: "0".into(),
+        });
+    }
+    Ok(dim > 1)
 }
 
 fn parse_dims(field: &'static str, dims: &[String]) -> Result<Vec<u64>> {
     dims.iter().map(|dim| parse_u64(field, dim)).collect()
+}
+
+fn parse_array_dims(field: &'static str, dims: &[String]) -> Result<Vec<u64>> {
+    dims.iter()
+        .map(|dim| {
+            let parsed = parse_u64(field, dim)?;
+            if parsed == 0 {
+                return Err(Error::InvalidNumber {
+                    field,
+                    value: dim.clone(),
+                });
+            }
+            Ok(parsed)
+        })
+        .collect()
 }
 
 fn map_instances(component: &Component) -> Result<Vec<MapInstance>> {
@@ -1499,7 +2065,7 @@ fn map_instances(component: &Component) -> Result<Vec<MapInstance>> {
         }
     }
 
-    let mut used_map_vars = Vec::new();
+    let mut used_map_vars = vec!["default_map".to_string()];
     map_names
         .iter()
         .enumerate()
@@ -1616,8 +2182,8 @@ fn map_layout_for_block(block: &AddressBlock) -> Result<MapLayout> {
 }
 
 fn address_unit_bytes(bits: u64) -> Result<u64> {
-    if bits.is_multiple_of(8) {
-        Ok((bits / 8).max(1))
+    if bits != 0 && bits.is_multiple_of(8) {
+        Ok(bits / 8)
     } else {
         Err(Error::InvalidNumber {
             field: "memoryMap addressUnitBits",
@@ -1636,6 +2202,22 @@ fn map_offset_units(
     map_offset_units_for_address_unit_bits(field, value, layout, address_unit_bits)
 }
 
+fn positive_map_offset_units(
+    block: &AddressBlock,
+    field: &'static str,
+    value: &str,
+    layout: MapLayout,
+) -> Result<u64> {
+    let units = map_offset_units(block, field, value, layout)?;
+    if units == 0 {
+        return Err(Error::InvalidNumber {
+            field,
+            value: value.into(),
+        });
+    }
+    Ok(units)
+}
+
 fn map_offset_units_for_address_unit_bits(
     field: &'static str,
     value: &str,
@@ -1651,7 +2233,14 @@ fn map_offset_units_for_address_unit_bits(
 }
 
 fn range_bytes(block: &AddressBlock, field: &'static str, value: &str) -> Result<u64> {
-    Ok(parse_u64(field, value)?
+    let range = parse_u64(field, value)?;
+    if range == 0 {
+        return Err(Error::InvalidNumber {
+            field,
+            value: value.into(),
+        });
+    }
+    Ok(range
         * address_unit_bytes(parse_u64(
             "memoryMap addressUnitBits",
             &block.address_unit_bits,
@@ -1680,7 +2269,7 @@ fn memory_instance(
         size_words: memory_size_words(block)?,
         width_bits,
         offset_literal: addr_literal(offset),
-        rights: sv_string(&memory_rights(block)),
+        rights: sv_string(&memory_rights(block)?),
         hdl_path_expr: block
             .hdl_path
             .as_ref()
@@ -1710,7 +2299,7 @@ fn register_file_instance_view(
     let var_name = unique_ident(&create_name, used_names);
     let class_name = register_file_class_name(component, block, register_file, include_component);
     let dims = if is_array_dim(&register_file.dim)? {
-        parse_dims("registerFile dim", &register_file.dims)?
+        parse_array_dims("registerFile dim", &register_file.dims)?
     } else {
         Vec::new()
     };
@@ -1996,12 +2585,12 @@ fn register_array(
     };
     let var_name = unique_ident(&create_name, used_names);
     let class_name = register_class_name(component, block, register, None, include_component);
-    let dims = parse_dims("register dim", &register.dims)?;
+    let dims = parse_array_dims("register dim", &register.dims)?;
     let hdl_slices = hdl_slices(
         register,
         register.hdl_path.as_ref().or(block.hdl_path.as_ref()),
     )?;
-    let indexed_hdl_slices = indexed_hdl_slices(register, dims.len())?;
+    let indexed_hdl_slices = indexed_hdl_slices(register, &dims)?;
     let offset_groups = vec![ArrayOffsetGroup {
         first_dimension: 0,
         dimension_count: dims.len(),
@@ -2048,7 +2637,7 @@ fn alternate_register_array(
     let var_name = unique_ident(&create_name, used_names);
     let class_name =
         alternate_register_class_name(component, block, register, alternate, include_component);
-    let dims = parse_dims("register dim", &register.dims)?;
+    let dims = parse_array_dims("register dim", &register.dims)?;
     let hdl_slices = hdl_slices_from_fields(
         &alternate.fields,
         alternate
@@ -2267,9 +2856,7 @@ fn register_stride(block: &AddressBlock, register: &Register, layout: MapLayout)
         .as_deref()
         .map(|stride| map_offset_units(block, "register array stride", stride, layout))
         .unwrap_or_else(|| {
-            let register_bytes = parse_u64("register size", &register.size)?
-                .div_ceil(8)
-                .max(1);
+            let register_bytes = register_size_bytes(&register.size)?;
             if layout.byte_addressing {
                 Ok(register_bytes)
             } else {
@@ -2288,7 +2875,7 @@ fn register_file_stride(
         .as_deref()
         .map(|stride| map_offset_units(block, "registerFile array stride", stride, layout))
         .unwrap_or_else(|| {
-            map_offset_units(block, "registerFile range", &register_file.range, layout)
+            positive_map_offset_units(block, "registerFile range", &register_file.range, layout)
         })
 }
 
@@ -2296,12 +2883,12 @@ fn hdl_slices(register: &Register, register_hdl_path: Option<&String>) -> Result
     hdl_slices_from_fields(&register.fields, register_hdl_path)
 }
 
-fn indexed_hdl_slices(register: &Register, dim_count: usize) -> Result<Vec<IndexedHdlSlices>> {
-    validate_unique_indexed_hdl_paths(&register.name, dim_count, &register.indexed_hdl_paths)?;
+fn indexed_hdl_slices(register: &Register, dims: &[u64]) -> Result<Vec<IndexedHdlSlices>> {
+    validate_unique_indexed_hdl_paths(&register.name, dims, &register.indexed_hdl_paths)?;
     for field in &register.fields {
         validate_unique_indexed_hdl_paths(
             &format!("{}.{}", register.name, field.name),
-            dim_count,
+            dims,
             &field.indexed_hdl_paths,
         )?;
     }
@@ -2311,15 +2898,16 @@ fn indexed_hdl_slices(register: &Register, dim_count: usize) -> Result<Vec<Index
         .iter()
         .map(|indexed| {
             Ok(IndexedHdlSlices {
-                indices: indexed_access_handle_indices(register, dim_count, indexed)?,
+                indices: indexed_access_handle_indices(&register.name, dims, indexed)?,
                 slices: hdl_slices_from_fields(&register.fields, Some(&indexed.path))?,
             })
         })
         .collect::<Result<Vec<_>>>()?;
 
     for field in &register.fields {
+        let field_owner = format!("{}.{}", register.name, field.name);
         for indexed in &field.indexed_hdl_paths {
-            let indices = indexed_access_handle_indices(register, dim_count, indexed)?;
+            let indices = indexed_access_handle_indices(&field_owner, dims, indexed)?;
             let slices = if indexed.slices.is_empty() {
                 vec![HdlPathSlice {
                     path: indexed.path.clone(),
@@ -2346,19 +2934,12 @@ fn indexed_hdl_slices(register: &Register, dim_count: usize) -> Result<Vec<Index
 
 fn validate_unique_indexed_hdl_paths(
     owner: &str,
-    dim_count: usize,
+    dims: &[u64],
     indexed_paths: &[crate::model::IndexedHdlPath],
 ) -> Result<()> {
     let mut used = Vec::new();
     for indexed in indexed_paths {
-        let indices = parse_dims("accessHandle index", &indexed.indices)?;
-        if indices.len() != dim_count {
-            return Err(Error::AccessHandleIndexDimensionMismatch {
-                register: owner.into(),
-                expected: dim_count,
-                actual: indices.len(),
-            });
-        }
+        let indices = indexed_access_handle_indices(owner, dims, indexed)?;
         if used.iter().any(|used_indices| used_indices == &indices) {
             return Err(Error::DuplicateAccessHandleIndices {
                 owner: owner.into(),
@@ -2375,17 +2956,27 @@ fn validate_unique_indexed_hdl_paths(
 }
 
 fn indexed_access_handle_indices(
-    register: &Register,
-    dim_count: usize,
+    owner: &str,
+    dims: &[u64],
     indexed: &crate::model::IndexedHdlPath,
 ) -> Result<Vec<u64>> {
     let indices = parse_dims("accessHandle index", &indexed.indices)?;
-    if indices.len() != dim_count {
+    if indices.len() != dims.len() {
         return Err(Error::AccessHandleIndexDimensionMismatch {
-            register: register.name.clone(),
-            expected: dim_count,
+            register: owner.into(),
+            expected: dims.len(),
             actual: indices.len(),
         });
+    }
+    for (dimension, (index, size)) in indices.iter().zip(dims).enumerate() {
+        if index >= size {
+            return Err(Error::AccessHandleIndexOutOfRange {
+                owner: owner.into(),
+                dimension: dimension + 1,
+                index: *index,
+                size: *size,
+            });
+        }
     }
     Ok(indices)
 }
@@ -2424,7 +3015,7 @@ fn hdl_slices_from_fields(
             slices.push(HdlSlice {
                 path_expr: hdl_path_expr(register_hdl_path.map(String::as_str), field_hdl_path),
                 offset: parse_u64("field bitOffset", &field.bit_offset)? as i64,
-                size: parse_u64("field bitWidth", &field.bit_width)? as i64,
+                size: parse_field_bit_width(&field.bit_width)? as i64,
                 first: sv_bool_literal(true),
             });
         }
@@ -2458,7 +3049,7 @@ fn field_hdl_slices(
     }
 
     let field_offset = parse_u64("field bitOffset", &field.bit_offset)?;
-    let field_width = parse_u64("field bitWidth", &field.bit_width)?;
+    let field_width = parse_field_bit_width(&field.bit_width)?;
     let widths = path_slices
         .iter()
         .map(|slice| hdl_path_slice_width(field, slice, path_slices.len()))
@@ -2498,7 +3089,7 @@ fn hdl_path_slice_width(field: &Field, slice: &HdlPathSlice, slice_count: usize)
             let right = parse_u64("accessHandle slice right", right)?;
             Ok(left.abs_diff(right) + 1)
         }
-        (None, None) if slice_count == 1 => parse_u64("field bitWidth", &field.bit_width),
+        (None, None) if slice_count == 1 => parse_field_bit_width(&field.bit_width),
         _ => Err(Error::AccessHandleSliceRangeMissing {
             field: field.name.clone(),
         }),
@@ -2535,13 +3126,23 @@ fn hdl_path_expr(parent: Option<&str>, child: &str) -> String {
 }
 
 fn width_bytes(block: &AddressBlock) -> Result<u64> {
-    let width = parse_u64("addressBlock width", &block.width)?;
-    Ok(width.div_ceil(8).max(1))
+    Ok(parse_address_block_width_bits(&block.width)?.div_ceil(8))
+}
+
+fn parse_address_block_width_bits(width: &str) -> Result<u64> {
+    let width_bits = parse_u64("addressBlock width", width)?;
+    if width_bits == 0 {
+        return Err(Error::InvalidNumber {
+            field: "addressBlock width",
+            value: width.into(),
+        });
+    }
+    Ok(width_bits)
 }
 
 fn memory_size_words(block: &AddressBlock) -> Result<u64> {
     let range = range_bytes(block, "addressBlock range", &block.range)?;
-    Ok(range.div_ceil(width_bytes(block)?).max(1))
+    Ok(range.div_ceil(width_bytes(block)?))
 }
 
 fn is_memory_block(block: &AddressBlock) -> bool {
@@ -2551,12 +3152,15 @@ fn is_memory_block(block: &AddressBlock) -> bool {
         .is_some_and(|usage| usage.eq_ignore_ascii_case("memory"))
 }
 
-fn memory_rights(block: &AddressBlock) -> String {
-    match block.access.as_deref() {
-        Some("read-only") => "RO",
-        _ => "RW",
+fn memory_rights(block: &AddressBlock) -> Result<String> {
+    match block.access.as_deref().unwrap_or("read-write") {
+        "read-only" => Ok("RO".into()),
+        "read-write" => Ok("RW".into()),
+        access => Err(Error::UnsupportedMemoryAccess {
+            block: block.name.clone(),
+            access: access.into(),
+        }),
     }
-    .into()
 }
 
 fn register_rights(block: &AddressBlock, register: &Register) -> String {
@@ -2571,9 +3175,9 @@ fn register_rights_from_fields(
     let mut has_read = false;
     let mut has_write = false;
     for field in fields {
-        let access = uvm_access(effective_access(block, register_access, field), field);
-        has_read |= access.contains('R');
-        has_write |= access.contains('W');
+        let access = effective_access(block, register_access, field);
+        has_read |= access_allows_read(access);
+        has_write |= access_allows_write(access);
     }
     match (has_read, has_write) {
         (true, false) => "RO",
@@ -2596,16 +3200,20 @@ fn effective_access<'a>(
         .unwrap_or("read-write")
 }
 
-fn uvm_access(access: &str, field: &Field) -> String {
-    match (
+fn uvm_access(access: &str, field: &Field) -> Result<String> {
+    let uvm_access = match (
         access,
         field.modified_write_value.as_deref(),
         field.read_action.as_deref(),
     ) {
-        (_, Some("oneToClear"), Some("clear")) => "W1SRC",
+        (_, Some("oneToSet"), Some("clear")) => "W1SRC",
         (_, Some("oneToClear"), Some("set")) => "W1CRS",
-        (_, Some("zeroToClear"), Some("clear")) => "W0SRC",
+        (_, Some("zeroToSet"), Some("clear")) => "W0SRC",
         (_, Some("zeroToClear"), Some("set")) => "W0CRS",
+        (_, Some("set"), Some("clear")) => "WSRC",
+        (_, Some("clear"), Some("set")) => "WCRS",
+        ("write-only", Some("clear"), _) => "WOC",
+        ("write-only", Some("set"), _) => "WOS",
         (_, Some("oneToClear"), _) => "W1C",
         (_, Some("oneToSet"), _) => "W1S",
         (_, Some("oneToToggle"), _) => "W1T",
@@ -2614,17 +3222,34 @@ fn uvm_access(access: &str, field: &Field) -> String {
         (_, Some("zeroToToggle"), _) => "W0T",
         (_, Some("clear"), _) => "WC",
         (_, Some("set"), _) => "WS",
-        ("read-write", _, Some("clear")) => "RC",
-        ("read-write", _, Some("set")) => "RS",
-        ("read-only", _, Some("clear")) => "RC",
-        ("read-only", _, Some("set")) => "RS",
-        ("read-only", _, _) => "RO",
-        ("write-only", _, _) => "WO",
-        ("writeOnce", _, _) => "WO1",
-        ("read-writeOnce", _, _) => "WO1",
-        _ => "RW",
-    }
-    .into()
+        ("read-write", _, Some("clear")) => "WRC",
+        ("read-write", _, Some("set")) => "WRS",
+        ("read-only", None, Some("clear")) => "RC",
+        ("read-only", None, Some("set")) => "RS",
+        ("read-only", None, None) => "RO",
+        ("write-only", None, None) => "WO",
+        ("writeOnce", None, None) => "WO1",
+        ("read-writeOnce", None, None) => "W1",
+        ("no-access", None, None) => "NOACCESS",
+        ("read-write", None, None) => "RW",
+        _ => {
+            return Err(Error::UnsupportedAccessPolicy {
+                field: field.name.clone(),
+                access: access.into(),
+                modified_write_value: field.modified_write_value.clone(),
+                read_action: field.read_action.clone(),
+            });
+        }
+    };
+    Ok(uvm_access.into())
+}
+
+fn access_allows_read(access: &str) -> bool {
+    !matches!(access, "write-only" | "writeOnce" | "no-access")
+}
+
+fn access_allows_write(access: &str) -> bool {
+    !matches!(access, "read-only" | "no-access")
 }
 
 fn is_writable_access(access: &str) -> bool {
@@ -2650,10 +3275,6 @@ fn is_truthy_sv_bool(value: &str) -> bool {
 
 fn sv_bool_literal(value: bool) -> &'static str {
     if value { "1'b1" } else { "1'b0" }
-}
-
-fn bit_literal(field: &'static str, width: u64, value: &str) -> Result<String> {
-    Ok(format!("{width}'h{:x}", parse_u64(field, value)?))
 }
 
 fn parse_u64(field: &'static str, value: &str) -> Result<u64> {
@@ -2683,6 +3304,73 @@ fn sv_string(value: &str) -> String {
 
 fn unique_const_ident(value: &str, used: &mut Vec<String>) -> String {
     unique_ident(value, used).to_ascii_uppercase()
+}
+
+fn reserved_block_member_names() -> Vec<String> {
+    reserved_generated_names(&[
+        "build",
+        "configure",
+        "create_map",
+        "default_map",
+        "get_full_name",
+        "get_name",
+        "lock_model",
+        "name",
+        "new",
+        "parent",
+    ])
+}
+
+fn reserved_register_member_names(coverage: bool) -> Vec<String> {
+    let mut names = reserved_generated_names(&[
+        "add_coverage",
+        "build",
+        "build_coverage",
+        "configure",
+        "get_coverage",
+        "map",
+        "name",
+        "new",
+        "parent",
+        "sample",
+    ]);
+    if coverage {
+        names.extend(reserved_generated_names(&[
+            "byte_en",
+            "cg_bits",
+            "data",
+            "is_read",
+            "m_be",
+            "m_data",
+            "m_is_read",
+        ]));
+    }
+    names
+}
+
+fn reserved_register_file_member_names() -> Vec<String> {
+    reserved_generated_names(&[
+        "build",
+        "configure",
+        "get_block",
+        "map",
+        "mp",
+        "name",
+        "new",
+        "offset",
+        "parent",
+    ])
+}
+
+fn reserved_generated_names(values: &[&str]) -> Vec<String> {
+    let mut names = values.iter().map(|value| ident(value)).collect::<Vec<_>>();
+    names.push("i".into());
+    for index in 0..8 {
+        names.push(format!("i{index}"));
+    }
+    names.sort();
+    names.dedup();
+    names
 }
 
 fn unique_ident(value: &str, used: &mut Vec<String>) -> String {

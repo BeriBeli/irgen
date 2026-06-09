@@ -39,6 +39,7 @@ pub struct SubspaceMap {
     pub map_name: String,
     pub base_address: String,
     pub address_unit_bits: String,
+    pub initiator_ref: String,
     pub address_space_ref: Option<String>,
     pub segment_ref: Option<String>,
 }
@@ -132,6 +133,7 @@ pub struct Field {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Reset {
     pub value: String,
+    pub mask: Option<String>,
     pub reset_type: Option<String>,
 }
 

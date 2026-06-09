@@ -2,28 +2,26 @@
 
 ## Status
 
-`irgen ip-xact` generates UVM IEEE 2020 register model SystemVerilog directly
-from IP-XACT component XML. This path is intentionally separate from the
-snapsheet-to-IR conversion flow: IP-XACT input is parsed into the `uvmreg`
-crate's own register model and then rendered through a SystemVerilog template.
-The template is organized as a small top-level include/header template plus
-partials for register, register-file, and block classes, following the
-same maintainability direction as generators such as PeakRDL-uvm where package
-and header emission are template-driven rather than one large hard-coded file.
+`irgen ip-xact` generates include-style UVM IEEE 1800.2-2020 register model
+SystemVerilog directly from IP-XACT component XML. This path is separate from
+the snapsheet-to-IR conversion flow: IP-XACT input is parsed into the `uvmreg`
+crate's register model and rendered through SystemVerilog templates.
+
+The current milestone is "common engineering usable" generation for real
+register-map XML. That means direct memory maps, address blocks, banks,
+registers, register files, arrays, fields, resets, access values,
+enumerations, common 2022 type-definition reuse, generation-time mode/view
+selection, and common HDL backdoor paths.
+
+Simulator validation is intentionally outside the current target. Until a UVM
+verification environment is available, correctness is guarded by Rust tests,
+generated-SystemVerilog structural checks, and golden-pattern checks.
 
 When `-o/--output` is omitted, the generated file is named:
 
 ```text
 ral_<component-name>.sv
 ```
-
-The first practical milestone is a common engineering usable generator, not a
-complete implementation of every IP-XACT schema branch. In this document,
-"common engineering usable" means the generator should handle real register
-component XML that uses memory maps, address blocks, banks, registers,
-register files, arrays, fields, resets, access values,
-enumerations, local type definitions, common 2022 type-definition reuse, and
-basic HDL backdoor paths.
 
 ## CLI
 
@@ -48,267 +46,131 @@ layout, the directory defaults to `ral_<component-name>`.
 
 For IEEE 1685-2022 `externalTypeDefinitions`, the CLI scans XML files in the
 input file's directory and any `--library-path` directories. It matches
-component/type-definition XML directly by VLNV and also follows IP-XACT
-`catalog` files whose `ipxactFile` entries point to matching XML files.
+component/type-definition XML directly by VLNV and follows IP-XACT `catalog`
+files whose `ipxactFile` entries point to matching XML files.
 
-## Current Coverage
+## Supported Generation
 
-The current generator covers these UVM register-model constructs:
+| Area | Current support |
+| --- | --- |
+| UVM output shape | Generates `uvm_reg_block`, `uvm_reg`, `uvm_reg_file`, and `uvm_mem` classes with conventional `ral_sys_*`, `ral_block_*`, `ral_regfile_*`, and `ral_reg_*` names. Generated maps use IEEE UVM `create_map(name, 0, n_bytes, UVM_LITTLE_ENDIAN, byte_addressing)` and avoid redeclaring `uvm_reg_block::default_map`. |
+| File layout | Supports single-file output and block-split output. Generated files are include-style SystemVerilog intended to be consumed by an existing UVM testbench/package setup. |
+| Memory maps | Supports one or more IP-XACT `memoryMap` elements, `addressUnitBits`, `addressBlock`, `bank`, `memoryRemap`, and local 2022 `addressSpaces/addressSpace/localMemoryMap` through generated child blocks and `add_submap`. |
+| Registers and hierarchy | Supports `register`, `alternateRegister`, `registerFile`, scalar and multidimensional register/register-file arrays, top-level and banked structures, and deterministic flattened names where the IP-XACT structure requires flattening. |
+| Fields | Supports field construction/configuration, enumerated values as SystemVerilog enum typedefs, `volatile`, `testable=false`, and `reserved=true` metadata when those values are static. `testable=false` and `reserved=true` generate `set_compare(UVM_NO_CHECK)`. |
+| Access values | Maps common IP-XACT access and side-effect combinations to IEEE 1800.2 predefined UVM field access strings, including `RW`, `RO`, `WO`, `W1`, `WO1`, `NOACCESS`, `RC`, `RS`, `WC`, `WS`, `W1C`, `W1S`, `W1T`, `W0C`, `W0S`, `W0T`, `WRC`, `WRS`, `WOC`, `WOS`, `WSRC`, `WCRS`, `W1SRC`, `W1CRS`, `W0SRC`, and `W0CRS`. Unsupported combinations are reported instead of being emitted as `RW`. |
+| Memories | `usage=memory` address blocks generate `uvm_mem` instances. IP-XACT omitted or `read-write` memory access becomes UVM `"RW"`; `read-only` becomes `"RO"`. Other memory access values are reported because IEEE 1800.2 `uvm_mem::new` only defines `"RW"` and `"RO"`. |
+| Resets | Supports reset values, reset masks, reset type names, and additional reset values through `set_reset`. |
+| Expressions | Evaluates common static numeric expressions for offsets, ranges, widths, dimensions, reset values, enum values, and static boolean metadata. Supported operators include parentheses, `+`, `-`, `*`, `/`, `%`, `<<`, `>>`, `&`, `|`, `^`, comparisons, `&&`, `||`, and `!`, with checked unsigned arithmetic. Simple parameters and `configurableElementValue referenceId` constants are supported, including local overrides on referenced 2022 type-definition instances. |
+| `isPresent` | Filters RAL-relevant nodes when `isPresent` is a static boolean, concrete number, supported parameter/configurable expression, or supported comparison/logical expression. Invalid or unsupported `isPresent` expressions are reported. |
+| Mode selection | `--mode <modeRef>` selects matching register/addressBlock access policies, field access policies, and matching `memoryRemap` entries at generation time. Matching policies honor lower numeric `modeRef priority` first. If a requested mode has no matching or generic policy, generation reports a diagnostic instead of using another explicit mode. |
+| View selection | `--view <viewRef>` selects matching HDL backdoor `accessHandle` entries with generic handles as the only fallback. Handles for other explicit views are not used as fallback. |
+| HDL backdoor paths | Uses IEEE UVM public APIs instead of emitting `uvm_hdl_path_slice` literals directly. Field slices generate `add_hdl_path_slice(path, offset, size, first)`. Whole-register paths use the UVM `offset=-1`, `size=-1` convention. Multi-slice fields, register-array indexed handles, field-level indexed slices, memory HDL paths, and selected path-bearing fallback are supported. |
+| Type definitions | Supports local 2022 `typeDefinitions`, scoped `typeDefinitions="..."` references, same-directory external `typeDefinitionsRef`, additional `--library-path` directories, and catalog-backed external 2022 type-definition resolution by VLNV. |
+| Coverage | `--coverage` emits register bit coverage with `UVM_CVR_REG_BITS` and memory address-map coverage with `UVM_CVR_ADDR_MAP`, including generated covergroups and sampling hooks. Runtime coverage still depends on the consuming testbench enabling UVM RAL coverage before model construction and enabling simulator coverage collection. |
+| Diagnostics | Reports duplicate sibling names, missing type definitions, generated SystemVerilog class/member name collisions, illegal generated identifiers, malformed access handles, unsupported access policies, unsupported behavior-affecting schema features, invalid booleans, zero sizes/ranges, field overlaps, register/register-file/address-block/memory-map address overlaps, unresolved submaps, and unsupported parameter/configurable expressions used by generated RAL. |
+| Retained metadata | Descriptions, comments, and enum usage comments are intentionally ignored until they drive generated UVM behavior. |
 
-- Include-style SystemVerilog class files targeting UVM IEEE 2020. The file can
-  be included inside an existing testbench module, matching many legacy RAL
-  environments.
-- `uvm_reg_block` / `uvm_reg` classes. Generated class names follow a
-  conventional RAL style:
-  `ral_reg_<path>`, `ral_regfile_<path>`, `ral_block_<block>`, and top-level
-  `ral_sys_<component-name>`.
-- One or more IP-XACT `memoryMap` elements mapped to UVM maps.
-- `addressUnitBits`, including non-byte-addressed maps where representable by
-  UVM map settings.
-- `addressBlock` elements as real child `uvm_reg_block` classes. The top
-  component block connects them with `add_submap`.
-- `usage=memory` blocks as `uvm_mem` instances inside their address-block
-  classes.
-- `register`, `field`, and `alternateRegister`.
-- Scalar and multidimensional `dim` / `array` forms for registers and register
-  files.
-- `registerFile` hierarchy using generated `uvm_reg_file` subclasses, so common
-  test sequences can use natural paths such as `model.block0.regfile_0[i].rega`.
-- Top-level and banked `bank` structures, flattened into address blocks while
-  preserving deterministic generated names.
-- IEEE 1685-2022 `addressSpaces/addressSpace/localMemoryMap` mapped into
-  child `uvm_reg_block` classes and connected with `add_submap` when a
-  `subspaceMap` can be resolved through an initiator `addressSpaceRef`.
-- `addressSpace/segments/segment` offset handling. When `subspaceMap segmentRef`
-  resolves to a local address-space segment, the generated `add_submap` offset
-  subtracts the segment `addressOffset` so the segment's local addresses land
-  at the subspace map base address.
-  If the referenced local address space exposes blocks outside the segment
-  range, generation reports a diagnostic instead of emitting an overbroad
-  submap.
-- `memoryRemap` contents as generated registers.
-- Resets, including reset type names and additional reset values through
-  `set_reset`.
-- Common constant numeric expressions for offsets, ranges, widths, dimensions,
-  reset values, and enum values, including decimal/hex/binary literals,
-  SystemVerilog-sized integer literals, underscores, parentheses, `+ - * /`
-  arithmetic, simple component/type-definition parameters, and
-  `configurableElementValue referenceId` constants. Referenced 2022
-  type-definition instances may override definition-local numeric parameters
-  through local `configurableElementValues`. XML text entity references such as
-  `&lt;`, `&gt;`, and `&amp;` are decoded before expression evaluation.
-- Static `isPresent` filtering for RAL-relevant nodes when the condition is a
-  boolean, concrete number, supported parameter expression, or simple static
-  comparison/logical expression using `==`, `!=`, `<`, `<=`, `>`, `>=`, `&&`,
-  `||`, and `!`.
-- Access policies and field access policies when they define the effective
-  access used by generated registers or fields.
-- Generation-time `--mode <modeRef>` selection for mode-specific
-  `accessPolicy` and `fieldAccessPolicy` entries, plus filtering of
-  `memoryRemap` entries by `modeRef`. When multiple policies match the
-  requested mode, lower numeric `modeRef priority` values are selected first.
-- Field `testable=false` and `reserved=true` metadata as UVM RAL compare
-  control through `uvm_reg_field::set_compare(UVM_NO_CHECK)`.
-- Common UVM access strings for read-only, write-only, read-write, write-one,
-  write-zero, read-clear, and related field side-effect forms.
-- Field enumerated values as SystemVerilog enum typedefs.
-- Optional register and memory coverage with `--coverage`. This emits UVM
-  `UVM_CVR_REG_BITS` support in generated `uvm_reg` classes using
-  `build_coverage`, `add_coverage`, `get_coverage`, a `cg_bits` covergroup,
-  and a `sample()` override compatible with UVM IEEE 2020. It also emits
-  generated `uvm_mem` subclasses with `UVM_CVR_ADDR_MAP` address coverage for
-  IP-XACT memory blocks.
-  This option generates the coverage implementation; it does not by itself
-  prove that a simulator run has enabled and reported that coverage.
-  A consuming testbench must enable UVM register coverage before model
-  construction, for example with `uvm_reg::include_coverage("*",
-  UVM_CVR_REG_BITS | UVM_CVR_ADDR_MAP)`, and the simulator build/run must also
-  enable coverage database collection.
-- Retained-only metadata such as descriptions, access restrictions, broadcasts,
-  reset masks, and enum usage comments is intentionally ignored until it drives
-  generated UVM behavior.
-- HDL backdoor paths from IP-XACT `accessHandles`:
-  - field slices through `add_hdl_path_slice`
-  - multi-slice field paths with `slice/range` mapped to multiple
-    `add_hdl_path_slice` calls
-  - whole-register paths when field slices are absent
-  - memory block HDL paths through `uvm_mem.configure`
-  - multiple `accessHandle` entries by preferring a generic handle with no
-    `viewRef`, then falling back to the first path-bearing handle
-  - explicit `--view <viewRef>` selection for view-specific backdoor paths
-  - register-array element paths from IP-XACT `accessHandle/indices`, including
-    field-level indexed slices
-- Local 2022 `typeDefinitions` and scoped `typeDefinitions="..."` references
-  for:
-  - `memoryMapDefinitionRef`
-  - `bankDefinitionRef`
-  - `remapDefinitionRef`
-  - `addressBlockDefinitionRef`
-  - `registerDefinitionRef`
-  - `registerFileDefinitionRef`
-  - `fieldDefinitionRef`
-  - `enumerationDefinitionRef`
-  - `fieldAccessPolicyDefinitionRef`
-- Same-directory external 2022 `typeDefinitionsRef` resolution by VLNV.
-- Additional `--library-path` directories and IP-XACT `catalog` files for
-  external 2022 `typeDefinitionsRef` resolution by VLNV.
-- Diagnostics for generated SystemVerilog class-name collisions after IP-XACT
-  names are normalized to legal identifiers.
-- Diagnostics for duplicate IP-XACT sibling names before map layout
-  generation, including `memoryMap`, `addressSpace`, `segment`,
-  `addressBlock`, `subspaceMap`, `memoryRemap`, `register`, `registerFile`,
-  `alternateRegister`, `field`, and `enumeratedValue` names.
-- Diagnostics for missing internal or scoped 2022 type-definition references,
-  including memory-map, remap, bank, address-block, register-file, register,
-  field, enumeration, and field-access-policy definitions.
-- Diagnostics for malformed IP-XACT `accessHandle` entries, including indexed
-  dimension mismatches, duplicate indices on the same register or field, and
-  multi-slice field paths with missing or width-mismatched ranges.
-
-## Five-Version Usability Assessment
+## IP-XACT Version Status
 
 The parser is namespace-agnostic and has tests for SPIRIT 1.4, SPIRIT 1.5,
-IEEE 1685-2009, IEEE 1685-2014, and IEEE 1685-2022 component roots. For common
-engineering register XML, the practical status is:
+IEEE 1685-2009, IEEE 1685-2014, and IEEE 1685-2022 component roots. The same
+shared register-map fixture is generated through all five namespaces and
+checked by the generated-SV structural/golden gate.
 
 | Input version | Common engineering usability | Notes |
 | --- | --- | --- |
-| SPIRIT 1.4 | Partial but useful | Direct memory maps, address blocks, registers, fields, resets, and access values are expected to work. Older schema shape lacks standard modern register-model constructs such as 2014/2022-style `accessHandles` and `registerFile`, so arrays/hierarchy may already be flattened or represented differently in source XML. |
-| SPIRIT 1.5 | Partial but useful | Similar to 1.4, with better register-file support in the schema. Common direct register maps should parse, but newer 2022 type-definition reuse and address-space submap features do not exist in this version. |
-| IEEE 1685-2009 | Partial but useful | Common component register maps should parse. Modern 2014/2022 access-handle and type-definition patterns are not expected in this version. |
-| IEEE 1685-2014 | Good for common register maps | Direct memory maps, registers, register files, banks, fields, resets, access values, and standard access handles are in the expected usable path. Some 2022-only type-definition structures are not present. |
-| IEEE 1685-2022 | Best current coverage | This is the primary target. The generator supports common 2022 type definitions, external type-definition references, memory-map definitions, bank definitions, remap definitions, address spaces, local memory maps, submaps, and access handles. |
+| SPIRIT 1.4 | Partial but useful | Direct memory maps, address blocks, registers, fields, resets, and access values are expected to work. Modern schema features such as 2014/2022 access handles and 2022 type definitions do not exist in this version. |
+| SPIRIT 1.5 | Partial but useful | Similar to 1.4, with better register-file support in the schema. Newer 2022 type-definition and address-space submap features do not exist. |
+| IEEE 1685-2009 | Partial but useful | Common component register maps should parse. Modern 2014/2022 access-handle and type-definition patterns are not expected. |
+| IEEE 1685-2014 | Good for common register maps | Direct memory maps, registers, register files, banks, fields, resets, access values, and standard access handles are in the usable path. |
+| IEEE 1685-2022 | Best current coverage | Primary target. Supports common type definitions, external references, memory-map definitions, bank/remap definitions, address spaces, local memory maps, submaps, and access handles. |
 
-The UVM output target is currently the same for all input versions:
-UVM IEEE 2020-style SystemVerilog. Version differences affect what IP-XACT
-source XML can express and therefore what the parser can recover.
+The UVM output target is the same for all input versions:
+UVM IEEE 1800.2-2020-style SystemVerilog. Version differences affect what the
+source XML can express and what the parser can recover.
 
-## Completion Assessment
+## Readiness
 
-Current implementation status, using a practical engineering-readiness scale:
-
-| Target | Estimated readiness | Meaning |
+| Target | Estimated readiness | Main gap |
 | --- | ---: | --- |
-| Common single-project register map generation | ~75-80% | Core UVM classes, maps, fields, arrays, resets, access values, generation-time mode/view selection, common backdoor paths, diagnostics, and optional register/memory coverage are present. The largest remaining risks are simulator regression coverage, richer configurable expression semantics, unsupported-feature diagnostics, and local coding-style expectations. |
-| Common engineering usability across five input versions | ~60-70% | All five namespaces have parser entry tests, and the shared parser covers common direct register-map shapes. Each version still needs realistic fixtures that exercise its common schema shape. IEEE 1685-2014 and IEEE 1685-2022 are closer to usable than SPIRIT 1.4, SPIRIT 1.5, and IEEE 1685-2009. |
-| Broad IP-XACT RAL completeness | ~40-50% | Generation-time mode/view selection, catalog-backed type-definition resolution, common configurable constants, diagnostics, and selected coverage/backdoor modeling are implemented. Runtime mode/view behavior, choices/assertions, vendor extensions, cross-component address spaces, and complete coverage/backdoor modeling remain out of scope. |
+| Common single-project register map generation | ~80-85% | Richer configurable expression semantics, broader unsupported-feature diagnostics, more realistic fixtures, and local coding-style expectations. |
+| Common engineering usability across five input versions | ~65-75% | Each version needs realistic version-specific fixtures, not only the shared structural fixture. |
+| Broad IP-XACT RAL completeness | ~50-60% | Runtime mode/view behavior, choices/assertions, vendor extensions, cross-component address spaces, complete coverage/backdoor modeling, and project-specific style controls. |
 
-The estimate assumes the first milestone is "common engineering usable" rather
-than complete IP-XACT schema coverage. A reasonable remaining effort estimate is:
-
-| Workstream | Rough effort | Notes |
-| --- | ---: | --- |
-| Repeatable simulator and syntax gates | 2-4 days | Add a documented simulator smoke gate for generated UVM IEEE 2020 output and a smaller simulator-independent syntax/golden check where possible. |
-| Parameter/configurable evaluation | 1-3 days | Expand beyond simple numeric constants and local definition-instance overrides into choices, assertions, richer parameter type semantics, non-static `isPresent` diagnostics, and unsupported-expression reporting. |
-| Backdoor robustness | 1-3 days | Indexed register/field access handles, view selection, and multi-slice fields are present. Remaining work is richer indexed selection policy, skipped-handle diagnostics, and clearer macro/string path diagnostics. |
-| Coverage robustness | 1-2 days | Register bit and memory address-map coverage are generated. Remaining work is a coverage smoke gate, runtime enablement checks, and an explicit decision on block, memory-data, cross, and user-configurable coverage scope. |
-| Realistic five-version fixture matrix | 3-5 days | Add at least one realistic fixture per input version, preferably with golden generated SV checks. |
-| Naming, diagnostics, and stress tests | 1-3 days | Common sibling-name, generated-class-name, missing type-definition, segment-range, and malformed indexed-accessHandle diagnostics are present. Remaining work is keyword, long-name, generated-member collision, and broader unsupported-feature diagnostics. |
-
-Overall, the remaining work for a common engineering usable version is roughly
-one to three engineering weeks, dominated by fixture breadth and simulator
-gates rather than basic parser/render coverage. A much more complete IP-XACT
-RAL generator, including runtime mode/view behavior, rich vendor-extension
-handling, cross-component address-space semantics, and project-specific style
-controls, is still more likely a multi-month effort.
+These estimates assume the near-term target is common engineering usability,
+not complete IP-XACT schema coverage. The remaining non-simulator work is
+mostly fixture breadth, expression/configurable semantics, and unsupported
+feature diagnostics.
 
 ## Known Limitations
 
-The generator is not yet complete IP-XACT RAL coverage. Important limitations:
-
-- No simulator compile gate is run by default. Generated SV has Rust tests and
-  real-sample generation tests, but CI still needs a repeatable simulator smoke
-  gate before this should be called production-stable.
-- Catalog-backed VLNV resolution is currently focused on external 2022
-  `typeDefinitionsRef` documents. It scans the input directory and explicit
-  `--library-path` directories, follows catalog entries, and resolves matching
-  XML files by VLNV. Missing references report the searched paths, and
-  duplicate VLNV matches are reported as ambiguous. It is not yet a full
-  multi-root library manager with precedence controls or all IP-XACT document
-  kinds modeled in generated RAL.
+- No simulator compile gate is run by default. Current validation is
+  simulator-independent and does not replace compiling the generated UVM RAL in
+  a real verification environment.
+- Catalog-backed VLNV resolution is focused on external 2022
+  `typeDefinitionsRef` documents. It is not a full multi-root IP-XACT library
+  manager with precedence controls or all document kinds modeled in generated
+  RAL.
 - `segmentRef` offset correction is implemented for local address-space
-  segments. Because UVM maps do not directly expose a simple submap clipping
-  primitive, generation reports an error when a referenced address-space block
-  falls outside the selected segment range.
-- `memoryRemap` contents are generated. With `--mode`, remaps with matching
-  `modeRef` and remaps without a `modeRef` are generated while other
-  mode-specific remaps are skipped. Mode-dependent runtime map switching is not
-  modeled yet.
-- Mode/view behavior is only partially modeled. `--mode` selects matching
-  register and field access policies and filters memory remaps during
-  generation, including `modeRef priority` ordering for matching policies, and
-  `--view` selects matching HDL backdoor paths. Runtime mode switching and
-  retained-only mode/view metadata are not modeled yet.
-- Coverage is currently generated for register bit coverage and memory
-  address-map coverage. Block-level, cross, memory data, and user-configurable
-  coverage models are not generated yet. The `--coverage` option emits
-  covergroups and sampling hooks; coverage reporting still depends on the
-  consuming simulation enabling UVM RAL coverage before model construction and
-  enabling simulator coverage collection.
-- Parameter and configurable expression evaluation is intentionally limited.
-  Numeric fields used for offsets, widths, ranges, dimensions, and resets may
-  use concrete decimal/hex/binary literals, SystemVerilog-sized integer
-  literals, underscores, parentheses, `+ - * /` arithmetic, simple
-  component/type-definition parameters, and `configurableElementValue
-  referenceId` constants. Local `configurableElementValues` on referenced
-  type-definition instances override definition-local numeric parameters during
-  parsing. XML text entity references such as `&lt;`, `&gt;`, and `&amp;` are
-  decoded before expression evaluation. Choices, assertions, vendor extensions,
-  richer parameter type semantics, and non-static `isPresent` conditions are
-  not interpreted. Static boolean/numeric `isPresent` values, supported
-  parameter expressions, and simple comparison/logical conditions are evaluated
-  for RAL-relevant nodes before generation.
-- Access-handle selection can target a specific IP-XACT `viewRef` through
-  `--view`. When no view is requested, generated RAL prefers handles that apply
-  to all views and otherwise falls back to the first path-bearing handle.
-  Register-array element paths from IP-XACT `accessHandle/indices` are
-  supported for register-level paths and field-level slices; richer indexed
-  path selection is still limited. Indexed accessHandles whose index count does
-  not match the register array dimensions, or whose indices duplicate another
-  handle on the same register or field, are reported as generation errors.
-  Multi-slice field paths require slice ranges, and the generated slices must
-  add up to the field width.
+  segments. Generation reports an error when the referenced local address
+  space exposes blocks outside the selected segment range, because UVM maps do
+  not provide a simple submap clipping primitive.
+- `memoryRemap` is selected at generation time. Runtime mode-dependent map
+  switching is not modeled.
+- Mode/view metadata that does not affect generated access policy or HDL
+  backdoor path selection is retained-only and not modeled at runtime.
+- Coverage generation currently covers register bits and memory address maps.
+  Block-level, cross, memory data, and user-configurable coverage models are
+  not generated yet.
+- Parameter/configurable evaluation is intentionally static and limited.
+  Choices, assertions, richer parameter type semantics, vendor extensions, and
+  non-static `isPresent` behavior are not interpreted.
+- Access-handle support covers common paths, view selection, indexed register
+  arrays, indexed field slices, and multi-slice fields. Richer indexed path
+  selection, skipped-handle reporting, and macro/path-expression diagnostics
+  still need expansion.
 - Address spaces referenced through other components are not resolved. The
   implemented submap path handles local address spaces in the same component.
-- Default generated SV intentionally omits unused metadata localparams.
+- Default generated SystemVerilog intentionally omits unused metadata
+  localparams.
 
 ## Remaining Work
 
 Recommended next implementation order for the common engineering usable
 milestone:
 
-1. Add a repeatable simulator smoke gate for generated UVM IEEE 2020 output
-   when proprietary tools are available.
-2. Add a coverage smoke gate that enables `uvm_reg::include_coverage("*",
-   UVM_CVR_REG_BITS | UVM_CVR_ADDR_MAP)`, runs register and memory accesses,
-   and checks that generated `cg_bits` and `cg_addr` coverpoints appear in the
-   simulator coverage report.
-3. Add a simulator-independent generated-SV fixture, or a lightweight open
-   simulator gate for the subset it supports.
-4. Expand expression/configurable evaluation beyond simple constants and local
-   definition-instance overrides, including choices, assertions, richer
-   parameter type semantics, and clearer diagnostics.
-5. Add diagnostics for ignored or partially modeled IP-XACT features, including
-   mode/view behavior, skipped access handles, unsupported expressions, and
-   unresolved cross-document references beyond the currently modeled
-   type-definition flow.
-6. Add broader duplicate-name stress tests for generated-name collisions across
-   deep hierarchy and type-definition expansion. Common IP-XACT sibling names
-   and generated class-name collisions are already reported.
-7. Improve HDL backdoor handling:
-   - richer indexed path selection
-   - clearer macro/string path diagnostics
-8. Expand `segmentRef` support beyond local address spaces if cross-component
-   address-space resolution is added later.
-9. Expand catalog/search-path based VLNV resolution with precedence controls
-   and richer multi-root library management.
-10. Add more real-world fixtures for each supported input version.
-11. Add a public compatibility matrix in release notes once each version has at
-   least one realistic passing fixture.
+1. Add realistic version-specific golden fixtures for all supported IP-XACT
+   namespaces, building on the shared generated-SV structural/golden gate.
+2. Expand expression/configurable evaluation, especially choices, assertions,
+   richer parameter type semantics, and broader unsupported-expression
+   diagnostics.
+3. Add diagnostics for more ignored or partially modeled IP-XACT features,
+   including skipped access handles, retained-only mode/view metadata, and
+   unresolved cross-document references beyond the type-definition flow.
+4. Broaden duplicate-name and generated-name stress tests across deep
+   hierarchy and type-definition expansion.
+5. Improve HDL backdoor handling for richer indexed selection, skipped
+   non-selected handle reporting, and clearer macro/path-expression
+   diagnostics.
+6. Expand `segmentRef` and catalog/search-path support if cross-component
+   address-space or multi-root library resolution becomes part of the target.
+7. Add a public compatibility matrix in release notes once each input version
+   has at least one realistic passing fixture.
+
+Later, when a UVM verification environment is available, add simulator smoke
+gates for generated UVM IEEE 1800.2-2020 output and coverage collection. The
+coverage smoke should enable:
+
+```systemverilog
+uvm_reg::include_coverage("*", UVM_CVR_REG_BITS | UVM_CVR_ADDR_MAP);
+```
+
+and then run register/memory accesses and check that generated `cg_bits` and
+`cg_addr` coverpoints appear in the simulator coverage report.
 
 Work after the common engineering usable milestone:
 
-- Richer parameter/configurable expression evaluation.
 - Runtime mode-aware generated access behavior.
 - Runtime view-aware inclusion/exclusion behavior.
 - More complete vendor-extension preservation or selected vendor-extension

@@ -8,14 +8,20 @@ enum OperatorToken {
     Minus,
     Star,
     Slash,
+    Percent,
     LParen,
     RParen,
     EqEq,
     NotEq,
     Less,
     LessEq,
+    LessLess,
     Greater,
     GreaterEq,
+    GreaterGreater,
+    Amp,
+    Pipe,
+    Caret,
     AndAnd,
     OrOr,
     Bang,
@@ -102,6 +108,10 @@ fn tokenize(field: &'static str, value: &str) -> Result<Vec<Token>> {
                 tokens.push(Token::Operator(OperatorToken::Slash));
                 index += 1;
             }
+            '%' => {
+                tokens.push(Token::Operator(OperatorToken::Percent));
+                index += 1;
+            }
             '=' if chars.get(index + 1).is_some_and(|(_, ch)| *ch == '=') => {
                 tokens.push(Token::Operator(OperatorToken::EqEq));
                 index += 2;
@@ -114,12 +124,20 @@ fn tokenize(field: &'static str, value: &str) -> Result<Vec<Token>> {
                 tokens.push(Token::Operator(OperatorToken::LessEq));
                 index += 2;
             }
+            '<' if chars.get(index + 1).is_some_and(|(_, ch)| *ch == '<') => {
+                tokens.push(Token::Operator(OperatorToken::LessLess));
+                index += 2;
+            }
             '<' => {
                 tokens.push(Token::Operator(OperatorToken::Less));
                 index += 1;
             }
             '>' if chars.get(index + 1).is_some_and(|(_, ch)| *ch == '=') => {
                 tokens.push(Token::Operator(OperatorToken::GreaterEq));
+                index += 2;
+            }
+            '>' if chars.get(index + 1).is_some_and(|(_, ch)| *ch == '>') => {
+                tokens.push(Token::Operator(OperatorToken::GreaterGreater));
                 index += 2;
             }
             '>' => {
@@ -130,9 +148,21 @@ fn tokenize(field: &'static str, value: &str) -> Result<Vec<Token>> {
                 tokens.push(Token::Operator(OperatorToken::AndAnd));
                 index += 2;
             }
+            '&' => {
+                tokens.push(Token::Operator(OperatorToken::Amp));
+                index += 1;
+            }
             '|' if chars.get(index + 1).is_some_and(|(_, ch)| *ch == '|') => {
                 tokens.push(Token::Operator(OperatorToken::OrOr));
                 index += 2;
+            }
+            '|' => {
+                tokens.push(Token::Operator(OperatorToken::Pipe));
+                index += 1;
+            }
+            '^' => {
+                tokens.push(Token::Operator(OperatorToken::Caret));
+                index += 1;
             }
             '!' => {
                 tokens.push(Token::Operator(OperatorToken::Bang));
@@ -337,6 +367,76 @@ impl Parser<'_> {
     }
 
     fn parse_expr(&mut self) -> Result<u64> {
+        self.parse_bit_or()
+    }
+
+    fn parse_bit_or(&mut self) -> Result<u64> {
+        let mut result = self.parse_bit_xor()?;
+        loop {
+            match self.peek() {
+                Some(Token::Operator(OperatorToken::Pipe)) => {
+                    self.index += 1;
+                    result |= self.parse_bit_xor()?;
+                }
+                _ => return Ok(result),
+            }
+        }
+    }
+
+    fn parse_bit_xor(&mut self) -> Result<u64> {
+        let mut result = self.parse_bit_and()?;
+        loop {
+            match self.peek() {
+                Some(Token::Operator(OperatorToken::Caret)) => {
+                    self.index += 1;
+                    result ^= self.parse_bit_and()?;
+                }
+                _ => return Ok(result),
+            }
+        }
+    }
+
+    fn parse_bit_and(&mut self) -> Result<u64> {
+        let mut result = self.parse_shift()?;
+        loop {
+            match self.peek() {
+                Some(Token::Operator(OperatorToken::Amp)) => {
+                    self.index += 1;
+                    result &= self.parse_shift()?;
+                }
+                _ => return Ok(result),
+            }
+        }
+    }
+
+    fn parse_shift(&mut self) -> Result<u64> {
+        let mut result = self.parse_additive()?;
+        loop {
+            match self.peek() {
+                Some(Token::Operator(OperatorToken::LessLess)) => {
+                    self.index += 1;
+                    let rhs = self.parse_additive()?;
+                    let shift = u32::try_from(rhs)
+                        .map_err(|_| invalid_number_error(self.field, self.value))?;
+                    result = result
+                        .checked_shl(shift)
+                        .ok_or_else(|| invalid_number_error(self.field, self.value))?;
+                }
+                Some(Token::Operator(OperatorToken::GreaterGreater)) => {
+                    self.index += 1;
+                    let rhs = self.parse_additive()?;
+                    let shift = u32::try_from(rhs)
+                        .map_err(|_| invalid_number_error(self.field, self.value))?;
+                    result = result
+                        .checked_shr(shift)
+                        .ok_or_else(|| invalid_number_error(self.field, self.value))?;
+                }
+                _ => return Ok(result),
+            }
+        }
+    }
+
+    fn parse_additive(&mut self) -> Result<u64> {
         let mut result = self.parse_term()?;
         loop {
             match self.peek() {
@@ -374,6 +474,14 @@ impl Parser<'_> {
                         return invalid_number(self.field, self.value);
                     }
                     result /= divisor;
+                }
+                Some(Token::Operator(OperatorToken::Percent)) => {
+                    self.index += 1;
+                    let divisor = self.parse_factor()?;
+                    if divisor == 0 {
+                        return invalid_number(self.field, self.value);
+                    }
+                    result %= divisor;
                 }
                 _ => return Ok(result),
             }

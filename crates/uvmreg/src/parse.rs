@@ -72,6 +72,7 @@ struct XmlNode {
 struct Definitions {
     options: ParseOptions,
     parameters: HashMap<String, u64>,
+    unsupported_parameters: HashMap<String, String>,
     memory_maps: HashMap<String, XmlNode>,
     memory_remaps: HashMap<String, XmlNode>,
     banks: HashMap<String, XmlNode>,
@@ -182,16 +183,11 @@ impl Definitions {
                 let Some(value) = parameter.optional_child_text("value") else {
                     continue;
                 };
-                let Ok(parsed) =
-                    parse_u64_expr_with_symbols("parameter value", &value, &self.parameters)
-                else {
-                    continue;
-                };
                 if let Some(name) = parameter.optional_child_text("name") {
-                    self.parameters.insert(name, parsed);
+                    self.collect_numeric_parameter(name, &value);
                 }
                 if let Some(parameter_id) = parameter.attribute_text("parameterId") {
-                    self.parameters.insert(parameter_id, parsed);
+                    self.collect_numeric_parameter(parameter_id, &value);
                 }
             }
         }
@@ -205,14 +201,20 @@ impl Definitions {
                 if value_text.is_empty() {
                     continue;
                 }
-                let Ok(parsed) = parse_u64_expr_with_symbols(
-                    "configurableElementValue",
-                    value_text,
-                    &self.parameters,
-                ) else {
-                    continue;
-                };
-                self.parameters.insert(reference_id, parsed);
+                self.collect_numeric_parameter(reference_id, value_text);
+            }
+        }
+    }
+
+    fn collect_numeric_parameter(&mut self, key: String, value: &str) {
+        match parse_u64_expr_with_symbols("parameter value", value, &self.parameters) {
+            Ok(parsed) => {
+                self.parameters.insert(key.clone(), parsed);
+                self.unsupported_parameters.remove(&key);
+            }
+            Err(_) => {
+                self.parameters.remove(&key);
+                self.unsupported_parameters.insert(key, value.into());
             }
         }
     }
@@ -462,7 +464,7 @@ fn parse_component(root: &XmlNode, definitions: &Definitions) -> Result<Componen
                     .optional_child_text("addressUnitBits")
                     .or_else(|| source.optional_child_text("addressUnitBits"))
                     .unwrap_or_else(|| "8".into()),
-            );
+            )?;
             for block in source.children_named("addressBlock") {
                 if !node_is_present(block, definitions, "addressBlock isPresent")? {
                     continue;
@@ -580,7 +582,7 @@ fn parse_address_spaces(root: &XmlNode, definitions: &Definitions) -> Result<Vec
             address_space
                 .optional_child_text("addressUnitBits")
                 .unwrap_or_else(|| "8".into()),
-        );
+        )?;
         let segments = parse_segments(address_space, definitions)?;
         let mut blocks = Vec::new();
 
@@ -896,6 +898,7 @@ fn parse_subspace_map(
             "subspaceMap baseAddress",
         )?,
         address_unit_bits: address_unit_bits.into(),
+        initiator_ref,
         address_space_ref,
         segment_ref: node.attribute_text("segmentRef"),
     })
@@ -920,7 +923,7 @@ fn parse_memory_remap(
         node.optional_child_text("addressUnitBits")
             .or_else(|| source.optional_child_text("addressUnitBits"))
             .unwrap_or_else(|| address_unit_bits.into()),
-    );
+    )?;
     let mut blocks = Vec::new();
     let mut subspace_maps = Vec::new();
     let mut block_names = Vec::new();
@@ -1090,6 +1093,13 @@ fn parse_address_block_from(
     let mut child_names = Vec::new();
     let scoped_definitions = definitions.with_node_parameter_values(source, instance);
     let definitions = &scoped_definitions;
+    validate_unsupported_access_policy_features(
+        "addressBlock",
+        name,
+        instance,
+        source,
+        definitions,
+    )?;
 
     for child in &source.children {
         match child.name.as_str() {
@@ -1127,29 +1137,40 @@ fn parse_address_block_from(
             instance
                 .optional_child_text("range")
                 .unwrap_or(source.child_text("range")?),
-        ),
+        )?,
         width: normalize_numeric_text(
             definitions,
             "addressBlock width",
             instance
                 .optional_child_text("width")
                 .unwrap_or(source.child_text("width")?),
-        ),
+        )?,
         address_unit_bits: address_unit_bits.into(),
         usage: instance
             .optional_child_text("usage")
             .or_else(|| source.optional_child_text("usage")),
-        volatile: instance
-            .optional_child_text("volatile")
-            .or_else(|| source.optional_child_text("volatile")),
-        access: inherited_access_policy_access(instance, source, definitions).or_else(|| {
+        volatile: normalize_optional_bool_text(
+            definitions,
+            "addressBlock volatile",
+            instance
+                .optional_child_text("volatile")
+                .or_else(|| source.optional_child_text("volatile")),
+        )?,
+        access: inherited_access_policy_access(
+            "addressBlock",
+            name,
+            instance,
+            source,
+            definitions,
+        )?
+        .or_else(|| {
             instance
                 .optional_child_text("access")
                 .or_else(|| source.optional_child_text("access"))
         }),
         hdl_path: inherited_access_handle_path(
             parent_hdl_path,
-            access_handle_path_for_node(instance, definitions),
+            access_handle_path_for_node(instance, definitions, name)?,
         ),
         registers,
         register_files,
@@ -1177,7 +1198,7 @@ fn parse_bank(
         node.optional_child_text("addressUnitBits")
             .or_else(|| source.optional_child_text("addressUnitBits"))
             .unwrap_or_else(|| address_unit_bits.into()),
-    );
+    )?;
     let mut path = parent_path;
     path.push(name);
     let base = node
@@ -1187,7 +1208,7 @@ fn parse_bank(
         .map_or(inherited_base, |base| inherited_base + base);
     let bank_hdl_path = inherited_access_handle_path(
         parent_hdl_path.as_ref(),
-        access_handle_path_for_node(node, definitions),
+        access_handle_path_for_node(node, definitions, &path.join("_"))?,
     );
     let alignment = node
         .attribute_text("bankAlignment")
@@ -1272,7 +1293,7 @@ fn parse_register_file(node: &XmlNode, definitions: &Definitions) -> Result<Regi
         .unwrap_or(node);
     let scoped_definitions = definitions.with_node_parameter_values(source, node);
     let definitions = &scoped_definitions;
-    let dims = element_dims(node, definitions);
+    let dims = element_dims(node, definitions)?;
     let mut registers = Vec::new();
     let mut register_names = Vec::new();
     let register_file_name = node.child_text("name")?;
@@ -1289,6 +1310,7 @@ fn parse_register_file(node: &XmlNode, definitions: &Definitions) -> Result<Regi
         )?;
         registers.push(parse_register(register, definitions)?);
     }
+    let hdl_path = access_handle_path_for_node(node, definitions, &register_file_name)?;
 
     Ok(RegisterFile {
         name: register_file_name,
@@ -1303,11 +1325,11 @@ fn parse_register_file(node: &XmlNode, definitions: &Definitions) -> Result<Regi
             "registerFile range",
             node.optional_child_text("range")
                 .unwrap_or(source.child_text("range")?),
-        ),
+        )?,
         dim: total_dim_text(&dims),
         dims,
-        stride: array_stride(node, definitions),
-        hdl_path: access_handle_path_for_node(node, definitions),
+        stride: array_stride(node, definitions)?,
+        hdl_path,
         registers,
     })
 }
@@ -1318,10 +1340,17 @@ fn parse_register(node: &XmlNode, definitions: &Definitions) -> Result<Register>
         .unwrap_or(node);
     let scoped_definitions = definitions.with_node_parameter_values(source, node);
     let definitions = &scoped_definitions;
-    let dims = element_dims(node, definitions);
+    let dims = element_dims(node, definitions)?;
     let mut fields = Vec::new();
     let mut field_names = Vec::new();
     let register_name = node.child_text("name")?;
+    validate_unsupported_access_policy_features(
+        "register",
+        &register_name,
+        node,
+        source,
+        definitions,
+    )?;
     for field in source.children_named("field") {
         if !node_is_present(field, definitions, "field isPresent")? {
             continue;
@@ -1333,7 +1362,7 @@ fn parse_register(node: &XmlNode, definitions: &Definitions) -> Result<Register>
             &register_name,
             &field.child_text("name")?,
         )?;
-        fields.push(parse_field(field, definitions)?);
+        fields.push(parse_field(field, definitions, Some(&register_name))?);
     }
     let alternate_registers = node
         .child("alternateRegisters")
@@ -1357,6 +1386,15 @@ fn parse_register(node: &XmlNode, definitions: &Definitions) -> Result<Register>
         })
         .transpose()?
         .unwrap_or_default();
+    let indexed_hdl_paths =
+        indexed_access_handle_paths_for_node(node, definitions, &register_name)?;
+    let hdl_path = access_handle_path_for_node(node, definitions, &register_name)?;
+    let access =
+        inherited_access_policy_access("register", &register_name, node, source, definitions)?
+            .or_else(|| {
+                node.optional_child_text("access")
+                    .or_else(|| source.optional_child_text("access"))
+            });
 
     Ok(Register {
         name: register_name,
@@ -1371,19 +1409,19 @@ fn parse_register(node: &XmlNode, definitions: &Definitions) -> Result<Register>
             "register size",
             node.optional_child_text("size")
                 .unwrap_or(source.child_text("size")?),
-        ),
+        )?,
         dim: total_dim_text(&dims),
         dims,
-        stride: array_stride(node, definitions),
-        volatile: node
-            .optional_child_text("volatile")
-            .or_else(|| source.optional_child_text("volatile")),
-        access: inherited_access_policy_access(node, source, definitions).or_else(|| {
-            node.optional_child_text("access")
-                .or_else(|| source.optional_child_text("access"))
-        }),
-        hdl_path: access_handle_path_for_node(node, definitions),
-        indexed_hdl_paths: indexed_access_handle_paths_for_node(node, definitions),
+        stride: array_stride(node, definitions)?,
+        volatile: normalize_optional_bool_text(
+            definitions,
+            "register volatile",
+            node.optional_child_text("volatile")
+                .or_else(|| source.optional_child_text("volatile")),
+        )?,
+        access,
+        hdl_path,
+        indexed_hdl_paths,
         fields,
         alternate_registers,
     })
@@ -1396,6 +1434,13 @@ fn parse_alternate_register(
     let mut fields = Vec::new();
     let mut field_names = Vec::new();
     let alternate_register_name = node.child_text("name")?;
+    validate_unsupported_access_policy_features(
+        "alternateRegister",
+        &alternate_register_name,
+        node,
+        node,
+        definitions,
+    )?;
     for field in node.children_named("field") {
         if !node_is_present(field, definitions, "field isPresent")? {
             continue;
@@ -1407,26 +1452,48 @@ fn parse_alternate_register(
             &alternate_register_name,
             &field.child_text("name")?,
         )?;
-        fields.push(parse_field(field, definitions)?);
+        fields.push(parse_field(
+            field,
+            definitions,
+            Some(&alternate_register_name),
+        )?);
     }
+    let hdl_path = access_handle_path_for_node(node, definitions, &alternate_register_name)?;
+    let access = access_policy_access(
+        "alternateRegister",
+        &alternate_register_name,
+        node,
+        definitions,
+    )?
+    .or_else(|| node.optional_child_text("access"));
 
     Ok(AlternateRegister {
         name: alternate_register_name,
-        volatile: node.optional_child_text("volatile"),
-        access: access_policy_access(node, definitions)
-            .or_else(|| node.optional_child_text("access")),
-        hdl_path: access_handle_path_for_node(node, definitions),
+        volatile: normalize_optional_bool_text(
+            definitions,
+            "alternateRegister volatile",
+            node.optional_child_text("volatile"),
+        )?,
+        access,
+        hdl_path,
         fields,
     })
 }
 
-fn parse_field(node: &XmlNode, definitions: &Definitions) -> Result<Field> {
+fn parse_field(
+    node: &XmlNode,
+    definitions: &Definitions,
+    parent_name: Option<&str>,
+) -> Result<Field> {
     let source = definitions
         .field_ref(node, "fieldDefinitionRef")?
         .unwrap_or(node);
     let scoped_definitions = definitions.with_node_parameter_values(source, node);
     let definitions = &scoped_definitions;
     let field_name = node.child_text("name")?;
+    let access_handle_owner = parent_name
+        .map(|parent_name| format!("{parent_name}.{field_name}"))
+        .unwrap_or_else(|| field_name.clone());
     let inline_policies = effective_field_policies(node, definitions)?;
     let source_policies = effective_field_policies(source, definitions)?;
     let policy_nodes = if inline_policies.is_empty() {
@@ -1434,7 +1501,17 @@ fn parse_field(node: &XmlNode, definitions: &Definitions) -> Result<Field> {
     } else {
         inline_policies
     };
-    let policy = selected_policy_node(&policy_nodes, definitions.options.preferred_mode.as_deref());
+    let policy = selected_policy_node(
+        &policy_nodes,
+        definitions.options.preferred_mode.as_deref(),
+        Some(("field", &field_name)),
+    )?;
+    validate_unsupported_features(
+        "field",
+        &field_name,
+        &[policy, Some(source), Some(node)],
+        &["writeValueConstraint", "broadcasts", "accessRestrictions"],
+    )?;
     let access = policy
         .and_then(|policy| policy.optional_child_text("access"))
         .or_else(|| source.optional_child_text("access"))
@@ -1483,22 +1560,90 @@ fn parse_field(node: &XmlNode, definitions: &Definitions) -> Result<Field> {
             "field bitWidth",
             node.optional_child_text("bitWidth")
                 .unwrap_or(source.child_text("bitWidth")?),
-        ),
+        )?,
         access,
         modified_write_value,
         read_action,
-        volatile: node
-            .optional_child_text("volatile")
-            .or_else(|| source.optional_child_text("volatile")),
-        testable,
-        reserved,
+        volatile: normalize_optional_bool_text(
+            definitions,
+            "field volatile",
+            node.optional_child_text("volatile")
+                .or_else(|| source.optional_child_text("volatile")),
+        )?,
+        testable: normalize_optional_bool_text(definitions, "field testable", testable)?,
+        reserved: normalize_optional_bool_text(definitions, "field reserved", reserved)?,
         reset,
         resets,
-        hdl_path: access_handle_path_for_node(node, definitions),
-        hdl_path_slices: access_handle_slices_for_node(node, definitions),
-        indexed_hdl_paths: indexed_access_handle_paths_for_node(node, definitions),
+        hdl_path: access_handle_path_for_node(node, definitions, &access_handle_owner)?,
+        hdl_path_slices: access_handle_slices_for_node(node, definitions, &access_handle_owner)?,
+        indexed_hdl_paths: indexed_access_handle_paths_for_node(
+            node,
+            definitions,
+            &access_handle_owner,
+        )?,
         enumerated_values,
     })
+}
+
+fn validate_unsupported_access_policy_features(
+    kind: &'static str,
+    name: &str,
+    instance: &XmlNode,
+    source: &XmlNode,
+    definitions: &Definitions,
+) -> Result<()> {
+    let instance_policy_nodes = access_policy_nodes(instance);
+    let instance_policy = selected_policy_node(
+        &instance_policy_nodes,
+        definitions.options.preferred_mode.as_deref(),
+        Some((kind, name)),
+    )?;
+    validate_unsupported_features(
+        kind,
+        name,
+        &[instance_policy, Some(instance)],
+        &["accessRestrictions"],
+    )?;
+
+    if !std::ptr::eq(instance, source)
+        && instance_policy
+            .and_then(|policy| policy.optional_child_text("access"))
+            .is_none()
+    {
+        let source_policy_nodes = access_policy_nodes(source);
+        let source_policy = selected_policy_node(
+            &source_policy_nodes,
+            definitions.options.preferred_mode.as_deref(),
+            Some((kind, name)),
+        )?;
+        validate_unsupported_features(
+            kind,
+            name,
+            &[source_policy, Some(source)],
+            &["accessRestrictions"],
+        )?;
+    }
+    Ok(())
+}
+
+fn validate_unsupported_features(
+    kind: &'static str,
+    name: &str,
+    nodes: &[Option<&XmlNode>],
+    features: &[&str],
+) -> Result<()> {
+    for node in nodes.iter().flatten() {
+        for feature in features {
+            if node.child(feature).is_some() {
+                return Err(Error::UnsupportedElementFeature {
+                    kind,
+                    name: name.into(),
+                    feature: (*feature).into(),
+                });
+            }
+        }
+    }
+    Ok(())
 }
 
 fn parse_resets(node: &XmlNode, definitions: &Definitions) -> Result<Vec<Reset>> {
@@ -1506,6 +1651,10 @@ fn parse_resets(node: &XmlNode, definitions: &Definitions) -> Result<Vec<Reset>>
         .map(|reset| {
             Ok(Reset {
                 value: required_numeric_text(definitions, reset, "value", "field reset")?,
+                mask: reset
+                    .optional_child_text("mask")
+                    .map(|mask| normalize_numeric_text(definitions, "field reset mask", mask))
+                    .transpose()?,
                 reset_type: reset
                     .optional_child_text("resetTypeRef")
                     .or_else(|| reset.attribute_text("resetTypeRef")),
@@ -1540,7 +1689,8 @@ fn effective_field_policies<'a>(
 fn selected_policy_node<'a>(
     policies: &'a [&'a XmlNode],
     preferred_mode: Option<&str>,
-) -> Option<&'a XmlNode> {
+    owner: Option<(&'static str, &str)>,
+) -> Result<Option<&'a XmlNode>> {
     if let Some(preferred_mode) = preferred_mode {
         let selected = policies
             .iter()
@@ -1551,15 +1701,30 @@ fn selected_policy_node<'a>(
             .min_by_key(|(priority, _)| *priority)
             .map(|(_, policy)| policy);
         if selected.is_some() {
-            return selected;
+            return Ok(selected);
         }
+        let generic = policies
+            .iter()
+            .copied()
+            .find(|policy| !has_mode_ref(policy));
+        if generic.is_some() {
+            return Ok(generic);
+        }
+        if let Some((kind, name)) = owner.filter(|_| !policies.is_empty()) {
+            return Err(Error::AccessPolicyModeNotFound {
+                kind,
+                name: name.into(),
+                mode: preferred_mode.into(),
+            });
+        }
+        return Ok(None);
     }
 
-    policies
+    Ok(policies
         .iter()
         .copied()
         .find(|policy| !has_mode_ref(policy))
-        .or_else(|| policies.first().copied())
+        .or_else(|| policies.first().copied()))
 }
 
 fn parse_enumerated_values(
@@ -1622,34 +1787,72 @@ fn ensure_unique_ipxact_name(
     Ok(())
 }
 
-fn access_handle_path_with_preferred_view(
-    access_handles: &XmlNode,
+fn access_handle_path_with_preferred_view<'a>(
+    access_handles: &'a XmlNode,
     preferred_view: Option<&str>,
-) -> Option<String> {
-    let access_handle = selected_access_handles(access_handles, preferred_view)
-        .into_iter()
+    owner: &str,
+) -> Result<Option<&'a XmlNode>> {
+    let selected = selected_access_handles(access_handles, preferred_view, owner)?;
+    for generic in selected
+        .iter()
+        .copied()
         .filter(|access_handle| access_handle.child("indices").is_none())
-        .find(|access_handle| access_handle.child("viewRef").is_none())
-        .or_else(|| {
-            selected_access_handles(access_handles, preferred_view)
-                .into_iter()
-                .find(|access_handle| access_handle.child("indices").is_none())
-        })?;
-    access_handle_path_segments(access_handle)
+        .filter(|access_handle| access_handle.child("viewRef").is_none())
+    {
+        if access_handle_path_segments(generic, owner)?.is_some() {
+            return Ok(Some(generic));
+        }
+    }
+
+    for path_bearing in selected
+        .iter()
+        .copied()
+        .filter(|access_handle| access_handle.child("indices").is_none())
+    {
+        if access_handle_path_segments(path_bearing, owner)?.is_some() {
+            return Ok(Some(path_bearing));
+        }
+    }
+
+    Ok(selected
+        .into_iter()
+        .find(|access_handle| access_handle.child("indices").is_none()))
 }
 
 fn selected_access_handles<'a>(
     access_handles: &'a XmlNode,
     preferred_view: Option<&str>,
-) -> Vec<&'a XmlNode> {
+    owner: &str,
+) -> Result<Vec<&'a XmlNode>> {
     if let Some(preferred_view) = preferred_view {
         let selected = access_handles
             .children_named("accessHandle")
             .filter(|access_handle| access_handle_has_view(access_handle, preferred_view))
             .collect::<Vec<_>>();
         if !selected.is_empty() {
-            return selected;
+            return Ok(selected);
         }
+
+        let generic = access_handles
+            .children_named("accessHandle")
+            .filter(|access_handle| access_handle.child("viewRef").is_none())
+            .collect::<Vec<_>>();
+        if !generic.is_empty() {
+            return Ok(generic);
+        }
+
+        if access_handles
+            .children_named("accessHandle")
+            .next()
+            .is_some()
+        {
+            return Err(Error::AccessHandleViewNotFound {
+                owner: owner.into(),
+                view: preferred_view.into(),
+            });
+        }
+
+        return Ok(Vec::new());
     }
 
     let generic = access_handles
@@ -1657,38 +1860,66 @@ fn selected_access_handles<'a>(
         .filter(|access_handle| access_handle.child("viewRef").is_none())
         .collect::<Vec<_>>();
     if !generic.is_empty() {
-        return generic;
+        return Ok(generic);
     }
 
-    access_handles.children_named("accessHandle").collect()
+    Ok(access_handles.children_named("accessHandle").collect())
 }
 
-fn access_handle_path_for_node(node: &XmlNode, definitions: &Definitions) -> Option<String> {
-    let access_handles = node.child("accessHandles")?;
-    access_handle_path_with_preferred_view(
+fn access_handle_path_for_node(
+    node: &XmlNode,
+    definitions: &Definitions,
+    owner: &str,
+) -> Result<Option<String>> {
+    let Some(access_handles) = node.child("accessHandles") else {
+        return Ok(None);
+    };
+    let Some(access_handle) = access_handle_path_with_preferred_view(
         access_handles,
         definitions.options.preferred_view.as_deref(),
-    )
+        owner,
+    )?
+    else {
+        return Ok(None);
+    };
+    access_handle_path_segments(access_handle, owner)?
+        .ok_or_else(|| Error::AccessHandlePathMissing {
+            owner: owner.into(),
+        })
+        .map(Some)
 }
 
 fn indexed_access_handle_paths_for_node(
     node: &XmlNode,
     definitions: &Definitions,
-) -> Vec<IndexedHdlPath> {
+    owner: &str,
+) -> Result<Vec<IndexedHdlPath>> {
     let Some(access_handles) = node.child("accessHandles") else {
-        return Vec::new();
+        return Ok(Vec::new());
     };
 
     selected_access_handles(
         access_handles,
         definitions.options.preferred_view.as_deref(),
-    )
+        owner,
+    )?
     .into_iter()
-    .filter_map(|access_handle| {
-        Some(IndexedHdlPath {
-            indices: access_handle_indices(access_handle, definitions)?,
-            path: access_handle_path_segments(access_handle)?,
-            slices: access_handle_slices(access_handle, definitions),
+    .filter(|access_handle| access_handle.child("indices").is_some())
+    .map(|access_handle| {
+        let indices = access_handle_indices(access_handle, definitions)?.ok_or_else(|| {
+            Error::AccessHandleIndicesMissing {
+                owner: owner.into(),
+            }
+        })?;
+        let path = access_handle_path_segments(access_handle, owner)?.ok_or_else(|| {
+            Error::IndexedAccessHandlePathMissing {
+                owner: owner.into(),
+            }
+        })?;
+        Ok(IndexedHdlPath {
+            indices,
+            path,
+            slices: access_handle_slices(access_handle, definitions, owner)?,
         })
     })
     .collect()
@@ -1697,78 +1928,96 @@ fn indexed_access_handle_paths_for_node(
 fn access_handle_indices(
     access_handle: &XmlNode,
     definitions: &Definitions,
-) -> Option<Vec<String>> {
-    let indices = access_handle.child("indices")?;
+) -> Result<Option<Vec<String>>> {
+    let Some(indices) = access_handle.child("indices") else {
+        return Ok(None);
+    };
     let parsed = indices
         .children_named("index")
         .map(|index| normalize_numeric_text(definitions, "accessHandle index", index.text.clone()))
-        .collect::<Vec<_>>();
-    (!parsed.is_empty()).then_some(parsed)
+        .collect::<Result<Vec<_>>>()?;
+    Ok((!parsed.is_empty()).then_some(parsed))
 }
 
-fn access_handle_path_segments(access_handle: &XmlNode) -> Option<String> {
-    let path_segments = first_descendant(access_handle, "pathSegments")?;
+fn access_handle_path_segments(access_handle: &XmlNode, owner: &str) -> Result<Option<String>> {
+    let Some(path_segments) = first_descendant(access_handle, "pathSegments") else {
+        return Ok(None);
+    };
     let segments = path_segments
         .children_named("pathSegment")
-        .filter_map(path_segment_text)
+        .map(|segment| path_segment_text(segment, owner))
+        .collect::<Result<Vec<_>>>()?
+        .into_iter()
+        .flatten()
         .collect::<Vec<_>>();
-    (!segments.is_empty()).then(|| segments.join("."))
+    Ok((!segments.is_empty()).then(|| segments.join(".")))
 }
 
-fn access_handle_slices_for_node(node: &XmlNode, definitions: &Definitions) -> Vec<HdlPathSlice> {
+fn access_handle_slices_for_node(
+    node: &XmlNode,
+    definitions: &Definitions,
+    owner: &str,
+) -> Result<Vec<HdlPathSlice>> {
     let Some(access_handles) = node.child("accessHandles") else {
-        return Vec::new();
+        return Ok(Vec::new());
     };
 
-    selected_access_handles(
+    let Some(access_handle) = access_handle_path_with_preferred_view(
         access_handles,
         definitions.options.preferred_view.as_deref(),
-    )
-    .into_iter()
-    .filter(|access_handle| access_handle.child("indices").is_none())
-    .find(|access_handle| access_handle.child("viewRef").is_none())
-    .or_else(|| {
-        selected_access_handles(
-            access_handles,
-            definitions.options.preferred_view.as_deref(),
-        )
-        .into_iter()
-        .find(|access_handle| access_handle.child("indices").is_none())
-    })
-    .map(|access_handle| access_handle_slices(access_handle, definitions))
-    .unwrap_or_default()
+        owner,
+    )?
+    else {
+        return Ok(Vec::new());
+    };
+
+    access_handle_slices(access_handle, definitions, owner)
 }
 
-fn access_handle_slices(access_handle: &XmlNode, definitions: &Definitions) -> Vec<HdlPathSlice> {
+fn access_handle_slices(
+    access_handle: &XmlNode,
+    definitions: &Definitions,
+    owner: &str,
+) -> Result<Vec<HdlPathSlice>> {
     let Some(slices) = access_handle.child("slices") else {
-        return access_handle_path_segments(access_handle)
+        return access_handle_path_segments(access_handle, owner)?
             .map(|path| {
-                vec![HdlPathSlice {
+                Ok(vec![HdlPathSlice {
                     path,
                     left: None,
                     right: None,
-                }]
+                }])
             })
-            .unwrap_or_default();
+            .unwrap_or_else(|| {
+                Err(Error::AccessHandlePathMissing {
+                    owner: owner.into(),
+                })
+            });
     };
 
     slices
         .children_named("slice")
-        .filter_map(|slice| {
-            let path = access_handle_path_segments(slice)?;
+        .map(|slice| {
+            let path = access_handle_path_segments(slice, owner)?.ok_or_else(|| {
+                Error::AccessHandlePathMissing {
+                    owner: owner.into(),
+                }
+            })?;
             let range = slice.child("range");
-            Some(HdlPathSlice {
+            Ok(HdlPathSlice {
                 path,
-                left: range.and_then(|range| {
-                    range.optional_child_text("left").map(|value| {
+                left: range
+                    .and_then(|range| range.optional_child_text("left"))
+                    .map(|value| {
                         normalize_numeric_text(definitions, "accessHandle slice left", value)
                     })
-                }),
-                right: range.and_then(|range| {
-                    range.optional_child_text("right").map(|value| {
+                    .transpose()?,
+                right: range
+                    .and_then(|range| range.optional_child_text("right"))
+                    .map(|value| {
                         normalize_numeric_text(definitions, "accessHandle slice right", value)
                     })
-                }),
+                    .transpose()?,
             })
         })
         .collect()
@@ -1799,25 +2048,125 @@ fn required_numeric_text(
     name: &'static str,
     field: &'static str,
 ) -> Result<String> {
-    Ok(normalize_numeric_text(
-        definitions,
-        field,
-        node.child_text(name)?,
-    ))
+    normalize_numeric_text(definitions, field, node.child_text(name)?)
 }
 
-fn normalize_numeric_text(definitions: &Definitions, field: &'static str, value: String) -> String {
+fn normalize_numeric_text(
+    definitions: &Definitions,
+    field: &'static str,
+    value: String,
+) -> Result<String> {
     if parse_u64_expr(field, &value).is_ok() {
-        return value;
+        return Ok(value);
     }
-    parse_u64_expr_with_symbols(field, &value, &definitions.parameters)
-        .map(|value| value.to_string())
-        .unwrap_or(value)
+    if let Ok(parsed) = parse_u64_expr_with_symbols(field, &value, &definitions.parameters) {
+        return Ok(parsed.to_string());
+    }
+    if let Some((parameter, expression)) = unsupported_parameter_reference(definitions, &value) {
+        return Err(Error::UnsupportedParameterExpression {
+            parameter: parameter.into(),
+            field,
+            expression: expression.into(),
+        });
+    }
+    Ok(value)
+}
+
+fn normalize_optional_bool_text(
+    definitions: &Definitions,
+    field: &'static str,
+    value: Option<String>,
+) -> Result<Option<String>> {
+    value
+        .map(|value| normalize_bool_text(definitions, field, value))
+        .transpose()
+}
+
+fn normalize_bool_text(
+    definitions: &Definitions,
+    field: &'static str,
+    value: String,
+) -> Result<String> {
+    let trimmed = value.trim();
+    if trimmed.eq_ignore_ascii_case("true") {
+        return Ok("true".into());
+    }
+    if trimmed.eq_ignore_ascii_case("false") {
+        return Ok("false".into());
+    }
+    if let Ok(parsed) = parse_bool_expr_with_symbols(field, trimmed, &definitions.parameters) {
+        return Ok(if parsed { "true" } else { "false" }.into());
+    }
+    if let Some((parameter, expression)) = unsupported_parameter_reference(definitions, trimmed) {
+        return Err(Error::UnsupportedParameterExpression {
+            parameter: parameter.into(),
+            field,
+            expression: expression.into(),
+        });
+    }
+    Err(Error::InvalidBoolean {
+        field,
+        value: value.into(),
+    })
 }
 
 fn parse_u64_text(definitions: &Definitions, field: &'static str, value: &str) -> Result<u64> {
     parse_u64_expr(field, value)
         .or_else(|_| parse_u64_expr_with_symbols(field, value, &definitions.parameters))
+        .or_else(|error| {
+            unsupported_parameter_reference(definitions, value)
+                .map(
+                    |(parameter, expression)| Error::UnsupportedParameterExpression {
+                        parameter: parameter.into(),
+                        field,
+                        expression: expression.into(),
+                    },
+                )
+                .map_or(Err(error), Err)
+        })
+}
+
+fn unsupported_parameter_reference<'a>(
+    definitions: &'a Definitions,
+    value: &str,
+) -> Option<(&'a str, &'a str)> {
+    definitions
+        .unsupported_parameters
+        .iter()
+        .find(|(name, _)| expression_references_identifier(value, name))
+        .map(|(name, expression)| (name.as_str(), expression.as_str()))
+}
+
+fn expression_references_identifier(value: &str, name: &str) -> bool {
+    if name.is_empty() {
+        return false;
+    }
+    let mut start = None;
+    for (index, ch) in value.char_indices() {
+        if let Some(token_start) = start {
+            if is_identifier_continue(ch) {
+                continue;
+            }
+            if &value[token_start..index] == name {
+                return true;
+            }
+            start = None;
+        }
+        if start.is_none() && is_identifier_start(ch) {
+            start = Some(index);
+        }
+    }
+    start
+        .map(|token_start| &value[token_start..] == name)
+        .unwrap_or(false)
+}
+
+fn is_identifier_start(ch: char) -> bool {
+    ch == '_' || ch.is_ascii_alphabetic()
+}
+
+fn is_identifier_continue(ch: char) -> bool {
+    ch == '_' || ch == '.' || ch.is_ascii_alphanumeric()
 }
 
 fn node_is_present(node: &XmlNode, definitions: &Definitions, field: &'static str) -> Result<bool> {
@@ -1831,7 +2180,25 @@ fn node_is_present(node: &XmlNode, definitions: &Definitions, field: &'static st
     if trimmed.eq_ignore_ascii_case("false") {
         return Ok(false);
     }
-    parse_bool_expr_with_symbols(field, trimmed, &definitions.parameters)
+    parse_bool_expr_with_symbols(field, trimmed, &definitions.parameters).or_else(|_| {
+        unsupported_parameter_reference(definitions, trimmed)
+            .map(
+                |(parameter, expression)| Error::UnsupportedParameterExpression {
+                    parameter: parameter.into(),
+                    field,
+                    expression: expression.into(),
+                },
+            )
+            .map_or_else(
+                || {
+                    Err(Error::InvalidBoolean {
+                        field,
+                        value: value.clone(),
+                    })
+                },
+                Err,
+            )
+    })
 }
 
 fn addr_text(value: u64) -> String {
@@ -1839,22 +2206,43 @@ fn addr_text(value: u64) -> String {
 }
 
 fn inherited_access_policy_access(
+    kind: &'static str,
+    name: &str,
     instance: &XmlNode,
     source: &XmlNode,
     definitions: &Definitions,
-) -> Option<String> {
-    access_policy_access(instance, definitions)
-        .or_else(|| access_policy_access(source, definitions))
+) -> Result<Option<String>> {
+    if let Some(access) = access_policy_access(kind, name, instance, definitions)? {
+        return Ok(Some(access));
+    }
+    access_policy_access(kind, name, source, definitions)
 }
 
-fn access_policy_access(node: &XmlNode, definitions: &Definitions) -> Option<String> {
-    let policies = node.child("accessPolicies")?;
+fn access_policy_nodes(node: &XmlNode) -> Vec<&XmlNode> {
+    node.child("accessPolicies")
+        .map(|policies| policies.children_named("accessPolicy").collect())
+        .unwrap_or_default()
+}
+
+fn access_policy_access(
+    kind: &'static str,
+    name: &str,
+    node: &XmlNode,
+    definitions: &Definitions,
+) -> Result<Option<String>> {
+    let Some(policies) = node.child("accessPolicies") else {
+        return Ok(None);
+    };
     let policy_nodes = policies
         .children_named("accessPolicy")
         .filter(|policy| policy.child("access").is_some())
         .collect::<Vec<_>>();
-    selected_policy_node(&policy_nodes, definitions.options.preferred_mode.as_deref())
-        .and_then(|policy| policy.optional_child_text("access"))
+    Ok(selected_policy_node(
+        &policy_nodes,
+        definitions.options.preferred_mode.as_deref(),
+        Some((kind, name)),
+    )?
+    .and_then(|policy| policy.optional_child_text("access")))
 }
 
 fn has_mode_ref(node: &XmlNode) -> bool {
@@ -1888,29 +2276,29 @@ fn definition_ref(node: &XmlNode, name: &str) -> Option<DefinitionReference> {
     })
 }
 
-fn element_dims(node: &XmlNode, definitions: &Definitions) -> Vec<String> {
+fn element_dims(node: &XmlNode, definitions: &Definitions) -> Result<Vec<String>> {
     if let Some(dim) = node.optional_child_text("dim") {
-        return vec![normalize_numeric_text(definitions, "array dim", dim)];
+        return Ok(vec![normalize_numeric_text(definitions, "array dim", dim)?]);
     }
 
-    let dims = node
-        .child("array")
-        .map(|array| {
+    let dims = node.child("array").map_or_else(
+        || Ok(Vec::new()),
+        |array| {
             array
                 .children_named("dim")
-                .filter_map(|dim| {
+                .filter(|dim| !dim.text.trim().is_empty())
+                .map(|dim| {
                     let text = dim.text.trim();
-                    (!text.is_empty())
-                        .then(|| normalize_numeric_text(definitions, "array dim", text.to_string()))
+                    normalize_numeric_text(definitions, "array dim", text.to_string())
                 })
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_default();
+                .collect::<Result<Vec<_>>>()
+        },
+    )?;
 
     if dims.is_empty() {
-        vec!["1".into()]
+        Ok(vec!["1".into()])
     } else {
-        dims
+        Ok(dims)
     }
 }
 
@@ -1928,10 +2316,11 @@ fn total_dim_text(dims: &[String]) -> String {
     total.to_string()
 }
 
-fn array_stride(node: &XmlNode, definitions: &Definitions) -> Option<String> {
+fn array_stride(node: &XmlNode, definitions: &Definitions) -> Result<Option<String>> {
     node.child("array")
         .and_then(|array| array.optional_child_text("stride"))
         .map(|stride| normalize_numeric_text(definitions, "array stride", stride))
+        .transpose()
 }
 
 fn first_descendant<'a>(node: &'a XmlNode, name: &str) -> Option<&'a XmlNode> {
@@ -1946,7 +2335,19 @@ fn first_descendant<'a>(node: &'a XmlNode, name: &str) -> Option<&'a XmlNode> {
     None
 }
 
-fn path_segment_text(node: &XmlNode) -> Option<String> {
-    node.optional_child_text("pathSegmentName")
+fn path_segment_text(node: &XmlNode, owner: &str) -> Result<Option<String>> {
+    let Some(segment) = node
+        .optional_child_text("pathSegmentName")
         .or_else(|| (!node.text.trim().is_empty()).then(|| node.text.trim().to_string()))
+    else {
+        return Ok(None);
+    };
+    let trimmed = segment.trim();
+    if trimmed.starts_with('"') || trimmed.ends_with('"') {
+        return Err(Error::AccessHandlePathSegmentStringLiteral {
+            owner: owner.into(),
+            segment,
+        });
+    }
+    Ok(Some(trimmed.into()))
 }

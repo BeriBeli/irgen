@@ -1,6 +1,7 @@
 use irgen_uvmreg::{
     ParseOptions, RenderOptions, ipxact_to_uvm_reg, parse_ipxact, parse_ipxact_with_options,
-    parse_ipxact_with_resolver, serialize_uvm_reg_with_options,
+    parse_ipxact_with_resolver, serialize_uvm_reg_by_block_with_options,
+    serialize_uvm_reg_with_options,
 };
 
 const IPXACT_2014: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
@@ -198,6 +199,83 @@ const IPXACT_2022: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
       </ipxact:addressBlockDefinition>
     </ipxact:addressBlockDefinitions>
   </ipxact:typeDefinitions>
+  <ipxact:busInterfaces>
+    <ipxact:busInterface>
+      <ipxact:name>dma_init</ipxact:name>
+      <ipxact:busType vendor="example.com" library="bus" name="axi" version="1.0"/>
+      <ipxact:initiator>
+        <ipxact:addressSpaceRef addressSpaceRef="dma_space"/>
+      </ipxact:initiator>
+    </ipxact:busInterface>
+    <ipxact:busInterface>
+      <ipxact:name>lp_init</ipxact:name>
+      <ipxact:busType vendor="example.com" library="bus" name="axi" version="1.0"/>
+      <ipxact:initiator>
+        <ipxact:addressSpaceRef addressSpaceRef="lp_space"/>
+      </ipxact:initiator>
+    </ipxact:busInterface>
+  </ipxact:busInterfaces>
+  <ipxact:addressSpaces>
+    <ipxact:addressSpace>
+      <ipxact:name>dma_space</ipxact:name>
+      <ipxact:range>0x100</ipxact:range>
+      <ipxact:width>32</ipxact:width>
+      <ipxact:addressUnitBits>8</ipxact:addressUnitBits>
+      <ipxact:segments>
+        <ipxact:segment>
+          <ipxact:name>cfg_seg</ipxact:name>
+          <ipxact:addressOffset>0x20</ipxact:addressOffset>
+          <ipxact:range>0x10</ipxact:range>
+        </ipxact:segment>
+      </ipxact:segments>
+      <ipxact:localMemoryMap>
+        <ipxact:name>dma_local</ipxact:name>
+        <ipxact:addressBlock>
+          <ipxact:name>dma_regs</ipxact:name>
+          <ipxact:baseAddress>0x20</ipxact:baseAddress>
+          <ipxact:range>0x10</ipxact:range>
+          <ipxact:width>32</ipxact:width>
+          <ipxact:register>
+            <ipxact:name>doorbell</ipxact:name>
+            <ipxact:addressOffset>0</ipxact:addressOffset>
+            <ipxact:size>32</ipxact:size>
+            <ipxact:field>
+              <ipxact:name>kick</ipxact:name>
+              <ipxact:bitOffset>0</ipxact:bitOffset>
+              <ipxact:bitWidth>1</ipxact:bitWidth>
+              <ipxact:access>write-only</ipxact:access>
+            </ipxact:field>
+          </ipxact:register>
+        </ipxact:addressBlock>
+      </ipxact:localMemoryMap>
+    </ipxact:addressSpace>
+    <ipxact:addressSpace>
+      <ipxact:name>lp_space</ipxact:name>
+      <ipxact:range>0x20</ipxact:range>
+      <ipxact:width>32</ipxact:width>
+      <ipxact:addressUnitBits>8</ipxact:addressUnitBits>
+      <ipxact:localMemoryMap>
+        <ipxact:name>lp_local</ipxact:name>
+        <ipxact:addressBlock>
+          <ipxact:name>lp_regs</ipxact:name>
+          <ipxact:baseAddress>0</ipxact:baseAddress>
+          <ipxact:range>0x10</ipxact:range>
+          <ipxact:width>32</ipxact:width>
+          <ipxact:register>
+            <ipxact:name>retention</ipxact:name>
+            <ipxact:addressOffset>0</ipxact:addressOffset>
+            <ipxact:size>32</ipxact:size>
+            <ipxact:field>
+              <ipxact:name>enabled</ipxact:name>
+              <ipxact:bitOffset>0</ipxact:bitOffset>
+              <ipxact:bitWidth>1</ipxact:bitWidth>
+              <ipxact:access>read-write</ipxact:access>
+            </ipxact:field>
+          </ipxact:register>
+        </ipxact:addressBlock>
+      </ipxact:localMemoryMap>
+    </ipxact:addressSpace>
+  </ipxact:addressSpaces>
   <ipxact:memoryMaps>
     <ipxact:memoryMap>
       <ipxact:name>demo</ipxact:name>
@@ -271,24 +349,6 @@ const IPXACT_2022: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
             <ipxact:bitWidth>4</ipxact:bitWidth>
             <ipxact:fieldAccessPolicies>
               <ipxact:fieldAccessPolicy>
-                <ipxact:writeValueConstraint>
-                  <ipxact:useEnumeratedValues>true</ipxact:useEnumeratedValues>
-                </ipxact:writeValueConstraint>
-                <ipxact:broadcasts>
-                  <ipxact:broadcastTo>
-                    <ipxact:memoryMapRef memoryMapRef="demo"/>
-                    <ipxact:addressBlockRef addressBlockRef="regs"/>
-                    <ipxact:registerRef registerRef="gate"/>
-                    <ipxact:fieldRef fieldRef="doorbell"/>
-                  </ipxact:broadcastTo>
-                </ipxact:broadcasts>
-                <ipxact:accessRestrictions>
-                  <ipxact:accessRestriction>
-                    <ipxact:modeRef priority="0">diagnostic</ipxact:modeRef>
-                    <ipxact:readAccessMask>0xf</ipxact:readAccessMask>
-                    <ipxact:writeAccessMask>0x3</ipxact:writeAccessMask>
-                  </ipxact:accessRestriction>
-                </ipxact:accessRestrictions>
                 <ipxact:testable testConstraint="readOnly">false</ipxact:testable>
                 <ipxact:reserved>1</ipxact:reserved>
               </ipxact:fieldAccessPolicy>
@@ -322,10 +382,6 @@ const IPXACT_2022: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
             <ipxact:fieldAccessPolicies>
               <ipxact:fieldAccessPolicy>
                 <ipxact:access>read-write</ipxact:access>
-                <ipxact:writeValueConstraint>
-                  <ipxact:minimum>0x2</ipxact:minimum>
-                  <ipxact:maximum>0xf</ipxact:maximum>
-                </ipxact:writeValueConstraint>
               </ipxact:fieldAccessPolicy>
             </ipxact:fieldAccessPolicies>
           </ipxact:field>
@@ -494,25 +550,164 @@ fn parses_all_supported_ipxact_namespaces() {
 }
 
 #[test]
+fn generates_structurally_valid_uvm_for_all_supported_ipxact_namespaces() {
+    let variants = [
+        (
+            "spirit-1.4",
+            "spirit",
+            "http://www.spiritconsortium.org/XMLSchema/SPIRIT/1.4",
+        ),
+        (
+            "spirit-1.5",
+            "spirit",
+            "http://www.spiritconsortium.org/XMLSchema/SPIRIT/1.5",
+        ),
+        (
+            "ieee-1685-2009",
+            "spirit",
+            "http://www.spiritconsortium.org/XMLSchema/SPIRIT/1685-2009",
+        ),
+        (
+            "ieee-1685-2014",
+            "ipxact",
+            "http://www.accellera.org/XMLSchema/IPXACT/1685-2014",
+        ),
+        (
+            "ieee-1685-2022",
+            "ipxact",
+            "http://www.accellera.org/XMLSchema/IPXACT/1685-2022",
+        ),
+    ];
+
+    for (label, prefix, namespace) in variants {
+        let xml = IPXACT_2014.replace("ipxact", prefix).replace(
+            "http://www.accellera.org/XMLSchema/IPXACT/1685-2014",
+            namespace,
+        );
+        let sv = ipxact_to_uvm_reg(&xml).unwrap();
+
+        assert!(sv.contains("class ral_sys_demo extends uvm_reg_block;"));
+        assert!(sv.contains("class ral_reg_regs_status extends uvm_reg;"));
+        assert!(
+            sv.contains("default_map.add_submap(regs.default_map, `UVM_REG_ADDR_WIDTH'h1000);")
+        );
+        assert_generated_sv_structural_gate(label, &sv);
+        assert_demo_uvm_golden_patterns(label, &sv);
+    }
+}
+
+#[test]
 fn renders_uvm_ieee_2020_register_model() {
     let sv = ipxact_to_uvm_reg(IPXACT_2014).unwrap();
 
-    assert!(sv.contains("`ifndef RAL_DEMO_SV"));
-    assert!(sv.contains("class ral_reg_regs_status extends uvm_reg;"));
-    assert!(sv.contains("class ral_regfile_regs_lane extends uvm_reg_file;"));
-    assert!(sv.contains("class ral_block_regs extends uvm_reg_block;"));
-    assert!(sv.contains("class ral_sys_demo extends uvm_reg_block;"));
-    assert!(sv.contains("rand ral_block_regs regs;"));
-    assert!(sv.contains("done.configure(this, 1, 0, \"RO\", 1'b0, 1'h1, 1'b1, 1'b0, 1);"));
-    assert!(sv.contains("status.add_hdl_path_slice({`REGS_HDL_PATH, \".done_q\"}, 0, 1, 1'b1);"));
-    assert!(sv.contains("default_map.add_reg(status, `UVM_REG_ADDR_WIDTH'h4, \"RO\");"));
-    assert!(sv.contains("default_map.add_submap(regs.default_map, `UVM_REG_ADDR_WIDTH'h1000);"));
-    assert!(sv.contains("rand ral_reg_regs_lane_ctrl ctrl;"));
-    assert!(sv.contains("ctrl.add_hdl_path_slice(\"top.u_regs.lane.enable_q\", 0, 1, 1'b1);"));
-    assert!(sv.contains("mp.add_reg(ctrl, offset + `UVM_REG_ADDR_WIDTH'h0, \"RW\");"));
-    assert!(sv.contains(
-        "lane[i].map(default_map, `UVM_REG_ADDR_WIDTH'h20 + i * `UVM_REG_ADDR_WIDTH'h10);"
-    ));
+    assert_demo_uvm_golden_patterns("ieee-2020-register-model", &sv);
+}
+
+#[test]
+fn generated_uvm_systemverilog_passes_structural_gate() {
+    let common_sv = ipxact_to_uvm_reg(IPXACT_2014).unwrap();
+    assert_generated_sv_structural_gate("common-golden", &common_sv);
+    assert_demo_uvm_golden_patterns("common-golden", &common_sv);
+
+    let component = parse_ipxact(IPXACT_2022).unwrap();
+    let sv = serialize_uvm_reg_with_options(&component, RenderOptions::default()).unwrap();
+    assert_generated_sv_structural_gate("single-file", &sv);
+
+    let sv = serialize_uvm_reg_with_options(&component, RenderOptions { coverage: true }).unwrap();
+    assert_generated_sv_structural_gate("coverage", &sv);
+
+    let files =
+        serialize_uvm_reg_by_block_with_options(&component, RenderOptions { coverage: true })
+            .unwrap();
+    assert!(files.len() > 1);
+    for file in files {
+        assert_generated_sv_structural_gate(&file.path, &file.content);
+    }
+}
+
+#[test]
+fn avoids_generated_systemverilog_member_name_collisions() {
+    let xml = r#"
+<ipxact:component xmlns:ipxact="http://www.accellera.org/XMLSchema/IPXACT/1685-2022">
+  <ipxact:vendor>acme</ipxact:vendor>
+  <ipxact:library>ip</ipxact:library>
+  <ipxact:name>member_names</ipxact:name>
+  <ipxact:version>1.0</ipxact:version>
+  <ipxact:memoryMaps>
+    <ipxact:memoryMap>
+      <ipxact:name>bus</ipxact:name>
+      <ipxact:addressBlock>
+        <ipxact:name>build</ipxact:name>
+        <ipxact:baseAddress>0</ipxact:baseAddress>
+        <ipxact:range>0x100</ipxact:range>
+        <ipxact:width>32</ipxact:width>
+        <ipxact:register>
+          <ipxact:name>default_map</ipxact:name>
+          <ipxact:addressOffset>0</ipxact:addressOffset>
+          <ipxact:size>32</ipxact:size>
+          <ipxact:field>
+            <ipxact:name>build</ipxact:name>
+            <ipxact:bitOffset>0</ipxact:bitOffset>
+            <ipxact:bitWidth>1</ipxact:bitWidth>
+            <ipxact:access>read-write</ipxact:access>
+          </ipxact:field>
+          <ipxact:field>
+            <ipxact:name>cg_bits</ipxact:name>
+            <ipxact:bitOffset>1</ipxact:bitOffset>
+            <ipxact:bitWidth>1</ipxact:bitWidth>
+            <ipxact:access>read-only</ipxact:access>
+          </ipxact:field>
+        </ipxact:register>
+        <ipxact:registerFile>
+          <ipxact:name>map</ipxact:name>
+          <ipxact:addressOffset>0x10</ipxact:addressOffset>
+          <ipxact:range>0x10</ipxact:range>
+          <ipxact:register>
+            <ipxact:name>i</ipxact:name>
+            <ipxact:array>
+              <ipxact:dim>2</ipxact:dim>
+              <ipxact:stride>4</ipxact:stride>
+            </ipxact:array>
+            <ipxact:addressOffset>0</ipxact:addressOffset>
+            <ipxact:size>32</ipxact:size>
+            <ipxact:field>
+              <ipxact:name>value</ipxact:name>
+              <ipxact:bitOffset>0</ipxact:bitOffset>
+              <ipxact:bitWidth>32</ipxact:bitWidth>
+              <ipxact:access>read-write</ipxact:access>
+            </ipxact:field>
+          </ipxact:register>
+        </ipxact:registerFile>
+      </ipxact:addressBlock>
+    </ipxact:memoryMap>
+    <ipxact:memoryMap>
+      <ipxact:name>default</ipxact:name>
+      <ipxact:addressBlock>
+        <ipxact:name>default_map</ipxact:name>
+        <ipxact:baseAddress>0x100</ipxact:baseAddress>
+        <ipxact:range>0x10</ipxact:range>
+        <ipxact:width>32</ipxact:width>
+      </ipxact:addressBlock>
+    </ipxact:memoryMap>
+  </ipxact:memoryMaps>
+</ipxact:component>"#;
+
+    let component = parse_ipxact(xml).unwrap();
+    let sv = serialize_uvm_reg_with_options(&component, RenderOptions { coverage: true }).unwrap();
+
+    assert!(sv.contains("uvm_reg_map default_map_1;"));
+    assert!(!sv.contains("uvm_reg_map default_map;\n"));
+    assert!(!sv.contains("default_map = create_map(\"default\", 0, 4, UVM_LITTLE_ENDIAN, 1'b1);"));
+    assert!(sv.contains("default_map_1 = create_map(\"default\", 0, 4, UVM_LITTLE_ENDIAN, 1'b1);"));
+    assert!(sv.contains("rand ral_block_build build_1;"));
+    assert!(sv.contains("rand ral_block_default_map default_map_2;"));
+    assert!(sv.contains("rand ral_reg_build_default_map default_map_1;"));
+    assert!(sv.contains("ral_regfile_build_map map;"));
+    assert!(sv.contains("rand uvm_reg_field build_1;"));
+    assert!(sv.contains("rand uvm_reg_field cg_bits_1;"));
+    assert!(sv.contains("rand ral_reg_build_map_i i_1[2];"));
+    assert!(sv.contains("for (int unsigned i = 0; i < 2; i++) begin"));
+    assert!(sv.contains("i_1[i] = ral_reg_build_map_i::type_id::create($sformatf(\"i_%0d\", i));"));
 }
 
 #[test]
@@ -565,6 +760,9 @@ fn prefers_generic_access_handle_over_view_specific_paths() {
           <ipxact:accessHandles>
             <ipxact:accessHandle>
               <ipxact:viewRef>rtl</ipxact:viewRef>
+              <ipxact:pathSegments><ipxact:pathSegment>rtl_only.fallback</ipxact:pathSegment></ipxact:pathSegments>
+            </ipxact:accessHandle>
+            <ipxact:accessHandle>
               <ipxact:pathSegments><ipxact:pathSegment>rtl.fallback</ipxact:pathSegment></ipxact:pathSegments>
             </ipxact:accessHandle>
           </ipxact:accessHandles>
@@ -627,6 +825,205 @@ fn prefers_generic_access_handle_over_view_specific_paths() {
     let gate_sv =
         serialize_uvm_reg_with_options(&gate_component, RenderOptions::default()).unwrap();
     assert!(gate_sv.contains("status.add_hdl_path_slice(\"gate.status.gate_ready\", 0, 1, 1'b1);"));
+    assert!(gate_sv.contains("fallback.add_hdl_path_slice(\"rtl.fallback\", -1, -1, 1'b1);"));
+    assert!(!gate_sv.contains("rtl_only.fallback"));
+}
+
+#[test]
+fn skips_selected_access_handles_without_paths_when_later_handle_has_path() {
+    let xml = r#"
+<ipxact:component xmlns:ipxact="http://www.accellera.org/XMLSchema/IPXACT/1685-2022">
+  <ipxact:vendor>acme</ipxact:vendor>
+  <ipxact:library>ip</ipxact:library>
+  <ipxact:name>path_bearing_handles</ipxact:name>
+  <ipxact:version>1.0</ipxact:version>
+  <ipxact:memoryMaps>
+    <ipxact:memoryMap>
+      <ipxact:name>regs</ipxact:name>
+      <ipxact:addressBlock>
+        <ipxact:name>cfg</ipxact:name>
+        <ipxact:baseAddress>0</ipxact:baseAddress>
+        <ipxact:range>0x10</ipxact:range>
+        <ipxact:width>32</ipxact:width>
+        <ipxact:register>
+          <ipxact:name>status</ipxact:name>
+          <ipxact:accessHandles>
+            <ipxact:accessHandle/>
+            <ipxact:accessHandle>
+              <ipxact:pathSegments><ipxact:pathSegment>rtl.status</ipxact:pathSegment></ipxact:pathSegments>
+            </ipxact:accessHandle>
+          </ipxact:accessHandles>
+          <ipxact:addressOffset>0</ipxact:addressOffset>
+          <ipxact:size>32</ipxact:size>
+          <ipxact:field>
+            <ipxact:name>ready</ipxact:name>
+            <ipxact:accessHandles>
+              <ipxact:accessHandle>
+                <ipxact:viewRef>gate</ipxact:viewRef>
+              </ipxact:accessHandle>
+              <ipxact:accessHandle>
+                <ipxact:viewRef>gate</ipxact:viewRef>
+                <ipxact:slices>
+                  <ipxact:slice>
+                    <ipxact:pathSegments><ipxact:pathSegment>gate_ready_q</ipxact:pathSegment></ipxact:pathSegments>
+                  </ipxact:slice>
+                </ipxact:slices>
+              </ipxact:accessHandle>
+              <ipxact:accessHandle>
+                <ipxact:slices>
+                  <ipxact:slice>
+                    <ipxact:pathSegments><ipxact:pathSegment>ready_q</ipxact:pathSegment></ipxact:pathSegments>
+                  </ipxact:slice>
+                </ipxact:slices>
+              </ipxact:accessHandle>
+            </ipxact:accessHandles>
+            <ipxact:bitOffset>0</ipxact:bitOffset>
+            <ipxact:bitWidth>1</ipxact:bitWidth>
+          </ipxact:field>
+        </ipxact:register>
+      </ipxact:addressBlock>
+    </ipxact:memoryMap>
+  </ipxact:memoryMaps>
+</ipxact:component>"#;
+
+    let component = parse_ipxact(xml).unwrap();
+
+    assert_eq!(
+        component.blocks[0].registers[0].hdl_path.as_deref(),
+        Some("rtl.status")
+    );
+    assert_eq!(
+        component.blocks[0].registers[0].fields[0]
+            .hdl_path
+            .as_deref(),
+        Some("ready_q")
+    );
+
+    let gate_component = parse_ipxact_with_options(
+        xml,
+        ParseOptions {
+            preferred_view: Some("gate".into()),
+            ..ParseOptions::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        gate_component.blocks[0].registers[0].fields[0]
+            .hdl_path
+            .as_deref(),
+        Some("gate_ready_q")
+    );
+
+    let sv = ipxact_to_uvm_reg(xml).unwrap();
+    assert!(sv.contains("status.add_hdl_path_slice(\"rtl.status.ready_q\", 0, 1, 1'b1);"));
+    let gate_sv =
+        serialize_uvm_reg_with_options(&gate_component, RenderOptions::default()).unwrap();
+    assert!(
+        gate_sv.contains("status.add_hdl_path_slice(\"rtl.status.gate_ready_q\", 0, 1, 1'b1);")
+    );
+}
+
+#[test]
+fn reports_requested_access_handle_view_without_matching_or_generic_path() {
+    let xml = r#"
+<ipxact:component xmlns:ipxact="http://www.accellera.org/XMLSchema/IPXACT/1685-2022">
+  <ipxact:vendor>acme</ipxact:vendor>
+  <ipxact:library>ip</ipxact:library>
+  <ipxact:name>missing_view_path</ipxact:name>
+  <ipxact:version>1.0</ipxact:version>
+  <ipxact:memoryMaps>
+    <ipxact:memoryMap>
+      <ipxact:name>regs</ipxact:name>
+      <ipxact:addressBlock>
+        <ipxact:name>cfg</ipxact:name>
+        <ipxact:baseAddress>0</ipxact:baseAddress>
+        <ipxact:range>4</ipxact:range>
+        <ipxact:width>32</ipxact:width>
+        <ipxact:register>
+          <ipxact:name>status</ipxact:name>
+          <ipxact:accessHandles>
+            <ipxact:accessHandle>
+              <ipxact:viewRef>gate</ipxact:viewRef>
+              <ipxact:pathSegments><ipxact:pathSegment>gate.status</ipxact:pathSegment></ipxact:pathSegments>
+            </ipxact:accessHandle>
+          </ipxact:accessHandles>
+          <ipxact:addressOffset>0</ipxact:addressOffset>
+          <ipxact:size>32</ipxact:size>
+          <ipxact:field>
+            <ipxact:name>ready</ipxact:name>
+            <ipxact:bitOffset>0</ipxact:bitOffset>
+            <ipxact:bitWidth>1</ipxact:bitWidth>
+          </ipxact:field>
+        </ipxact:register>
+      </ipxact:addressBlock>
+    </ipxact:memoryMap>
+  </ipxact:memoryMaps>
+</ipxact:component>"#;
+
+    let error = parse_ipxact_with_options(
+        xml,
+        ParseOptions {
+            preferred_view: Some("rtl".into()),
+            ..ParseOptions::default()
+        },
+    )
+    .unwrap_err()
+    .to_string();
+
+    assert!(
+        error.contains(
+            "IP-XACT accessHandle for `status` does not define requested view `rtl` and has no generic fallback"
+        ),
+        "{error}"
+    );
+}
+
+#[test]
+fn reports_quoted_access_handle_path_segments() {
+    let xml = r#"
+<ipxact:component xmlns:ipxact="http://www.accellera.org/XMLSchema/IPXACT/1685-2022">
+  <ipxact:vendor>acme</ipxact:vendor>
+  <ipxact:library>ip</ipxact:library>
+  <ipxact:name>quoted_path</ipxact:name>
+  <ipxact:version>1.0</ipxact:version>
+  <ipxact:memoryMaps>
+    <ipxact:memoryMap>
+      <ipxact:name>regs</ipxact:name>
+      <ipxact:addressBlock>
+        <ipxact:name>cfg</ipxact:name>
+        <ipxact:baseAddress>0</ipxact:baseAddress>
+        <ipxact:range>4</ipxact:range>
+        <ipxact:width>32</ipxact:width>
+        <ipxact:register>
+          <ipxact:name>status</ipxact:name>
+          <ipxact:accessHandles>
+            <ipxact:accessHandle>
+              <ipxact:pathSegments>
+                <ipxact:pathSegment>"rtl.status"</ipxact:pathSegment>
+              </ipxact:pathSegments>
+            </ipxact:accessHandle>
+          </ipxact:accessHandles>
+          <ipxact:addressOffset>0</ipxact:addressOffset>
+          <ipxact:size>32</ipxact:size>
+          <ipxact:field>
+            <ipxact:name>ready</ipxact:name>
+            <ipxact:bitOffset>0</ipxact:bitOffset>
+            <ipxact:bitWidth>1</ipxact:bitWidth>
+          </ipxact:field>
+        </ipxact:register>
+      </ipxact:addressBlock>
+    </ipxact:memoryMap>
+  </ipxact:memoryMaps>
+</ipxact:component>"#;
+
+    let error = parse_ipxact(xml).unwrap_err().to_string();
+
+    assert!(
+        error.contains(
+            "IP-XACT accessHandle pathSegment for `status` must not include SystemVerilog string quotes: `\"rtl.status\"`"
+        ),
+        "{error}"
+    );
 }
 
 #[test]
@@ -745,6 +1142,85 @@ fn reports_duplicate_generated_class_names() {
         error.contains("duplicate generated SystemVerilog class name `ral_reg_cfg_status_flag`"),
         "{error}"
     );
+}
+
+#[test]
+fn normalizes_generated_systemverilog_identifiers_for_stress_names() {
+    let xml = r#"
+<ipxact:component xmlns:ipxact="http://www.accellera.org/XMLSchema/IPXACT/1685-2022">
+  <ipxact:vendor>acme</ipxact:vendor>
+  <ipxact:library>ip</ipxact:library>
+  <ipxact:name>123 top-unit with a very very long component name 0123456789</ipxact:name>
+  <ipxact:version>1.0</ipxact:version>
+  <ipxact:memoryMaps>
+    <ipxact:memoryMap>
+      <ipxact:name>default</ipxact:name>
+      <ipxact:addressBlock>
+        <ipxact:name>class</ipxact:name>
+        <ipxact:baseAddress>0</ipxact:baseAddress>
+        <ipxact:range>0x20</ipxact:range>
+        <ipxact:width>32</ipxact:width>
+        <ipxact:register>
+          <ipxact:name>123 status!</ipxact:name>
+          <ipxact:addressOffset>0</ipxact:addressOffset>
+          <ipxact:size>32</ipxact:size>
+          <ipxact:field>
+            <ipxact:name>1st-field</ipxact:name>
+            <ipxact:bitOffset>0</ipxact:bitOffset>
+            <ipxact:bitWidth>1</ipxact:bitWidth>
+            <ipxact:enumeratedValues>
+              <ipxact:enumeratedValue>
+                <ipxact:name>default</ipxact:name>
+                <ipxact:value>0</ipxact:value>
+              </ipxact:enumeratedValue>
+              <ipxact:enumeratedValue>
+                <ipxact:name>2-way</ipxact:name>
+                <ipxact:value>1</ipxact:value>
+              </ipxact:enumeratedValue>
+            </ipxact:enumeratedValues>
+          </ipxact:field>
+          <ipxact:field>
+            <ipxact:name>bit</ipxact:name>
+            <ipxact:bitOffset>1</ipxact:bitOffset>
+            <ipxact:bitWidth>1</ipxact:bitWidth>
+          </ipxact:field>
+          <ipxact:field>
+            <ipxact:name>this is a very very long field-name with symbols !@# and digits 0123456789</ipxact:name>
+            <ipxact:bitOffset>2</ipxact:bitOffset>
+            <ipxact:bitWidth>1</ipxact:bitWidth>
+          </ipxact:field>
+        </ipxact:register>
+        <ipxact:register>
+          <ipxact:name>for</ipxact:name>
+          <ipxact:addressOffset>4</ipxact:addressOffset>
+          <ipxact:size>32</ipxact:size>
+          <ipxact:field>
+            <ipxact:name>this</ipxact:name>
+            <ipxact:bitOffset>0</ipxact:bitOffset>
+            <ipxact:bitWidth>1</ipxact:bitWidth>
+          </ipxact:field>
+        </ipxact:register>
+      </ipxact:addressBlock>
+    </ipxact:memoryMap>
+  </ipxact:memoryMaps>
+</ipxact:component>"#;
+
+    let sv = ipxact_to_uvm_reg(xml).unwrap();
+
+    assert_generated_sv_structural_gate("identifier stress", &sv);
+    assert!(sv.contains("class ral_sys__123_top_unit_with_a_very_very_long_component_name_0123456789 extends uvm_reg_block;"));
+    assert!(sv.contains("class ral_block__class extends uvm_reg_block;"));
+    assert!(sv.contains("class ral_reg__class__123_status extends uvm_reg;"));
+    assert!(sv.contains("class ral_reg__class__for extends uvm_reg;"));
+    assert!(sv.contains("rand uvm_reg_field _1st_field;"));
+    assert!(sv.contains("rand uvm_reg_field _bit;"));
+    assert!(sv.contains(
+        "rand uvm_reg_field this_is_a_very_very_long_field_name_with_symbols_and_digits_0123456789;"
+    ));
+    assert!(sv.contains("_1ST_FIELD_DEFAULT = 1'h0,"));
+    assert!(sv.contains("_1ST_FIELD_2_WAY = 1'h1"));
+    assert!(sv.contains("rand ral_reg__class__123_status _123_status;"));
+    assert!(sv.contains("rand ral_reg__class__for _for;"));
 }
 
 #[test]
@@ -923,6 +1399,171 @@ fn selects_lowest_priority_mode_access_policy() {
 }
 
 #[test]
+fn reports_requested_register_access_policy_mode_without_matching_or_generic_policy() {
+    let xml = r#"
+<ipxact:component xmlns:ipxact="http://www.accellera.org/XMLSchema/IPXACT/1685-2022">
+  <ipxact:vendor>acme</ipxact:vendor>
+  <ipxact:library>ip</ipxact:library>
+  <ipxact:name>missing_register_mode_policy</ipxact:name>
+  <ipxact:version>1.0</ipxact:version>
+  <ipxact:memoryMaps>
+    <ipxact:memoryMap>
+      <ipxact:name>regs</ipxact:name>
+      <ipxact:addressBlock>
+        <ipxact:name>cfg</ipxact:name>
+        <ipxact:baseAddress>0</ipxact:baseAddress>
+        <ipxact:range>4</ipxact:range>
+        <ipxact:width>32</ipxact:width>
+        <ipxact:register>
+          <ipxact:name>status</ipxact:name>
+          <ipxact:accessPolicies>
+            <ipxact:accessPolicy>
+              <ipxact:modeRef>sleep</ipxact:modeRef>
+              <ipxact:access>read-only</ipxact:access>
+            </ipxact:accessPolicy>
+          </ipxact:accessPolicies>
+          <ipxact:addressOffset>0</ipxact:addressOffset>
+          <ipxact:size>32</ipxact:size>
+          <ipxact:field>
+            <ipxact:name>ready</ipxact:name>
+            <ipxact:bitOffset>0</ipxact:bitOffset>
+            <ipxact:bitWidth>1</ipxact:bitWidth>
+          </ipxact:field>
+        </ipxact:register>
+      </ipxact:addressBlock>
+    </ipxact:memoryMap>
+  </ipxact:memoryMaps>
+</ipxact:component>"#;
+
+    let error = parse_ipxact_with_options(
+        xml,
+        ParseOptions {
+            preferred_mode: Some("diagnostic".into()),
+            ..ParseOptions::default()
+        },
+    )
+    .unwrap_err()
+    .to_string();
+
+    assert!(
+        error.contains(
+            "IP-XACT register `status` access policy does not define requested mode `diagnostic` and has no generic fallback"
+        ),
+        "{error}"
+    );
+}
+
+#[test]
+fn reports_requested_address_block_access_policy_mode_without_matching_or_generic_policy() {
+    let xml = r#"
+<ipxact:component xmlns:ipxact="http://www.accellera.org/XMLSchema/IPXACT/1685-2022">
+  <ipxact:vendor>acme</ipxact:vendor>
+  <ipxact:library>ip</ipxact:library>
+  <ipxact:name>missing_block_mode_policy</ipxact:name>
+  <ipxact:version>1.0</ipxact:version>
+  <ipxact:memoryMaps>
+    <ipxact:memoryMap>
+      <ipxact:name>regs</ipxact:name>
+      <ipxact:addressBlock>
+        <ipxact:name>cfg</ipxact:name>
+        <ipxact:baseAddress>0</ipxact:baseAddress>
+        <ipxact:range>4</ipxact:range>
+        <ipxact:width>32</ipxact:width>
+        <ipxact:accessPolicies>
+          <ipxact:accessPolicy>
+            <ipxact:modeRef>sleep</ipxact:modeRef>
+            <ipxact:access>read-only</ipxact:access>
+          </ipxact:accessPolicy>
+        </ipxact:accessPolicies>
+        <ipxact:register>
+          <ipxact:name>status</ipxact:name>
+          <ipxact:addressOffset>0</ipxact:addressOffset>
+          <ipxact:size>32</ipxact:size>
+          <ipxact:field>
+            <ipxact:name>ready</ipxact:name>
+            <ipxact:bitOffset>0</ipxact:bitOffset>
+            <ipxact:bitWidth>1</ipxact:bitWidth>
+          </ipxact:field>
+        </ipxact:register>
+      </ipxact:addressBlock>
+    </ipxact:memoryMap>
+  </ipxact:memoryMaps>
+</ipxact:component>"#;
+
+    let error = parse_ipxact_with_options(
+        xml,
+        ParseOptions {
+            preferred_mode: Some("diagnostic".into()),
+            ..ParseOptions::default()
+        },
+    )
+    .unwrap_err()
+    .to_string();
+
+    assert!(
+        error.contains(
+            "IP-XACT addressBlock `cfg` access policy does not define requested mode `diagnostic` and has no generic fallback"
+        ),
+        "{error}"
+    );
+}
+
+#[test]
+fn reports_requested_field_access_policy_mode_without_matching_or_generic_policy() {
+    let xml = r#"
+<ipxact:component xmlns:ipxact="http://www.accellera.org/XMLSchema/IPXACT/1685-2022">
+  <ipxact:vendor>acme</ipxact:vendor>
+  <ipxact:library>ip</ipxact:library>
+  <ipxact:name>missing_field_mode_policy</ipxact:name>
+  <ipxact:version>1.0</ipxact:version>
+  <ipxact:memoryMaps>
+    <ipxact:memoryMap>
+      <ipxact:name>regs</ipxact:name>
+      <ipxact:addressBlock>
+        <ipxact:name>cfg</ipxact:name>
+        <ipxact:baseAddress>0</ipxact:baseAddress>
+        <ipxact:range>4</ipxact:range>
+        <ipxact:width>32</ipxact:width>
+        <ipxact:register>
+          <ipxact:name>status</ipxact:name>
+          <ipxact:addressOffset>0</ipxact:addressOffset>
+          <ipxact:size>32</ipxact:size>
+          <ipxact:field>
+            <ipxact:name>ready</ipxact:name>
+            <ipxact:bitOffset>0</ipxact:bitOffset>
+            <ipxact:bitWidth>1</ipxact:bitWidth>
+            <ipxact:fieldAccessPolicies>
+              <ipxact:fieldAccessPolicy>
+                <ipxact:modeRef>sleep</ipxact:modeRef>
+                <ipxact:access>read-only</ipxact:access>
+              </ipxact:fieldAccessPolicy>
+            </ipxact:fieldAccessPolicies>
+          </ipxact:field>
+        </ipxact:register>
+      </ipxact:addressBlock>
+    </ipxact:memoryMap>
+  </ipxact:memoryMaps>
+</ipxact:component>"#;
+
+    let error = parse_ipxact_with_options(
+        xml,
+        ParseOptions {
+            preferred_mode: Some("diagnostic".into()),
+            ..ParseOptions::default()
+        },
+    )
+    .unwrap_err()
+    .to_string();
+
+    assert!(
+        error.contains(
+            "IP-XACT field `ready` access policy does not define requested mode `diagnostic` and has no generic fallback"
+        ),
+        "{error}"
+    );
+}
+
+#[test]
 fn optionally_renders_register_bit_coverage() {
     let component = parse_ipxact(IPXACT_2014).unwrap();
     let sv = serialize_uvm_reg_with_options(&component, RenderOptions { coverage: true }).unwrap();
@@ -948,7 +1589,7 @@ fn renders_ipxact_2022_field_access_policies() {
     assert_eq!(clear.resets[1].value, "1");
     assert_eq!(clear.access.as_deref(), Some("read-write"));
     assert_eq!(state.testable.as_deref(), Some("false"));
-    assert_eq!(state.reserved.as_deref(), Some("1"));
+    assert_eq!(state.reserved.as_deref(), Some("true"));
 
     let sv = ipxact_to_uvm_reg(IPXACT_2022).unwrap();
 
@@ -957,6 +1598,434 @@ fn renders_ipxact_2022_field_access_policies() {
     assert!(!sv.contains("clear.set_compare"));
     assert!(sv.contains("state.set_compare(UVM_NO_CHECK);"));
     assert!(sv.contains("irq.add_hdl_path_slice({`IRQ_HDL_PATH, \".clear_q\"}, 0, 1, 1'b1);"));
+}
+
+#[test]
+fn applies_ipxact_reset_masks_to_generated_uvm_resets() {
+    let xml = r#"
+<ipxact:component xmlns:ipxact="http://www.accellera.org/XMLSchema/IPXACT/1685-2022">
+  <ipxact:vendor>acme</ipxact:vendor>
+  <ipxact:library>ip</ipxact:library>
+  <ipxact:name>masked_resets</ipxact:name>
+  <ipxact:version>1.0</ipxact:version>
+  <ipxact:memoryMaps>
+    <ipxact:memoryMap>
+      <ipxact:name>regs</ipxact:name>
+      <ipxact:addressBlock>
+        <ipxact:name>cfg</ipxact:name>
+        <ipxact:baseAddress>0</ipxact:baseAddress>
+        <ipxact:range>4</ipxact:range>
+        <ipxact:width>32</ipxact:width>
+        <ipxact:register>
+          <ipxact:name>status</ipxact:name>
+          <ipxact:addressOffset>0</ipxact:addressOffset>
+          <ipxact:size>32</ipxact:size>
+          <ipxact:field>
+            <ipxact:name>mode</ipxact:name>
+            <ipxact:bitOffset>0</ipxact:bitOffset>
+            <ipxact:bitWidth>4</ipxact:bitWidth>
+            <ipxact:resets>
+              <ipxact:reset>
+                <ipxact:value>4'hf</ipxact:value>
+                <ipxact:mask>4'h5</ipxact:mask>
+              </ipxact:reset>
+              <ipxact:reset resetTypeRef="SOFT">
+                <ipxact:value>4'ha</ipxact:value>
+                <ipxact:mask>4'h3</ipxact:mask>
+              </ipxact:reset>
+            </ipxact:resets>
+          </ipxact:field>
+        </ipxact:register>
+      </ipxact:addressBlock>
+    </ipxact:memoryMap>
+  </ipxact:memoryMaps>
+</ipxact:component>"#;
+
+    let component = parse_ipxact(xml).unwrap();
+    let field = &component.blocks[0].registers[0].fields[0];
+
+    assert_eq!(field.resets[0].value, "4'hf");
+    assert_eq!(field.resets[0].mask.as_deref(), Some("4'h5"));
+    assert_eq!(field.resets[1].value, "4'ha");
+    assert_eq!(field.resets[1].mask.as_deref(), Some("4'h3"));
+
+    let sv = ipxact_to_uvm_reg(xml).unwrap();
+    assert!(sv.contains("mode.configure(this, 4, 0, \"RW\", 1'b0, 4'h5, 1'b1, 1'b1, 1);"));
+    assert!(sv.contains("mode.set_reset(4'h2, \"SOFT\");"));
+}
+
+#[test]
+fn maps_ipxact_read_write_side_effects_to_ieee_1800_2_access_strings() {
+    let xml = r#"
+<ipxact:component xmlns:ipxact="http://www.accellera.org/XMLSchema/IPXACT/1685-2022">
+  <ipxact:vendor>acme</ipxact:vendor>
+  <ipxact:library>ip</ipxact:library>
+  <ipxact:name>access_matrix</ipxact:name>
+  <ipxact:version>1.0</ipxact:version>
+  <ipxact:memoryMaps>
+    <ipxact:memoryMap>
+      <ipxact:name>regs</ipxact:name>
+      <ipxact:addressBlock>
+        <ipxact:name>cfg</ipxact:name>
+        <ipxact:baseAddress>0</ipxact:baseAddress>
+        <ipxact:range>8</ipxact:range>
+        <ipxact:width>32</ipxact:width>
+        <ipxact:register>
+          <ipxact:name>effects</ipxact:name>
+          <ipxact:addressOffset>0</ipxact:addressOffset>
+          <ipxact:size>32</ipxact:size>
+          <ipxact:field>
+            <ipxact:name>rw_clear</ipxact:name>
+            <ipxact:bitOffset>0</ipxact:bitOffset>
+            <ipxact:bitWidth>1</ipxact:bitWidth>
+            <ipxact:access>read-write</ipxact:access>
+            <ipxact:readAction>clear</ipxact:readAction>
+          </ipxact:field>
+          <ipxact:field>
+            <ipxact:name>rw_set</ipxact:name>
+            <ipxact:bitOffset>1</ipxact:bitOffset>
+            <ipxact:bitWidth>1</ipxact:bitWidth>
+            <ipxact:access>read-write</ipxact:access>
+            <ipxact:readAction>set</ipxact:readAction>
+          </ipxact:field>
+          <ipxact:field>
+            <ipxact:name>rw_once</ipxact:name>
+            <ipxact:bitOffset>2</ipxact:bitOffset>
+            <ipxact:bitWidth>1</ipxact:bitWidth>
+            <ipxact:access>read-writeOnce</ipxact:access>
+          </ipxact:field>
+          <ipxact:field>
+            <ipxact:name>wo_once</ipxact:name>
+            <ipxact:bitOffset>3</ipxact:bitOffset>
+            <ipxact:bitWidth>1</ipxact:bitWidth>
+            <ipxact:access>writeOnce</ipxact:access>
+          </ipxact:field>
+          <ipxact:field>
+            <ipxact:name>w_set_r_clear</ipxact:name>
+            <ipxact:bitOffset>4</ipxact:bitOffset>
+            <ipxact:bitWidth>1</ipxact:bitWidth>
+            <ipxact:modifiedWriteValue>set</ipxact:modifiedWriteValue>
+            <ipxact:readAction>clear</ipxact:readAction>
+          </ipxact:field>
+          <ipxact:field>
+            <ipxact:name>w_clear_r_set</ipxact:name>
+            <ipxact:bitOffset>5</ipxact:bitOffset>
+            <ipxact:bitWidth>1</ipxact:bitWidth>
+            <ipxact:modifiedWriteValue>clear</ipxact:modifiedWriteValue>
+            <ipxact:readAction>set</ipxact:readAction>
+          </ipxact:field>
+          <ipxact:field>
+            <ipxact:name>disabled</ipxact:name>
+            <ipxact:bitOffset>6</ipxact:bitOffset>
+            <ipxact:bitWidth>1</ipxact:bitWidth>
+            <ipxact:access>no-access</ipxact:access>
+          </ipxact:field>
+        </ipxact:register>
+        <ipxact:register>
+          <ipxact:name>write_only_effects</ipxact:name>
+          <ipxact:addressOffset>4</ipxact:addressOffset>
+          <ipxact:size>32</ipxact:size>
+          <ipxact:field>
+            <ipxact:name>woc</ipxact:name>
+            <ipxact:bitOffset>0</ipxact:bitOffset>
+            <ipxact:bitWidth>1</ipxact:bitWidth>
+            <ipxact:access>write-only</ipxact:access>
+            <ipxact:modifiedWriteValue>clear</ipxact:modifiedWriteValue>
+          </ipxact:field>
+          <ipxact:field>
+            <ipxact:name>wos</ipxact:name>
+            <ipxact:bitOffset>1</ipxact:bitOffset>
+            <ipxact:bitWidth>1</ipxact:bitWidth>
+            <ipxact:access>write-only</ipxact:access>
+            <ipxact:modifiedWriteValue>set</ipxact:modifiedWriteValue>
+          </ipxact:field>
+          <ipxact:field>
+            <ipxact:name>w1src</ipxact:name>
+            <ipxact:bitOffset>2</ipxact:bitOffset>
+            <ipxact:bitWidth>1</ipxact:bitWidth>
+            <ipxact:modifiedWriteValue>oneToSet</ipxact:modifiedWriteValue>
+            <ipxact:readAction>clear</ipxact:readAction>
+          </ipxact:field>
+          <ipxact:field>
+            <ipxact:name>w1crs</ipxact:name>
+            <ipxact:bitOffset>3</ipxact:bitOffset>
+            <ipxact:bitWidth>1</ipxact:bitWidth>
+            <ipxact:modifiedWriteValue>oneToClear</ipxact:modifiedWriteValue>
+            <ipxact:readAction>set</ipxact:readAction>
+          </ipxact:field>
+          <ipxact:field>
+            <ipxact:name>w0src</ipxact:name>
+            <ipxact:bitOffset>4</ipxact:bitOffset>
+            <ipxact:bitWidth>1</ipxact:bitWidth>
+            <ipxact:modifiedWriteValue>zeroToSet</ipxact:modifiedWriteValue>
+            <ipxact:readAction>clear</ipxact:readAction>
+          </ipxact:field>
+          <ipxact:field>
+            <ipxact:name>w0crs</ipxact:name>
+            <ipxact:bitOffset>5</ipxact:bitOffset>
+            <ipxact:bitWidth>1</ipxact:bitWidth>
+            <ipxact:modifiedWriteValue>zeroToClear</ipxact:modifiedWriteValue>
+            <ipxact:readAction>set</ipxact:readAction>
+          </ipxact:field>
+        </ipxact:register>
+      </ipxact:addressBlock>
+    </ipxact:memoryMap>
+  </ipxact:memoryMaps>
+</ipxact:component>"#;
+
+    let sv = ipxact_to_uvm_reg(xml).unwrap();
+
+    assert!(sv.contains("rw_clear.configure(this, 1, 0, \"WRC\""));
+    assert!(sv.contains("rw_set.configure(this, 1, 1, \"WRS\""));
+    assert!(sv.contains("rw_once.configure(this, 1, 2, \"W1\""));
+    assert!(sv.contains("wo_once.configure(this, 1, 3, \"WO1\""));
+    assert!(sv.contains("w_set_r_clear.configure(this, 1, 4, \"WSRC\""));
+    assert!(sv.contains("w_clear_r_set.configure(this, 1, 5, \"WCRS\""));
+    assert!(sv.contains("disabled.configure(this, 1, 6, \"NOACCESS\""));
+    assert!(sv.contains("woc.configure(this, 1, 0, \"WOC\""));
+    assert!(sv.contains("wos.configure(this, 1, 1, \"WOS\""));
+    assert!(sv.contains("w1src.configure(this, 1, 2, \"W1SRC\""));
+    assert!(sv.contains("w1crs.configure(this, 1, 3, \"W1CRS\""));
+    assert!(sv.contains("w0src.configure(this, 1, 4, \"W0SRC\""));
+    assert!(sv.contains("w0crs.configure(this, 1, 5, \"W0CRS\""));
+    assert!(sv.contains("default_map.add_reg(effects, `UVM_REG_ADDR_WIDTH'h0, \"RW\");"));
+    assert!(
+        sv.contains("default_map.add_reg(write_only_effects, `UVM_REG_ADDR_WIDTH'h4, \"RW\");")
+    );
+}
+
+#[test]
+fn reports_unmapped_ipxact_access_side_effects() {
+    let xml = r#"
+<ipxact:component xmlns:ipxact="http://www.accellera.org/XMLSchema/IPXACT/1685-2022">
+  <ipxact:vendor>acme</ipxact:vendor>
+  <ipxact:library>ip</ipxact:library>
+  <ipxact:name>bad_access</ipxact:name>
+  <ipxact:version>1.0</ipxact:version>
+  <ipxact:memoryMaps>
+    <ipxact:memoryMap>
+      <ipxact:name>regs</ipxact:name>
+      <ipxact:addressBlock>
+        <ipxact:name>cfg</ipxact:name>
+        <ipxact:baseAddress>0</ipxact:baseAddress>
+        <ipxact:range>4</ipxact:range>
+        <ipxact:width>32</ipxact:width>
+        <ipxact:register>
+          <ipxact:name>status</ipxact:name>
+          <ipxact:addressOffset>0</ipxact:addressOffset>
+          <ipxact:size>32</ipxact:size>
+          <ipxact:field>
+            <ipxact:name>custom</ipxact:name>
+            <ipxact:bitOffset>0</ipxact:bitOffset>
+            <ipxact:bitWidth>1</ipxact:bitWidth>
+            <ipxact:access>read-write</ipxact:access>
+            <ipxact:modifiedWriteValue>modify</ipxact:modifiedWriteValue>
+          </ipxact:field>
+        </ipxact:register>
+      </ipxact:addressBlock>
+    </ipxact:memoryMap>
+  </ipxact:memoryMaps>
+</ipxact:component>"#;
+
+    let error = ipxact_to_uvm_reg(xml).unwrap_err().to_string();
+
+    assert!(
+        error.contains(
+            "unsupported IP-XACT access policy for field `custom`: access=`read-write`, modifiedWriteValue=modify, readAction=<none>"
+        ),
+        "{error}"
+    );
+}
+
+#[test]
+fn reports_unsupported_field_write_value_constraints() {
+    let xml = unsupported_field_feature_xml(
+        r#"<ipxact:writeValueConstraint><ipxact:minimum>0</ipxact:minimum><ipxact:maximum>3</ipxact:maximum></ipxact:writeValueConstraint>"#,
+    );
+
+    let error = ipxact_to_uvm_reg(&xml).unwrap_err().to_string();
+
+    assert!(
+        error.contains("unsupported IP-XACT feature `writeValueConstraint` on field `limited`"),
+        "{error}"
+    );
+}
+
+#[test]
+fn reports_unsupported_field_broadcasts() {
+    let xml = unsupported_field_feature_xml(
+        r#"<ipxact:broadcasts><ipxact:broadcastTo><ipxact:fieldRef fieldRef="other"/></ipxact:broadcastTo></ipxact:broadcasts>"#,
+    );
+
+    let error = ipxact_to_uvm_reg(&xml).unwrap_err().to_string();
+
+    assert!(
+        error.contains("unsupported IP-XACT feature `broadcasts` on field `limited`"),
+        "{error}"
+    );
+}
+
+#[test]
+fn reports_unsupported_field_access_restrictions() {
+    let xml = unsupported_field_feature_xml(
+        r#"<ipxact:accessRestrictions><ipxact:accessRestriction><ipxact:readAccessMask>0x1</ipxact:readAccessMask></ipxact:accessRestriction></ipxact:accessRestrictions>"#,
+    );
+
+    let error = ipxact_to_uvm_reg(&xml).unwrap_err().to_string();
+
+    assert!(
+        error.contains("unsupported IP-XACT feature `accessRestrictions` on field `limited`"),
+        "{error}"
+    );
+}
+
+#[test]
+fn reports_unsupported_register_access_restrictions() {
+    let xml = unsupported_register_access_restrictions_xml();
+
+    let error = ipxact_to_uvm_reg(&xml).unwrap_err().to_string();
+
+    assert!(
+        error.contains("unsupported IP-XACT feature `accessRestrictions` on register `status`"),
+        "{error}"
+    );
+}
+
+#[test]
+fn reports_unsupported_address_block_access_restrictions() {
+    let xml = unsupported_address_block_access_restrictions_xml();
+
+    let error = ipxact_to_uvm_reg(&xml).unwrap_err().to_string();
+
+    assert!(
+        error.contains("unsupported IP-XACT feature `accessRestrictions` on addressBlock `cfg`"),
+        "{error}"
+    );
+}
+
+fn unsupported_field_feature_xml(feature_xml: &str) -> String {
+    format!(
+        r#"
+<ipxact:component xmlns:ipxact="http://www.accellera.org/XMLSchema/IPXACT/1685-2022">
+  <ipxact:vendor>acme</ipxact:vendor>
+  <ipxact:library>ip</ipxact:library>
+  <ipxact:name>unsupported_field_feature</ipxact:name>
+  <ipxact:version>1.0</ipxact:version>
+  <ipxact:memoryMaps>
+    <ipxact:memoryMap>
+      <ipxact:name>regs</ipxact:name>
+      <ipxact:addressBlock>
+        <ipxact:name>cfg</ipxact:name>
+        <ipxact:baseAddress>0</ipxact:baseAddress>
+        <ipxact:range>4</ipxact:range>
+        <ipxact:width>32</ipxact:width>
+        <ipxact:register>
+          <ipxact:name>status</ipxact:name>
+          <ipxact:addressOffset>0</ipxact:addressOffset>
+          <ipxact:size>32</ipxact:size>
+          <ipxact:field>
+            <ipxact:name>limited</ipxact:name>
+            <ipxact:bitOffset>0</ipxact:bitOffset>
+            <ipxact:bitWidth>2</ipxact:bitWidth>
+            <ipxact:fieldAccessPolicies>
+              <ipxact:fieldAccessPolicy>
+                <ipxact:access>read-write</ipxact:access>
+                {feature_xml}
+              </ipxact:fieldAccessPolicy>
+            </ipxact:fieldAccessPolicies>
+          </ipxact:field>
+        </ipxact:register>
+      </ipxact:addressBlock>
+    </ipxact:memoryMap>
+  </ipxact:memoryMaps>
+</ipxact:component>"#
+    )
+}
+
+fn unsupported_register_access_restrictions_xml() -> String {
+    r#"
+<ipxact:component xmlns:ipxact="http://www.accellera.org/XMLSchema/IPXACT/1685-2022">
+  <ipxact:vendor>acme</ipxact:vendor>
+  <ipxact:library>ip</ipxact:library>
+  <ipxact:name>unsupported_register_feature</ipxact:name>
+  <ipxact:version>1.0</ipxact:version>
+  <ipxact:memoryMaps>
+    <ipxact:memoryMap>
+      <ipxact:name>regs</ipxact:name>
+      <ipxact:addressBlock>
+        <ipxact:name>cfg</ipxact:name>
+        <ipxact:baseAddress>0</ipxact:baseAddress>
+        <ipxact:range>4</ipxact:range>
+        <ipxact:width>32</ipxact:width>
+        <ipxact:register>
+          <ipxact:name>status</ipxact:name>
+          <ipxact:addressOffset>0</ipxact:addressOffset>
+          <ipxact:size>32</ipxact:size>
+          <ipxact:accessPolicies>
+            <ipxact:accessPolicy>
+              <ipxact:access>read-write</ipxact:access>
+              <ipxact:accessRestrictions>
+                <ipxact:accessRestriction>
+                  <ipxact:readAccessMask>0xff</ipxact:readAccessMask>
+                </ipxact:accessRestriction>
+              </ipxact:accessRestrictions>
+            </ipxact:accessPolicy>
+          </ipxact:accessPolicies>
+          <ipxact:field>
+            <ipxact:name>value</ipxact:name>
+            <ipxact:bitOffset>0</ipxact:bitOffset>
+            <ipxact:bitWidth>8</ipxact:bitWidth>
+            <ipxact:access>read-write</ipxact:access>
+          </ipxact:field>
+        </ipxact:register>
+      </ipxact:addressBlock>
+    </ipxact:memoryMap>
+  </ipxact:memoryMaps>
+</ipxact:component>"#
+        .into()
+}
+
+fn unsupported_address_block_access_restrictions_xml() -> String {
+    r#"
+<ipxact:component xmlns:ipxact="http://www.accellera.org/XMLSchema/IPXACT/1685-2022">
+  <ipxact:vendor>acme</ipxact:vendor>
+  <ipxact:library>ip</ipxact:library>
+  <ipxact:name>unsupported_block_feature</ipxact:name>
+  <ipxact:version>1.0</ipxact:version>
+  <ipxact:memoryMaps>
+    <ipxact:memoryMap>
+      <ipxact:name>regs</ipxact:name>
+      <ipxact:addressBlock>
+        <ipxact:name>cfg</ipxact:name>
+        <ipxact:baseAddress>0</ipxact:baseAddress>
+        <ipxact:range>4</ipxact:range>
+        <ipxact:width>32</ipxact:width>
+        <ipxact:accessPolicies>
+          <ipxact:accessPolicy>
+            <ipxact:access>read-write</ipxact:access>
+            <ipxact:accessRestrictions>
+              <ipxact:accessRestriction>
+                <ipxact:readAccessMask>0xffff</ipxact:readAccessMask>
+              </ipxact:accessRestriction>
+            </ipxact:accessRestrictions>
+          </ipxact:accessPolicy>
+        </ipxact:accessPolicies>
+        <ipxact:register>
+          <ipxact:name>status</ipxact:name>
+          <ipxact:addressOffset>0</ipxact:addressOffset>
+          <ipxact:size>32</ipxact:size>
+          <ipxact:field>
+            <ipxact:name>value</ipxact:name>
+            <ipxact:bitOffset>0</ipxact:bitOffset>
+            <ipxact:bitWidth>8</ipxact:bitWidth>
+            <ipxact:access>read-write</ipxact:access>
+          </ipxact:field>
+        </ipxact:register>
+      </ipxact:addressBlock>
+    </ipxact:memoryMap>
+  </ipxact:memoryMaps>
+</ipxact:component>"#
+        .into()
 }
 
 #[test]
@@ -1016,6 +2085,165 @@ fn renders_ipxact_memory_blocks_as_uvm_mem() {
     assert!(sv.contains("default_map.add_mem(packet_mem, `UVM_REG_ADDR_WIDTH'h0, \"RO\");"));
     assert!(
         sv.contains("default_map.add_submap(packet_mem.default_map, `UVM_REG_ADDR_WIDTH'h2000);")
+    );
+}
+
+#[test]
+fn renders_read_write_ipxact_memory_blocks_as_rw_uvm_mem() {
+    let xml = r#"
+<ipxact:component xmlns:ipxact="http://www.accellera.org/XMLSchema/IPXACT/1685-2022">
+  <ipxact:vendor>acme</ipxact:vendor>
+  <ipxact:library>ip</ipxact:library>
+  <ipxact:name>rw_memory</ipxact:name>
+  <ipxact:version>1.0</ipxact:version>
+  <ipxact:memoryMaps>
+    <ipxact:memoryMap>
+      <ipxact:name>regs</ipxact:name>
+      <ipxact:addressBlock>
+        <ipxact:name>buffer</ipxact:name>
+        <ipxact:baseAddress>0</ipxact:baseAddress>
+        <ipxact:range>0x20</ipxact:range>
+        <ipxact:width>32</ipxact:width>
+        <ipxact:usage>memory</ipxact:usage>
+        <ipxact:access>read-write</ipxact:access>
+      </ipxact:addressBlock>
+    </ipxact:memoryMap>
+  </ipxact:memoryMaps>
+</ipxact:component>"#;
+
+    let sv = ipxact_to_uvm_reg(xml).unwrap();
+
+    assert!(sv.contains("buffer = new(\"buffer\", 8, 32, \"RW\", UVM_NO_COVERAGE);"));
+    assert!(sv.contains("default_map.add_mem(buffer, `UVM_REG_ADDR_WIDTH'h0, \"RW\");"));
+}
+
+#[test]
+fn reports_ipxact_memory_access_that_uvm_mem_cannot_represent() {
+    let xml = r#"
+<ipxact:component xmlns:ipxact="http://www.accellera.org/XMLSchema/IPXACT/1685-2022">
+  <ipxact:vendor>acme</ipxact:vendor>
+  <ipxact:library>ip</ipxact:library>
+  <ipxact:name>wo_memory</ipxact:name>
+  <ipxact:version>1.0</ipxact:version>
+  <ipxact:memoryMaps>
+    <ipxact:memoryMap>
+      <ipxact:name>regs</ipxact:name>
+      <ipxact:addressBlock>
+        <ipxact:name>sink</ipxact:name>
+        <ipxact:baseAddress>0</ipxact:baseAddress>
+        <ipxact:range>0x20</ipxact:range>
+        <ipxact:width>32</ipxact:width>
+        <ipxact:usage>memory</ipxact:usage>
+        <ipxact:access>write-only</ipxact:access>
+      </ipxact:addressBlock>
+    </ipxact:memoryMap>
+  </ipxact:memoryMaps>
+</ipxact:component>"#;
+
+    let error = ipxact_to_uvm_reg(xml).unwrap_err().to_string();
+
+    assert!(
+        error.contains("unsupported IP-XACT memory access for memory block `sink`: `write-only`"),
+        "{error}"
+    );
+}
+
+#[test]
+fn reports_zero_address_block_width_before_generating_uvm_map() {
+    let xml = r#"
+<ipxact:component xmlns:ipxact="http://www.accellera.org/XMLSchema/IPXACT/1685-2022">
+  <ipxact:vendor>acme</ipxact:vendor>
+  <ipxact:library>ip</ipxact:library>
+  <ipxact:name>zero_width_block</ipxact:name>
+  <ipxact:version>1.0</ipxact:version>
+  <ipxact:memoryMaps>
+    <ipxact:memoryMap>
+      <ipxact:name>regs</ipxact:name>
+      <ipxact:addressBlock>
+        <ipxact:name>cfg</ipxact:name>
+        <ipxact:baseAddress>0</ipxact:baseAddress>
+        <ipxact:range>4</ipxact:range>
+        <ipxact:width>0</ipxact:width>
+        <ipxact:register>
+          <ipxact:name>status</ipxact:name>
+          <ipxact:addressOffset>0</ipxact:addressOffset>
+          <ipxact:size>32</ipxact:size>
+        </ipxact:register>
+      </ipxact:addressBlock>
+    </ipxact:memoryMap>
+  </ipxact:memoryMaps>
+</ipxact:component>"#;
+
+    let error = ipxact_to_uvm_reg(xml).unwrap_err().to_string();
+
+    assert!(
+        error.contains("invalid IP-XACT number for addressBlock width: `0`"),
+        "{error}"
+    );
+}
+
+#[test]
+fn reports_zero_memory_block_range_before_generating_uvm_mem() {
+    let xml = r#"
+<ipxact:component xmlns:ipxact="http://www.accellera.org/XMLSchema/IPXACT/1685-2022">
+  <ipxact:vendor>acme</ipxact:vendor>
+  <ipxact:library>ip</ipxact:library>
+  <ipxact:name>zero_memory_range</ipxact:name>
+  <ipxact:version>1.0</ipxact:version>
+  <ipxact:memoryMaps>
+    <ipxact:memoryMap>
+      <ipxact:name>regs</ipxact:name>
+      <ipxact:addressBlock>
+        <ipxact:name>buffer</ipxact:name>
+        <ipxact:baseAddress>0</ipxact:baseAddress>
+        <ipxact:range>0</ipxact:range>
+        <ipxact:width>32</ipxact:width>
+        <ipxact:usage>memory</ipxact:usage>
+      </ipxact:addressBlock>
+    </ipxact:memoryMap>
+  </ipxact:memoryMaps>
+</ipxact:component>"#;
+
+    let error = ipxact_to_uvm_reg(xml).unwrap_err().to_string();
+
+    assert!(
+        error.contains("invalid IP-XACT number for addressBlock range: `0`"),
+        "{error}"
+    );
+}
+
+#[test]
+fn reports_zero_memory_map_address_unit_bits() {
+    let xml = r#"
+<ipxact:component xmlns:ipxact="http://www.accellera.org/XMLSchema/IPXACT/1685-2022">
+  <ipxact:vendor>acme</ipxact:vendor>
+  <ipxact:library>ip</ipxact:library>
+  <ipxact:name>zero_aub</ipxact:name>
+  <ipxact:version>1.0</ipxact:version>
+  <ipxact:memoryMaps>
+    <ipxact:memoryMap>
+      <ipxact:name>regs</ipxact:name>
+      <ipxact:addressUnitBits>0</ipxact:addressUnitBits>
+      <ipxact:addressBlock>
+        <ipxact:name>cfg</ipxact:name>
+        <ipxact:baseAddress>0</ipxact:baseAddress>
+        <ipxact:range>4</ipxact:range>
+        <ipxact:width>32</ipxact:width>
+        <ipxact:register>
+          <ipxact:name>status</ipxact:name>
+          <ipxact:addressOffset>0</ipxact:addressOffset>
+          <ipxact:size>32</ipxact:size>
+        </ipxact:register>
+      </ipxact:addressBlock>
+    </ipxact:memoryMap>
+  </ipxact:memoryMaps>
+</ipxact:component>"#;
+
+    let error = ipxact_to_uvm_reg(xml).unwrap_err().to_string();
+
+    assert!(
+        error.contains("invalid IP-XACT number for memoryMap addressUnitBits: `0`"),
+        "{error}"
     );
 }
 
@@ -1255,6 +2483,87 @@ fn renders_ipxact_register_arrays() {
 }
 
 #[test]
+fn reports_zero_register_array_dimensions() {
+    let xml = r#"
+<ipxact:component xmlns:ipxact="http://www.accellera.org/XMLSchema/IPXACT/1685-2022">
+  <ipxact:vendor>acme</ipxact:vendor>
+  <ipxact:library>ip</ipxact:library>
+  <ipxact:name>zero_reg_dim</ipxact:name>
+  <ipxact:version>1.0</ipxact:version>
+  <ipxact:memoryMaps>
+    <ipxact:memoryMap>
+      <ipxact:name>regs</ipxact:name>
+      <ipxact:addressBlock>
+        <ipxact:name>cfg</ipxact:name>
+        <ipxact:baseAddress>0</ipxact:baseAddress>
+        <ipxact:range>4</ipxact:range>
+        <ipxact:width>32</ipxact:width>
+        <ipxact:register>
+          <ipxact:name>status</ipxact:name>
+          <ipxact:array>
+            <ipxact:dim>0</ipxact:dim>
+            <ipxact:stride>4</ipxact:stride>
+          </ipxact:array>
+          <ipxact:addressOffset>0</ipxact:addressOffset>
+          <ipxact:size>32</ipxact:size>
+          <ipxact:field>
+            <ipxact:name>ready</ipxact:name>
+            <ipxact:bitOffset>0</ipxact:bitOffset>
+            <ipxact:bitWidth>1</ipxact:bitWidth>
+          </ipxact:field>
+        </ipxact:register>
+      </ipxact:addressBlock>
+    </ipxact:memoryMap>
+  </ipxact:memoryMaps>
+</ipxact:component>"#;
+
+    let error = ipxact_to_uvm_reg(xml).unwrap_err().to_string();
+
+    assert!(
+        error.contains("invalid IP-XACT number for register dim: `0`"),
+        "{error}"
+    );
+}
+
+#[test]
+fn reports_zero_register_file_array_dimensions() {
+    let xml = r#"
+<ipxact:component xmlns:ipxact="http://www.accellera.org/XMLSchema/IPXACT/1685-2022">
+  <ipxact:vendor>acme</ipxact:vendor>
+  <ipxact:library>ip</ipxact:library>
+  <ipxact:name>zero_regfile_dim</ipxact:name>
+  <ipxact:version>1.0</ipxact:version>
+  <ipxact:memoryMaps>
+    <ipxact:memoryMap>
+      <ipxact:name>regs</ipxact:name>
+      <ipxact:addressBlock>
+        <ipxact:name>cfg</ipxact:name>
+        <ipxact:baseAddress>0</ipxact:baseAddress>
+        <ipxact:range>4</ipxact:range>
+        <ipxact:width>32</ipxact:width>
+        <ipxact:registerFile>
+          <ipxact:name>cluster</ipxact:name>
+          <ipxact:array>
+            <ipxact:dim>0</ipxact:dim>
+            <ipxact:stride>4</ipxact:stride>
+          </ipxact:array>
+          <ipxact:addressOffset>0</ipxact:addressOffset>
+          <ipxact:range>4</ipxact:range>
+        </ipxact:registerFile>
+      </ipxact:addressBlock>
+    </ipxact:memoryMap>
+  </ipxact:memoryMaps>
+</ipxact:component>"#;
+
+    let error = ipxact_to_uvm_reg(xml).unwrap_err().to_string();
+
+    assert!(
+        error.contains("invalid IP-XACT number for registerFile dim: `0`"),
+        "{error}"
+    );
+}
+
+#[test]
 fn renders_indexed_access_handles_for_register_arrays() {
     let xml = r#"
 <ipxact:component xmlns:ipxact="http://www.accellera.org/XMLSchema/IPXACT/1685-2022">
@@ -1454,6 +2763,112 @@ fn reports_indexed_access_handle_dimension_mismatch() {
 }
 
 #[test]
+fn reports_out_of_range_indexed_register_access_handle_indices() {
+    let xml = r#"
+<ipxact:component xmlns:ipxact="http://www.accellera.org/XMLSchema/IPXACT/1685-2022">
+  <ipxact:vendor>acme</ipxact:vendor>
+  <ipxact:library>ip</ipxact:library>
+  <ipxact:name>bad_array_path_index</ipxact:name>
+  <ipxact:version>1.0</ipxact:version>
+  <ipxact:memoryMaps>
+    <ipxact:memoryMap>
+      <ipxact:name>regs</ipxact:name>
+      <ipxact:addressBlock>
+        <ipxact:name>cfg</ipxact:name>
+        <ipxact:baseAddress>0</ipxact:baseAddress>
+        <ipxact:range>0x20</ipxact:range>
+        <ipxact:width>32</ipxact:width>
+        <ipxact:register>
+          <ipxact:name>status</ipxact:name>
+          <ipxact:array>
+            <ipxact:dim>2</ipxact:dim>
+            <ipxact:stride>4</ipxact:stride>
+          </ipxact:array>
+          <ipxact:accessHandles>
+            <ipxact:accessHandle>
+              <ipxact:indices><ipxact:index>2</ipxact:index></ipxact:indices>
+              <ipxact:pathSegments><ipxact:pathSegment>top.u2.status_q</ipxact:pathSegment></ipxact:pathSegments>
+            </ipxact:accessHandle>
+          </ipxact:accessHandles>
+          <ipxact:addressOffset>0</ipxact:addressOffset>
+          <ipxact:size>32</ipxact:size>
+          <ipxact:field>
+            <ipxact:name>ready</ipxact:name>
+            <ipxact:bitOffset>0</ipxact:bitOffset>
+            <ipxact:bitWidth>1</ipxact:bitWidth>
+          </ipxact:field>
+        </ipxact:register>
+      </ipxact:addressBlock>
+    </ipxact:memoryMap>
+  </ipxact:memoryMaps>
+</ipxact:component>"#;
+
+    let error = ipxact_to_uvm_reg(xml).unwrap_err().to_string();
+
+    assert!(
+        error.contains(
+            "IP-XACT accessHandle index 2 for `status` dimension 1 is outside register array dimension size 2"
+        ),
+        "{error}"
+    );
+}
+
+#[test]
+fn reports_out_of_range_indexed_field_access_handle_indices() {
+    let xml = r#"
+<ipxact:component xmlns:ipxact="http://www.accellera.org/XMLSchema/IPXACT/1685-2022">
+  <ipxact:vendor>acme</ipxact:vendor>
+  <ipxact:library>ip</ipxact:library>
+  <ipxact:name>bad_field_array_path_index</ipxact:name>
+  <ipxact:version>1.0</ipxact:version>
+  <ipxact:memoryMaps>
+    <ipxact:memoryMap>
+      <ipxact:name>regs</ipxact:name>
+      <ipxact:addressBlock>
+        <ipxact:name>cfg</ipxact:name>
+        <ipxact:baseAddress>0</ipxact:baseAddress>
+        <ipxact:range>0x40</ipxact:range>
+        <ipxact:width>32</ipxact:width>
+        <ipxact:register>
+          <ipxact:name>status</ipxact:name>
+          <ipxact:array>
+            <ipxact:dim>2</ipxact:dim>
+            <ipxact:dim>3</ipxact:dim>
+            <ipxact:stride>4</ipxact:stride>
+          </ipxact:array>
+          <ipxact:addressOffset>0</ipxact:addressOffset>
+          <ipxact:size>32</ipxact:size>
+          <ipxact:field>
+            <ipxact:name>ready</ipxact:name>
+            <ipxact:accessHandles>
+              <ipxact:accessHandle>
+                <ipxact:indices>
+                  <ipxact:index>1</ipxact:index>
+                  <ipxact:index>3</ipxact:index>
+                </ipxact:indices>
+                <ipxact:pathSegments><ipxact:pathSegment>top.u1.ready_q</ipxact:pathSegment></ipxact:pathSegments>
+              </ipxact:accessHandle>
+            </ipxact:accessHandles>
+            <ipxact:bitOffset>0</ipxact:bitOffset>
+            <ipxact:bitWidth>1</ipxact:bitWidth>
+          </ipxact:field>
+        </ipxact:register>
+      </ipxact:addressBlock>
+    </ipxact:memoryMap>
+  </ipxact:memoryMaps>
+</ipxact:component>"#;
+
+    let error = ipxact_to_uvm_reg(xml).unwrap_err().to_string();
+
+    assert!(
+        error.contains(
+            "IP-XACT accessHandle index 3 for `status.ready` dimension 2 is outside register array dimension size 3"
+        ),
+        "{error}"
+    );
+}
+
+#[test]
 fn reports_duplicate_indexed_access_handle_indices() {
     let xml = r#"
 <ipxact:component xmlns:ipxact="http://www.accellera.org/XMLSchema/IPXACT/1685-2022">
@@ -1507,6 +2922,191 @@ fn reports_duplicate_indexed_access_handle_indices() {
 }
 
 #[test]
+fn reports_indexed_access_handles_missing_paths() {
+    let xml = r#"
+<ipxact:component xmlns:ipxact="http://www.accellera.org/XMLSchema/IPXACT/1685-2022">
+  <ipxact:vendor>acme</ipxact:vendor>
+  <ipxact:library>ip</ipxact:library>
+  <ipxact:name>missing_indexed_path</ipxact:name>
+  <ipxact:version>1.0</ipxact:version>
+  <ipxact:memoryMaps>
+    <ipxact:memoryMap>
+      <ipxact:name>regs</ipxact:name>
+      <ipxact:addressBlock>
+        <ipxact:name>cfg</ipxact:name>
+        <ipxact:baseAddress>0</ipxact:baseAddress>
+        <ipxact:range>0x20</ipxact:range>
+        <ipxact:width>32</ipxact:width>
+        <ipxact:register>
+          <ipxact:name>status</ipxact:name>
+          <ipxact:array>
+            <ipxact:dim>2</ipxact:dim>
+            <ipxact:stride>4</ipxact:stride>
+          </ipxact:array>
+          <ipxact:accessHandles>
+            <ipxact:accessHandle>
+              <ipxact:indices><ipxact:index>0</ipxact:index></ipxact:indices>
+            </ipxact:accessHandle>
+          </ipxact:accessHandles>
+          <ipxact:addressOffset>0</ipxact:addressOffset>
+          <ipxact:size>32</ipxact:size>
+          <ipxact:field>
+            <ipxact:name>ready</ipxact:name>
+            <ipxact:bitOffset>0</ipxact:bitOffset>
+            <ipxact:bitWidth>1</ipxact:bitWidth>
+          </ipxact:field>
+        </ipxact:register>
+      </ipxact:addressBlock>
+    </ipxact:memoryMap>
+  </ipxact:memoryMaps>
+</ipxact:component>"#;
+
+    let error = ipxact_to_uvm_reg(xml).unwrap_err().to_string();
+
+    assert!(
+        error.contains("IP-XACT indexed accessHandle for `status` is missing a path"),
+        "{error}"
+    );
+}
+
+#[test]
+fn reports_indexed_access_handles_missing_indices() {
+    let xml = r#"
+<ipxact:component xmlns:ipxact="http://www.accellera.org/XMLSchema/IPXACT/1685-2022">
+  <ipxact:vendor>acme</ipxact:vendor>
+  <ipxact:library>ip</ipxact:library>
+  <ipxact:name>missing_indexed_indices</ipxact:name>
+  <ipxact:version>1.0</ipxact:version>
+  <ipxact:memoryMaps>
+    <ipxact:memoryMap>
+      <ipxact:name>regs</ipxact:name>
+      <ipxact:addressBlock>
+        <ipxact:name>cfg</ipxact:name>
+        <ipxact:baseAddress>0</ipxact:baseAddress>
+        <ipxact:range>0x20</ipxact:range>
+        <ipxact:width>32</ipxact:width>
+        <ipxact:register>
+          <ipxact:name>status</ipxact:name>
+          <ipxact:array>
+            <ipxact:dim>2</ipxact:dim>
+            <ipxact:stride>4</ipxact:stride>
+          </ipxact:array>
+          <ipxact:addressOffset>0</ipxact:addressOffset>
+          <ipxact:size>32</ipxact:size>
+          <ipxact:field>
+            <ipxact:name>ready</ipxact:name>
+            <ipxact:accessHandles>
+              <ipxact:accessHandle>
+                <ipxact:indices/>
+                <ipxact:pathSegments><ipxact:pathSegment>top.ready_q</ipxact:pathSegment></ipxact:pathSegments>
+              </ipxact:accessHandle>
+            </ipxact:accessHandles>
+            <ipxact:bitOffset>0</ipxact:bitOffset>
+            <ipxact:bitWidth>1</ipxact:bitWidth>
+          </ipxact:field>
+        </ipxact:register>
+      </ipxact:addressBlock>
+    </ipxact:memoryMap>
+  </ipxact:memoryMaps>
+</ipxact:component>"#;
+
+    let error = ipxact_to_uvm_reg(xml).unwrap_err().to_string();
+
+    assert!(
+        error.contains("IP-XACT indexed accessHandle for `status.ready` is missing indices"),
+        "{error}"
+    );
+}
+
+#[test]
+fn reports_non_indexed_access_handles_missing_paths() {
+    let xml = r#"
+<ipxact:component xmlns:ipxact="http://www.accellera.org/XMLSchema/IPXACT/1685-2022">
+  <ipxact:vendor>acme</ipxact:vendor>
+  <ipxact:library>ip</ipxact:library>
+  <ipxact:name>missing_path</ipxact:name>
+  <ipxact:version>1.0</ipxact:version>
+  <ipxact:memoryMaps>
+    <ipxact:memoryMap>
+      <ipxact:name>regs</ipxact:name>
+      <ipxact:addressBlock>
+        <ipxact:name>cfg</ipxact:name>
+        <ipxact:baseAddress>0</ipxact:baseAddress>
+        <ipxact:range>0x20</ipxact:range>
+        <ipxact:width>32</ipxact:width>
+        <ipxact:register>
+          <ipxact:name>status</ipxact:name>
+          <ipxact:accessHandles>
+            <ipxact:accessHandle/>
+          </ipxact:accessHandles>
+          <ipxact:addressOffset>0</ipxact:addressOffset>
+          <ipxact:size>32</ipxact:size>
+          <ipxact:field>
+            <ipxact:name>ready</ipxact:name>
+            <ipxact:bitOffset>0</ipxact:bitOffset>
+            <ipxact:bitWidth>1</ipxact:bitWidth>
+          </ipxact:field>
+        </ipxact:register>
+      </ipxact:addressBlock>
+    </ipxact:memoryMap>
+  </ipxact:memoryMaps>
+</ipxact:component>"#;
+
+    let error = ipxact_to_uvm_reg(xml).unwrap_err().to_string();
+
+    assert!(
+        error.contains("IP-XACT accessHandle for `status` is missing a path"),
+        "{error}"
+    );
+}
+
+#[test]
+fn reports_access_handle_slices_missing_paths() {
+    let xml = r#"
+<ipxact:component xmlns:ipxact="http://www.accellera.org/XMLSchema/IPXACT/1685-2022">
+  <ipxact:vendor>acme</ipxact:vendor>
+  <ipxact:library>ip</ipxact:library>
+  <ipxact:name>missing_slice_path</ipxact:name>
+  <ipxact:version>1.0</ipxact:version>
+  <ipxact:memoryMaps>
+    <ipxact:memoryMap>
+      <ipxact:name>regs</ipxact:name>
+      <ipxact:addressBlock>
+        <ipxact:name>cfg</ipxact:name>
+        <ipxact:baseAddress>0</ipxact:baseAddress>
+        <ipxact:range>0x20</ipxact:range>
+        <ipxact:width>32</ipxact:width>
+        <ipxact:register>
+          <ipxact:name>status</ipxact:name>
+          <ipxact:addressOffset>0</ipxact:addressOffset>
+          <ipxact:size>32</ipxact:size>
+          <ipxact:field>
+            <ipxact:name>ready</ipxact:name>
+            <ipxact:accessHandles>
+              <ipxact:accessHandle>
+                <ipxact:slices>
+                  <ipxact:slice/>
+                </ipxact:slices>
+              </ipxact:accessHandle>
+            </ipxact:accessHandles>
+            <ipxact:bitOffset>0</ipxact:bitOffset>
+            <ipxact:bitWidth>1</ipxact:bitWidth>
+          </ipxact:field>
+        </ipxact:register>
+      </ipxact:addressBlock>
+    </ipxact:memoryMap>
+  </ipxact:memoryMaps>
+</ipxact:component>"#;
+
+    let error = ipxact_to_uvm_reg(xml).unwrap_err().to_string();
+
+    assert!(
+        error.contains("IP-XACT accessHandle for `status.ready` is missing a path"),
+        "{error}"
+    );
+}
+
+#[test]
 fn respects_memory_map_address_unit_bits() {
     let xml = r#"
 <ipxact:component xmlns:ipxact="http://www.accellera.org/XMLSchema/IPXACT/1685-2022">
@@ -1551,7 +3151,9 @@ fn respects_memory_map_address_unit_bits() {
     assert_eq!(component.blocks[0].address_unit_bits, "32");
 
     let sv = ipxact_to_uvm_reg(xml).unwrap();
-    assert!(sv.contains("default_map = create_map(\"default_map\", 0, 4, UVM_LITTLE_ENDIAN);"));
+    assert!(
+        sv.contains("default_map = create_map(\"default_map\", 0, 4, UVM_LITTLE_ENDIAN, 1'b0);")
+    );
     assert!(sv.contains("default_map.add_reg(ctrl, `UVM_REG_ADDR_WIDTH'h2, \"RW\");"));
     assert!(sv.contains("default_map.add_submap(cfg.default_map, `UVM_REG_ADDR_WIDTH'h20);"));
     assert!(sv.contains("ram = new(\"ram\", 4, 32, \"RW\", UVM_NO_COVERAGE);"));
@@ -1572,21 +3174,21 @@ fn evaluates_common_ipxact_constant_expressions() {
       <ipxact:name>regs</ipxact:name>
       <ipxact:addressBlock>
         <ipxact:name>cfg</ipxact:name>
-        <ipxact:baseAddress>32'sh100 + 16</ipxact:baseAddress>
-        <ipxact:range>'h40</ipxact:range>
-        <ipxact:width>8 * 4</ipxact:width>
+        <ipxact:baseAddress>(32'sh80 &lt;&lt; 1) | 16</ipxact:baseAddress>
+        <ipxact:range>'h80 &gt;&gt; 1</ipxact:range>
+        <ipxact:width>8 &lt;&lt; 2</ipxact:width>
         <ipxact:register>
           <ipxact:name>sample</ipxact:name>
           <ipxact:array>
-            <ipxact:dim>1 + 1</ipxact:dim>
-            <ipxact:stride>4</ipxact:stride>
+            <ipxact:dim>(1 &lt;&lt; 2) &gt;&gt; 1</ipxact:dim>
+            <ipxact:stride>16 % 6</ipxact:stride>
           </ipxact:array>
-          <ipxact:addressOffset>4'h4</ipxact:addressOffset>
-          <ipxact:size>32'd32</ipxact:size>
+          <ipxact:addressOffset>(4'h1 &lt;&lt; 2) | (3 &amp; 0)</ipxact:addressOffset>
+          <ipxact:size>32'd16 &lt;&lt; 1</ipxact:size>
           <ipxact:field>
             <ipxact:name>mode</ipxact:name>
-            <ipxact:bitOffset>1 + 1</ipxact:bitOffset>
-            <ipxact:bitWidth>4'b0010</ipxact:bitWidth>
+            <ipxact:bitOffset>(1 &lt;&lt; 2) &gt;&gt; 1</ipxact:bitOffset>
+            <ipxact:bitWidth>7 &amp; 3</ipxact:bitWidth>
             <ipxact:resets>
               <ipxact:reset>
                 <ipxact:value>8'h3</ipxact:value>
@@ -1600,7 +3202,7 @@ fn evaluates_common_ipxact_constant_expressions() {
             <ipxact:enumeratedValues>
               <ipxact:enumeratedValue>
                 <ipxact:name>max</ipxact:name>
-                <ipxact:value>(2 * 3) + 1</ipxact:value>
+                <ipxact:value>(1 &lt;&lt; 2) ^ 3</ipxact:value>
               </ipxact:enumeratedValue>
             </ipxact:enumeratedValues>
           </ipxact:field>
@@ -1612,14 +3214,14 @@ fn evaluates_common_ipxact_constant_expressions() {
 
     let component = parse_ipxact(xml).unwrap();
 
-    assert_eq!(component.blocks[0].base_address, "32'sh100 + 16");
+    assert_eq!(component.blocks[0].base_address, "(32'sh80<<1) | 16");
     assert_eq!(component.blocks[0].registers[0].dim, "2");
 
     let sv = ipxact_to_uvm_reg(xml).unwrap();
     assert!(sv.contains("class ral_reg_cfg_sample extends uvm_reg;"));
-    assert!(sv.contains("typedef enum bit [1:0] {"));
-    assert!(sv.contains("MODE_MAX = 2'h7"));
-    assert!(sv.contains("mode.configure(this, 2, 2, \"RW\", 1'b0, 2'h3, 1'b1, 1'b1, 1);"));
+    assert!(sv.contains("typedef enum bit [2:0] {"));
+    assert!(sv.contains("MODE_MAX = 3'h7"));
+    assert!(sv.contains("mode.configure(this, 3, 2, \"RW\", 1'b0, 3'h3, 1'b1, 1'b1, 1);"));
     assert!(sv.contains("rand ral_reg_cfg_sample sample[2];"));
     assert!(sv.contains("default_map.add_reg(sample[i], `UVM_REG_ADDR_WIDTH'h4 + i * `UVM_REG_ADDR_WIDTH'h4, \"RW\");"));
     assert!(sv.contains("default_map.add_submap(cfg.default_map, `UVM_REG_ADDR_WIDTH'h110);"));
@@ -1737,6 +3339,235 @@ fn evaluates_ipxact_parameters_and_configurable_values() {
 }
 
 #[test]
+fn evaluates_parameterized_ipxact_boolean_metadata() {
+    let xml = r#"
+<ipxact:component xmlns:ipxact="http://www.accellera.org/XMLSchema/IPXACT/1685-2022">
+  <ipxact:vendor>acme</ipxact:vendor>
+  <ipxact:library>ip</ipxact:library>
+  <ipxact:name>bool_metadata</ipxact:name>
+  <ipxact:version>1.0</ipxact:version>
+  <ipxact:parameters>
+    <ipxact:parameter parameterId="BLOCK_VOL">
+      <ipxact:name>BLOCK_VOL</ipxact:name>
+      <ipxact:value>0</ipxact:value>
+    </ipxact:parameter>
+    <ipxact:parameter parameterId="REG_VOL">
+      <ipxact:name>REG_VOL</ipxact:name>
+      <ipxact:value>1</ipxact:value>
+    </ipxact:parameter>
+    <ipxact:parameter parameterId="FIELD_VOL">
+      <ipxact:name>FIELD_VOL</ipxact:name>
+      <ipxact:value>1</ipxact:value>
+    </ipxact:parameter>
+    <ipxact:parameter parameterId="FIELD_TESTABLE">
+      <ipxact:name>FIELD_TESTABLE</ipxact:name>
+      <ipxact:value>0</ipxact:value>
+    </ipxact:parameter>
+    <ipxact:parameter parameterId="RESERVED_FLAG">
+      <ipxact:name>RESERVED_FLAG</ipxact:name>
+      <ipxact:value>1</ipxact:value>
+    </ipxact:parameter>
+  </ipxact:parameters>
+  <ipxact:memoryMaps>
+    <ipxact:memoryMap>
+      <ipxact:name>regs</ipxact:name>
+      <ipxact:addressBlock>
+        <ipxact:name>cfg</ipxact:name>
+        <ipxact:baseAddress>0</ipxact:baseAddress>
+        <ipxact:range>4</ipxact:range>
+        <ipxact:width>32</ipxact:width>
+        <ipxact:volatile>BLOCK_VOL</ipxact:volatile>
+        <ipxact:register>
+          <ipxact:name>status</ipxact:name>
+          <ipxact:addressOffset>0</ipxact:addressOffset>
+          <ipxact:size>32</ipxact:size>
+          <ipxact:volatile>REG_VOL != 0</ipxact:volatile>
+          <ipxact:field>
+            <ipxact:name>ready</ipxact:name>
+            <ipxact:bitOffset>0</ipxact:bitOffset>
+            <ipxact:bitWidth>1</ipxact:bitWidth>
+            <ipxact:volatile>FIELD_VOL</ipxact:volatile>
+            <ipxact:testable>FIELD_TESTABLE</ipxact:testable>
+          </ipxact:field>
+          <ipxact:field>
+            <ipxact:name>reserved_bit</ipxact:name>
+            <ipxact:bitOffset>1</ipxact:bitOffset>
+            <ipxact:bitWidth>1</ipxact:bitWidth>
+            <ipxact:reserved>RESERVED_FLAG</ipxact:reserved>
+          </ipxact:field>
+        </ipxact:register>
+      </ipxact:addressBlock>
+    </ipxact:memoryMap>
+  </ipxact:memoryMaps>
+</ipxact:component>"#;
+
+    let component = parse_ipxact(xml).unwrap();
+    let register = &component.blocks[0].registers[0];
+
+    assert_eq!(component.blocks[0].volatile.as_deref(), Some("false"));
+    assert_eq!(register.volatile.as_deref(), Some("true"));
+    assert_eq!(register.fields[0].volatile.as_deref(), Some("true"));
+    assert_eq!(register.fields[0].testable.as_deref(), Some("false"));
+    assert_eq!(register.fields[1].reserved.as_deref(), Some("true"));
+
+    let sv = ipxact_to_uvm_reg(xml).unwrap();
+    assert!(sv.contains("ready.configure(this, 1, 0, \"RW\", 1'b1, 1'h0, 1'b0, 1'b1, 1);"));
+    assert!(sv.contains("ready.set_compare(UVM_NO_CHECK);"));
+    assert!(sv.contains("reserved_bit.configure(this, 1, 1, \"RW\", 1'b1, 1'h0, 1'b0, 1'b1, 1);"));
+    assert!(sv.contains("reserved_bit.set_compare(UVM_NO_CHECK);"));
+}
+
+#[test]
+fn reports_invalid_or_unsupported_ipxact_boolean_metadata() {
+    let invalid = r#"
+<ipxact:component xmlns:ipxact="http://www.accellera.org/XMLSchema/IPXACT/1685-2022">
+  <ipxact:vendor>acme</ipxact:vendor>
+  <ipxact:library>ip</ipxact:library>
+  <ipxact:name>invalid_bool</ipxact:name>
+  <ipxact:version>1.0</ipxact:version>
+  <ipxact:memoryMaps>
+    <ipxact:memoryMap>
+      <ipxact:name>regs</ipxact:name>
+      <ipxact:addressBlock>
+        <ipxact:name>cfg</ipxact:name>
+        <ipxact:baseAddress>0</ipxact:baseAddress>
+        <ipxact:range>4</ipxact:range>
+        <ipxact:width>32</ipxact:width>
+        <ipxact:register>
+          <ipxact:name>status</ipxact:name>
+          <ipxact:addressOffset>0</ipxact:addressOffset>
+          <ipxact:size>32</ipxact:size>
+          <ipxact:field>
+            <ipxact:name>ready</ipxact:name>
+            <ipxact:bitOffset>0</ipxact:bitOffset>
+            <ipxact:bitWidth>1</ipxact:bitWidth>
+            <ipxact:reserved>maybe</ipxact:reserved>
+          </ipxact:field>
+        </ipxact:register>
+      </ipxact:addressBlock>
+    </ipxact:memoryMap>
+  </ipxact:memoryMaps>
+</ipxact:component>"#;
+    let error = parse_ipxact(invalid).unwrap_err();
+    assert_eq!(
+        error.to_string(),
+        "invalid IP-XACT boolean for field reserved: `maybe`"
+    );
+
+    let unsupported = r#"
+<ipxact:component xmlns:ipxact="http://www.accellera.org/XMLSchema/IPXACT/1685-2022">
+  <ipxact:vendor>acme</ipxact:vendor>
+  <ipxact:library>ip</ipxact:library>
+  <ipxact:name>unsupported_bool</ipxact:name>
+  <ipxact:version>1.0</ipxact:version>
+  <ipxact:parameters>
+    <ipxact:parameter parameterId="BAD_BOOL">
+      <ipxact:name>BAD_BOOL</ipxact:name>
+      <ipxact:value>UNSUPPORTED_FUNC(1)</ipxact:value>
+    </ipxact:parameter>
+  </ipxact:parameters>
+  <ipxact:memoryMaps>
+    <ipxact:memoryMap>
+      <ipxact:name>regs</ipxact:name>
+      <ipxact:addressBlock>
+        <ipxact:name>cfg</ipxact:name>
+        <ipxact:baseAddress>0</ipxact:baseAddress>
+        <ipxact:range>4</ipxact:range>
+        <ipxact:width>32</ipxact:width>
+        <ipxact:register>
+          <ipxact:name>status</ipxact:name>
+          <ipxact:addressOffset>0</ipxact:addressOffset>
+          <ipxact:size>32</ipxact:size>
+          <ipxact:field>
+            <ipxact:name>ready</ipxact:name>
+            <ipxact:bitOffset>0</ipxact:bitOffset>
+            <ipxact:bitWidth>1</ipxact:bitWidth>
+            <ipxact:volatile>BAD_BOOL != 0</ipxact:volatile>
+          </ipxact:field>
+        </ipxact:register>
+      </ipxact:addressBlock>
+    </ipxact:memoryMap>
+  </ipxact:memoryMaps>
+</ipxact:component>"#;
+    let error = parse_ipxact(unsupported).unwrap_err();
+    assert_eq!(
+        error.to_string(),
+        "unsupported IP-XACT parameter expression `BAD_BOOL` used in field volatile: `UNSUPPORTED_FUNC(1)`"
+    );
+}
+
+#[test]
+fn reports_unsupported_parameter_expressions_when_used_by_numeric_fields() {
+    let unused = r#"
+<ipxact:component xmlns:ipxact="http://www.accellera.org/XMLSchema/IPXACT/1685-2022">
+  <ipxact:vendor>acme</ipxact:vendor>
+  <ipxact:library>ip</ipxact:library>
+  <ipxact:name>unused_bad_param</ipxact:name>
+  <ipxact:version>1.0</ipxact:version>
+  <ipxact:parameters>
+    <ipxact:parameter parameterId="BAD_EXPR">
+      <ipxact:name>BAD_EXPR</ipxact:name>
+      <ipxact:value>UNSUPPORTED_FUNC(4)</ipxact:value>
+    </ipxact:parameter>
+  </ipxact:parameters>
+  <ipxact:memoryMaps>
+    <ipxact:memoryMap>
+      <ipxact:name>regs</ipxact:name>
+      <ipxact:addressBlock>
+        <ipxact:name>cfg</ipxact:name>
+        <ipxact:baseAddress>0</ipxact:baseAddress>
+        <ipxact:range>4</ipxact:range>
+        <ipxact:width>32</ipxact:width>
+      </ipxact:addressBlock>
+    </ipxact:memoryMap>
+  </ipxact:memoryMaps>
+</ipxact:component>"#;
+    assert!(parse_ipxact(unused).is_ok());
+
+    let used_parameter = unused
+        .replace(
+            "<ipxact:name>unused_bad_param</ipxact:name>",
+            "<ipxact:name>used_bad_param</ipxact:name>",
+        )
+        .replace(
+            "<ipxact:baseAddress>0</ipxact:baseAddress>",
+            "<ipxact:baseAddress>BAD_EXPR + 4</ipxact:baseAddress>",
+        );
+    let error = parse_ipxact(&used_parameter).unwrap_err();
+    assert_eq!(
+        error.to_string(),
+        "unsupported IP-XACT parameter expression `BAD_EXPR` used in addressBlock baseAddress: `UNSUPPORTED_FUNC(4)`"
+    );
+
+    let used_configurable = r#"
+<ipxact:component xmlns:ipxact="http://www.accellera.org/XMLSchema/IPXACT/1685-2022">
+  <ipxact:vendor>acme</ipxact:vendor>
+  <ipxact:library>ip</ipxact:library>
+  <ipxact:name>bad_configurable</ipxact:name>
+  <ipxact:version>1.0</ipxact:version>
+  <ipxact:configurableElementValues>
+    <ipxact:configurableElementValue referenceId="BAD_BASE">UNSUPPORTED_FUNC(8)</ipxact:configurableElementValue>
+  </ipxact:configurableElementValues>
+  <ipxact:memoryMaps>
+    <ipxact:memoryMap>
+      <ipxact:name>regs</ipxact:name>
+      <ipxact:addressBlock>
+        <ipxact:name>cfg</ipxact:name>
+        <ipxact:baseAddress>BAD_BASE + 4</ipxact:baseAddress>
+        <ipxact:range>4</ipxact:range>
+        <ipxact:width>32</ipxact:width>
+      </ipxact:addressBlock>
+    </ipxact:memoryMap>
+  </ipxact:memoryMaps>
+</ipxact:component>"#;
+    let error = parse_ipxact(used_configurable).unwrap_err();
+    assert_eq!(
+        error.to_string(),
+        "unsupported IP-XACT parameter expression `BAD_BASE` used in addressBlock baseAddress: `UNSUPPORTED_FUNC(8)`"
+    );
+}
+
+#[test]
 fn applies_ipxact_definition_instance_parameter_overrides() {
     let xml = r#"
 <ipxact:component xmlns:ipxact="http://www.accellera.org/XMLSchema/IPXACT/1685-2022">
@@ -1825,7 +3656,9 @@ fn applies_ipxact_definition_instance_parameter_overrides() {
     assert_eq!(field.reset.as_deref(), Some("10"));
 
     let sv = ipxact_to_uvm_reg(xml).unwrap();
-    assert!(sv.contains("default_map = create_map(\"default_map\", 0, 8, UVM_LITTLE_ENDIAN);"));
+    assert!(
+        sv.contains("default_map = create_map(\"default_map\", 0, 8, UVM_LITTLE_ENDIAN, 1'b1);")
+    );
     assert!(sv.contains("super.new(name, 64, UVM_NO_COVERAGE);"));
     assert!(sv.contains("ready.configure(this, 4, 0, \"RW\", 1'b0, 4'ha, 1'b1, 1'b1, 1);"));
     assert!(sv.contains("default_map.add_reg(status, `UVM_REG_ADDR_WIDTH'h8, \"RW\");"));
@@ -1954,6 +3787,10 @@ fn evaluates_static_ipxact_is_present_boolean_expressions() {
       <ipxact:name>FEATURE_B</ipxact:name>
       <ipxact:value>0</ipxact:value>
     </ipxact:parameter>
+    <ipxact:parameter parameterId="FEATURE_MASK">
+      <ipxact:name>FEATURE_MASK</ipxact:name>
+      <ipxact:value>1 &lt;&lt; 2</ipxact:value>
+    </ipxact:parameter>
   </ipxact:parameters>
   <ipxact:memoryMaps>
     <ipxact:memoryMap>
@@ -1992,6 +3829,12 @@ fn evaluates_static_ipxact_is_present_boolean_expressions() {
             <ipxact:bitOffset>1</ipxact:bitOffset>
             <ipxact:bitWidth>1</ipxact:bitWidth>
           </ipxact:field>
+          <ipxact:field>
+            <ipxact:name>masked</ipxact:name>
+            <ipxact:isPresent>(FEATURE_MASK &amp; 4) != 0</ipxact:isPresent>
+            <ipxact:bitOffset>2</ipxact:bitOffset>
+            <ipxact:bitWidth>1</ipxact:bitWidth>
+          </ipxact:field>
         </ipxact:register>
         <ipxact:register>
           <ipxact:name>hidden</ipxact:name>
@@ -2014,17 +3857,103 @@ fn evaluates_static_ipxact_is_present_boolean_expressions() {
 
     assert_eq!(component.blocks[0].registers.len(), 1);
     assert_eq!(register.name, "visible");
-    assert_eq!(register.fields.len(), 1);
+    assert_eq!(register.fields.len(), 2);
     assert_eq!(register.fields[0].name, "enabled");
     assert_eq!(register.fields[0].enumerated_values.len(), 1);
     assert_eq!(register.fields[0].enumerated_values[0].name, "supported");
+    assert_eq!(register.fields[1].name, "masked");
 
     let sv = ipxact_to_uvm_reg(xml).unwrap();
     assert!(sv.contains("class ral_reg_cfg_visible extends uvm_reg;"));
     assert!(sv.contains("ENABLED_SUPPORTED = 1'h1"));
+    assert!(sv.contains("masked.configure(this, 1, 2"));
     assert!(!sv.contains("hidden"));
     assert!(!sv.contains("disabled"));
     assert!(!sv.contains("future"));
+}
+
+#[test]
+fn reports_unsupported_parameter_expressions_when_used_by_is_present() {
+    let xml = r#"
+<ipxact:component xmlns:ipxact="http://www.accellera.org/XMLSchema/IPXACT/1685-2022">
+  <ipxact:vendor>acme</ipxact:vendor>
+  <ipxact:library>lib</ipxact:library>
+  <ipxact:name>bad_present_expr</ipxact:name>
+  <ipxact:version>1.0</ipxact:version>
+  <ipxact:parameters>
+    <ipxact:parameter parameterId="BAD_PRESENT">
+      <ipxact:name>BAD_PRESENT</ipxact:name>
+      <ipxact:value>UNSUPPORTED_FUNC(1)</ipxact:value>
+    </ipxact:parameter>
+  </ipxact:parameters>
+  <ipxact:memoryMaps>
+    <ipxact:memoryMap>
+      <ipxact:name>regs</ipxact:name>
+      <ipxact:addressBlock>
+        <ipxact:name>cfg</ipxact:name>
+        <ipxact:baseAddress>0</ipxact:baseAddress>
+        <ipxact:range>4</ipxact:range>
+        <ipxact:width>32</ipxact:width>
+        <ipxact:register>
+          <ipxact:name>conditional</ipxact:name>
+          <ipxact:isPresent>BAD_PRESENT != 0</ipxact:isPresent>
+          <ipxact:addressOffset>0</ipxact:addressOffset>
+          <ipxact:size>32</ipxact:size>
+          <ipxact:field>
+            <ipxact:name>bit0</ipxact:name>
+            <ipxact:bitOffset>0</ipxact:bitOffset>
+            <ipxact:bitWidth>1</ipxact:bitWidth>
+          </ipxact:field>
+        </ipxact:register>
+      </ipxact:addressBlock>
+    </ipxact:memoryMap>
+  </ipxact:memoryMaps>
+</ipxact:component>"#;
+
+    let error = parse_ipxact(xml).unwrap_err();
+    assert_eq!(
+        error.to_string(),
+        "unsupported IP-XACT parameter expression `BAD_PRESENT` used in register isPresent: `UNSUPPORTED_FUNC(1)`"
+    );
+}
+
+#[test]
+fn reports_invalid_or_unsupported_is_present_expressions() {
+    let xml = r#"
+<ipxact:component xmlns:ipxact="http://www.accellera.org/XMLSchema/IPXACT/1685-2022">
+  <ipxact:vendor>acme</ipxact:vendor>
+  <ipxact:library>lib</ipxact:library>
+  <ipxact:name>bad_present</ipxact:name>
+  <ipxact:version>1.0</ipxact:version>
+  <ipxact:memoryMaps>
+    <ipxact:memoryMap>
+      <ipxact:name>regs</ipxact:name>
+      <ipxact:addressBlock>
+        <ipxact:name>cfg</ipxact:name>
+        <ipxact:baseAddress>0</ipxact:baseAddress>
+        <ipxact:range>4</ipxact:range>
+        <ipxact:width>32</ipxact:width>
+        <ipxact:register>
+          <ipxact:name>conditional</ipxact:name>
+          <ipxact:isPresent>runtime_mode == "debug"</ipxact:isPresent>
+          <ipxact:addressOffset>0</ipxact:addressOffset>
+          <ipxact:size>32</ipxact:size>
+          <ipxact:field>
+            <ipxact:name>bit0</ipxact:name>
+            <ipxact:bitOffset>0</ipxact:bitOffset>
+            <ipxact:bitWidth>1</ipxact:bitWidth>
+          </ipxact:field>
+        </ipxact:register>
+      </ipxact:addressBlock>
+    </ipxact:memoryMap>
+  </ipxact:memoryMaps>
+</ipxact:component>"#;
+
+    let error = parse_ipxact(xml).unwrap_err();
+    assert_eq!(
+        error.to_string(),
+        "invalid IP-XACT boolean for register isPresent: `runtime_mode == \"debug\"`"
+    );
 }
 
 #[test]
@@ -2087,8 +4016,10 @@ fn renders_multiple_memory_maps() {
 
     let sv = ipxact_to_uvm_reg(xml).unwrap();
     assert!(sv.contains("uvm_reg_map status_map;"));
-    assert!(sv.contains("default_map = create_map(\"default_map\", 0, 4, UVM_LITTLE_ENDIAN);"));
-    assert!(sv.contains("status_map = create_map(\"status\", 0, 4, UVM_LITTLE_ENDIAN);"));
+    assert!(
+        sv.contains("default_map = create_map(\"default_map\", 0, 4, UVM_LITTLE_ENDIAN, 1'b1);")
+    );
+    assert!(sv.contains("status_map = create_map(\"status\", 0, 4, UVM_LITTLE_ENDIAN, 1'b0);"));
     assert!(sv.contains("default_map.add_reg(enable, `UVM_REG_ADDR_WIDTH'h0, \"RW\");"));
     assert!(sv.contains("default_map.add_reg(count, `UVM_REG_ADDR_WIDTH'h2, \"RO\");"));
     assert!(sv.contains("default_map.add_submap(ctrls.default_map, `UVM_REG_ADDR_WIDTH'h100);"));
@@ -2288,6 +4219,413 @@ fn reports_duplicate_field_names() {
 
     assert!(
         error.contains("duplicate IP-XACT field name `ready` under register `status`"),
+        "{error}"
+    );
+}
+
+#[test]
+fn reports_field_ranges_that_exceed_register_size() {
+    let xml = r#"
+<ipxact:component xmlns:ipxact="http://www.accellera.org/XMLSchema/IPXACT/1685-2022">
+  <ipxact:vendor>acme</ipxact:vendor>
+  <ipxact:library>lib</ipxact:library>
+  <ipxact:name>field_too_wide</ipxact:name>
+  <ipxact:version>1.0</ipxact:version>
+  <ipxact:memoryMaps>
+    <ipxact:memoryMap>
+      <ipxact:name>cfg</ipxact:name>
+      <ipxact:addressBlock>
+        <ipxact:name>regs</ipxact:name>
+        <ipxact:baseAddress>0</ipxact:baseAddress>
+        <ipxact:range>4</ipxact:range>
+        <ipxact:width>32</ipxact:width>
+        <ipxact:register>
+          <ipxact:name>status</ipxact:name>
+          <ipxact:addressOffset>0</ipxact:addressOffset>
+          <ipxact:size>8</ipxact:size>
+          <ipxact:field>
+            <ipxact:name>upper</ipxact:name>
+            <ipxact:bitOffset>6</ipxact:bitOffset>
+            <ipxact:bitWidth>4</ipxact:bitWidth>
+          </ipxact:field>
+        </ipxact:register>
+      </ipxact:addressBlock>
+    </ipxact:memoryMap>
+  </ipxact:memoryMaps>
+</ipxact:component>"#;
+
+    let error = ipxact_to_uvm_reg(xml).unwrap_err().to_string();
+
+    assert!(
+        error.contains(
+            "IP-XACT field `upper` in register `status` spans bits 6..9, beyond register size 8"
+        ),
+        "{error}"
+    );
+}
+
+#[test]
+fn reports_zero_register_size_before_generating_uvm_reg() {
+    let xml = r#"
+<ipxact:component xmlns:ipxact="http://www.accellera.org/XMLSchema/IPXACT/1685-2022">
+  <ipxact:vendor>acme</ipxact:vendor>
+  <ipxact:library>lib</ipxact:library>
+  <ipxact:name>zero_reg_size</ipxact:name>
+  <ipxact:version>1.0</ipxact:version>
+  <ipxact:memoryMaps>
+    <ipxact:memoryMap>
+      <ipxact:name>cfg</ipxact:name>
+      <ipxact:addressBlock>
+        <ipxact:name>regs</ipxact:name>
+        <ipxact:baseAddress>0</ipxact:baseAddress>
+        <ipxact:range>4</ipxact:range>
+        <ipxact:width>32</ipxact:width>
+        <ipxact:register>
+          <ipxact:name>status</ipxact:name>
+          <ipxact:addressOffset>0</ipxact:addressOffset>
+          <ipxact:size>0</ipxact:size>
+        </ipxact:register>
+      </ipxact:addressBlock>
+    </ipxact:memoryMap>
+  </ipxact:memoryMaps>
+</ipxact:component>"#;
+
+    let error = ipxact_to_uvm_reg(xml).unwrap_err().to_string();
+
+    assert!(
+        error.contains("invalid IP-XACT number for register size: `0`"),
+        "{error}"
+    );
+}
+
+#[test]
+fn reports_zero_field_bit_width_before_generating_uvm_field() {
+    let xml = r#"
+<ipxact:component xmlns:ipxact="http://www.accellera.org/XMLSchema/IPXACT/1685-2022">
+  <ipxact:vendor>acme</ipxact:vendor>
+  <ipxact:library>lib</ipxact:library>
+  <ipxact:name>zero_field_width</ipxact:name>
+  <ipxact:version>1.0</ipxact:version>
+  <ipxact:memoryMaps>
+    <ipxact:memoryMap>
+      <ipxact:name>cfg</ipxact:name>
+      <ipxact:addressBlock>
+        <ipxact:name>regs</ipxact:name>
+        <ipxact:baseAddress>0</ipxact:baseAddress>
+        <ipxact:range>4</ipxact:range>
+        <ipxact:width>32</ipxact:width>
+        <ipxact:register>
+          <ipxact:name>status</ipxact:name>
+          <ipxact:addressOffset>0</ipxact:addressOffset>
+          <ipxact:size>32</ipxact:size>
+          <ipxact:field>
+            <ipxact:name>empty</ipxact:name>
+            <ipxact:bitOffset>0</ipxact:bitOffset>
+            <ipxact:bitWidth>0</ipxact:bitWidth>
+          </ipxact:field>
+        </ipxact:register>
+      </ipxact:addressBlock>
+    </ipxact:memoryMap>
+  </ipxact:memoryMaps>
+</ipxact:component>"#;
+
+    let error = ipxact_to_uvm_reg(xml).unwrap_err().to_string();
+
+    assert!(
+        error.contains("invalid IP-XACT number for field bitWidth: `0`"),
+        "{error}"
+    );
+}
+
+#[test]
+fn reports_overlapping_field_ranges() {
+    let xml = r#"
+<ipxact:component xmlns:ipxact="http://www.accellera.org/XMLSchema/IPXACT/1685-2022">
+  <ipxact:vendor>acme</ipxact:vendor>
+  <ipxact:library>lib</ipxact:library>
+  <ipxact:name>field_overlap</ipxact:name>
+  <ipxact:version>1.0</ipxact:version>
+  <ipxact:memoryMaps>
+    <ipxact:memoryMap>
+      <ipxact:name>cfg</ipxact:name>
+      <ipxact:addressBlock>
+        <ipxact:name>regs</ipxact:name>
+        <ipxact:baseAddress>0</ipxact:baseAddress>
+        <ipxact:range>4</ipxact:range>
+        <ipxact:width>32</ipxact:width>
+        <ipxact:register>
+          <ipxact:name>status</ipxact:name>
+          <ipxact:addressOffset>0</ipxact:addressOffset>
+          <ipxact:size>16</ipxact:size>
+          <ipxact:field>
+            <ipxact:name>low</ipxact:name>
+            <ipxact:bitOffset>0</ipxact:bitOffset>
+            <ipxact:bitWidth>8</ipxact:bitWidth>
+          </ipxact:field>
+          <ipxact:field>
+            <ipxact:name>middle</ipxact:name>
+            <ipxact:bitOffset>4</ipxact:bitOffset>
+            <ipxact:bitWidth>4</ipxact:bitWidth>
+          </ipxact:field>
+        </ipxact:register>
+      </ipxact:addressBlock>
+    </ipxact:memoryMap>
+  </ipxact:memoryMaps>
+</ipxact:component>"#;
+
+    let error = ipxact_to_uvm_reg(xml).unwrap_err().to_string();
+
+    assert!(
+        error.contains(
+            "IP-XACT fields `middle` and `low` overlap in register `status` at bits 4..7"
+        ),
+        "{error}"
+    );
+}
+
+#[test]
+fn reports_overlapping_register_address_ranges() {
+    let xml = r#"
+<ipxact:component xmlns:ipxact="http://www.accellera.org/XMLSchema/IPXACT/1685-2022">
+  <ipxact:vendor>acme</ipxact:vendor>
+  <ipxact:library>lib</ipxact:library>
+  <ipxact:name>register_overlap</ipxact:name>
+  <ipxact:version>1.0</ipxact:version>
+  <ipxact:memoryMaps>
+    <ipxact:memoryMap>
+      <ipxact:name>cfg</ipxact:name>
+      <ipxact:addressBlock>
+        <ipxact:name>regs</ipxact:name>
+        <ipxact:baseAddress>0</ipxact:baseAddress>
+        <ipxact:range>0x20</ipxact:range>
+        <ipxact:width>32</ipxact:width>
+        <ipxact:register>
+          <ipxact:name>status</ipxact:name>
+          <ipxact:addressOffset>0</ipxact:addressOffset>
+          <ipxact:size>32</ipxact:size>
+          <ipxact:field>
+            <ipxact:name>ready</ipxact:name>
+            <ipxact:bitOffset>0</ipxact:bitOffset>
+            <ipxact:bitWidth>1</ipxact:bitWidth>
+          </ipxact:field>
+        </ipxact:register>
+        <ipxact:register>
+          <ipxact:name>control</ipxact:name>
+          <ipxact:addressOffset>2</ipxact:addressOffset>
+          <ipxact:size>32</ipxact:size>
+          <ipxact:field>
+            <ipxact:name>enable</ipxact:name>
+            <ipxact:bitOffset>0</ipxact:bitOffset>
+            <ipxact:bitWidth>1</ipxact:bitWidth>
+          </ipxact:field>
+        </ipxact:register>
+      </ipxact:addressBlock>
+    </ipxact:memoryMap>
+  </ipxact:memoryMaps>
+</ipxact:component>"#;
+
+    let error = ipxact_to_uvm_reg(xml).unwrap_err().to_string();
+
+    assert!(
+        error.contains(
+            "IP-XACT address ranges `control` and `status` overlap in addressBlock `regs` at offsets 2..3"
+        ),
+        "{error}"
+    );
+}
+
+#[test]
+fn reports_self_overlapping_register_array_ranges() {
+    let xml = r#"
+<ipxact:component xmlns:ipxact="http://www.accellera.org/XMLSchema/IPXACT/1685-2022">
+  <ipxact:vendor>acme</ipxact:vendor>
+  <ipxact:library>lib</ipxact:library>
+  <ipxact:name>array_overlap</ipxact:name>
+  <ipxact:version>1.0</ipxact:version>
+  <ipxact:memoryMaps>
+    <ipxact:memoryMap>
+      <ipxact:name>cfg</ipxact:name>
+      <ipxact:addressBlock>
+        <ipxact:name>regs</ipxact:name>
+        <ipxact:baseAddress>0</ipxact:baseAddress>
+        <ipxact:range>0x20</ipxact:range>
+        <ipxact:width>32</ipxact:width>
+        <ipxact:register>
+          <ipxact:name>counter</ipxact:name>
+          <ipxact:array>
+            <ipxact:dim>2</ipxact:dim>
+            <ipxact:stride>2</ipxact:stride>
+          </ipxact:array>
+          <ipxact:addressOffset>0</ipxact:addressOffset>
+          <ipxact:size>32</ipxact:size>
+          <ipxact:field>
+            <ipxact:name>value</ipxact:name>
+            <ipxact:bitOffset>0</ipxact:bitOffset>
+            <ipxact:bitWidth>1</ipxact:bitWidth>
+          </ipxact:field>
+        </ipxact:register>
+      </ipxact:addressBlock>
+    </ipxact:memoryMap>
+  </ipxact:memoryMaps>
+</ipxact:component>"#;
+
+    let error = ipxact_to_uvm_reg(xml).unwrap_err().to_string();
+
+    assert!(
+        error.contains(
+            "IP-XACT address ranges `counter` and `counter` overlap in addressBlock `regs` at offsets 2..3"
+        ),
+        "{error}"
+    );
+}
+
+#[test]
+fn reports_overlapping_top_level_address_block_ranges() {
+    let xml = r#"
+<ipxact:component xmlns:ipxact="http://www.accellera.org/XMLSchema/IPXACT/1685-2022">
+  <ipxact:vendor>acme</ipxact:vendor>
+  <ipxact:library>lib</ipxact:library>
+  <ipxact:name>map_overlap</ipxact:name>
+  <ipxact:version>1.0</ipxact:version>
+  <ipxact:memoryMaps>
+    <ipxact:memoryMap>
+      <ipxact:name>cfg</ipxact:name>
+      <ipxact:addressBlock>
+        <ipxact:name>regs0</ipxact:name>
+        <ipxact:baseAddress>0</ipxact:baseAddress>
+        <ipxact:range>0x10</ipxact:range>
+        <ipxact:width>32</ipxact:width>
+      </ipxact:addressBlock>
+      <ipxact:addressBlock>
+        <ipxact:name>regs1</ipxact:name>
+        <ipxact:baseAddress>0x8</ipxact:baseAddress>
+        <ipxact:range>0x10</ipxact:range>
+        <ipxact:width>32</ipxact:width>
+      </ipxact:addressBlock>
+    </ipxact:memoryMap>
+  </ipxact:memoryMaps>
+</ipxact:component>"#;
+
+    let error = ipxact_to_uvm_reg(xml).unwrap_err().to_string();
+
+    assert!(
+        error.contains(
+            "IP-XACT address ranges `regs1` and `regs0` overlap in memoryMap `cfg` at offsets 8..15"
+        ),
+        "{error}"
+    );
+}
+
+#[test]
+fn reports_overlapping_memory_remap_address_block_ranges() {
+    let xml = r#"
+<ipxact:component xmlns:ipxact="http://www.accellera.org/XMLSchema/IPXACT/1685-2022">
+  <ipxact:vendor>acme</ipxact:vendor>
+  <ipxact:library>lib</ipxact:library>
+  <ipxact:name>remap_overlap</ipxact:name>
+  <ipxact:version>1.0</ipxact:version>
+  <ipxact:memoryMaps>
+    <ipxact:memoryMap>
+      <ipxact:name>cfg</ipxact:name>
+      <ipxact:addressBlock>
+        <ipxact:name>regs</ipxact:name>
+        <ipxact:baseAddress>0</ipxact:baseAddress>
+        <ipxact:range>0x10</ipxact:range>
+        <ipxact:width>32</ipxact:width>
+      </ipxact:addressBlock>
+      <ipxact:memoryRemap>
+        <ipxact:name>alt</ipxact:name>
+        <ipxact:addressBlock>
+          <ipxact:name>debug0</ipxact:name>
+          <ipxact:baseAddress>0x20</ipxact:baseAddress>
+          <ipxact:range>0x10</ipxact:range>
+          <ipxact:width>32</ipxact:width>
+        </ipxact:addressBlock>
+        <ipxact:addressBlock>
+          <ipxact:name>debug1</ipxact:name>
+          <ipxact:baseAddress>0x28</ipxact:baseAddress>
+          <ipxact:range>0x10</ipxact:range>
+          <ipxact:width>32</ipxact:width>
+        </ipxact:addressBlock>
+      </ipxact:memoryRemap>
+    </ipxact:memoryMap>
+  </ipxact:memoryMaps>
+</ipxact:component>"#;
+
+    let error = ipxact_to_uvm_reg(xml).unwrap_err().to_string();
+
+    assert!(
+        error.contains(
+            "IP-XACT address ranges `alt_debug1` and `alt_debug0` overlap in memoryMap `cfg` at offsets 40..47"
+        ),
+        "{error}"
+    );
+}
+
+#[test]
+fn reports_overlapping_subspace_map_ranges() {
+    let xml = r#"
+<ipxact:component xmlns:ipxact="http://www.accellera.org/XMLSchema/IPXACT/1685-2022">
+  <ipxact:vendor>acme</ipxact:vendor>
+  <ipxact:library>lib</ipxact:library>
+  <ipxact:name>subspace_overlap</ipxact:name>
+  <ipxact:version>1.0</ipxact:version>
+  <ipxact:busInterfaces>
+    <ipxact:busInterface>
+      <ipxact:name>dma_init</ipxact:name>
+      <ipxact:busType vendor="acme" library="bus" name="axi" version="1.0"/>
+      <ipxact:initiator>
+        <ipxact:addressSpaceRef addressSpaceRef="dma_space"/>
+      </ipxact:initiator>
+    </ipxact:busInterface>
+  </ipxact:busInterfaces>
+  <ipxact:addressSpaces>
+    <ipxact:addressSpace>
+      <ipxact:name>dma_space</ipxact:name>
+      <ipxact:range>0x100</ipxact:range>
+      <ipxact:width>32</ipxact:width>
+      <ipxact:addressUnitBits>8</ipxact:addressUnitBits>
+      <ipxact:segments>
+        <ipxact:segment>
+          <ipxact:name>cfg_seg</ipxact:name>
+          <ipxact:addressOffset>0x20</ipxact:addressOffset>
+          <ipxact:range>0x10</ipxact:range>
+        </ipxact:segment>
+      </ipxact:segments>
+      <ipxact:localMemoryMap>
+        <ipxact:name>dma_local</ipxact:name>
+        <ipxact:addressBlock>
+          <ipxact:name>dma_regs</ipxact:name>
+          <ipxact:baseAddress>0x20</ipxact:baseAddress>
+          <ipxact:range>0x10</ipxact:range>
+          <ipxact:width>32</ipxact:width>
+        </ipxact:addressBlock>
+      </ipxact:localMemoryMap>
+    </ipxact:addressSpace>
+  </ipxact:addressSpaces>
+  <ipxact:memoryMaps>
+    <ipxact:memoryMap>
+      <ipxact:name>cfg</ipxact:name>
+      <ipxact:addressBlock>
+        <ipxact:name>regs</ipxact:name>
+        <ipxact:baseAddress>0</ipxact:baseAddress>
+        <ipxact:range>0x10</ipxact:range>
+        <ipxact:width>32</ipxact:width>
+      </ipxact:addressBlock>
+      <ipxact:subspaceMap initiatorRef="dma_init" segmentRef="cfg_seg">
+        <ipxact:name>dma_window</ipxact:name>
+        <ipxact:baseAddress>0x28</ipxact:baseAddress>
+      </ipxact:subspaceMap>
+    </ipxact:memoryMap>
+  </ipxact:memoryMaps>
+</ipxact:component>"#;
+
+    let error = ipxact_to_uvm_reg(xml).unwrap_err().to_string();
+
+    assert!(
+        error.contains(
+            "IP-XACT address ranges `dma_window` and `regs` overlap in memoryMap `cfg` at offsets 8..15"
+        ),
         "{error}"
     );
 }
@@ -2493,6 +4831,196 @@ fn renders_register_arrays_inside_register_files() {
     ));
     assert!(sv.contains("sample[i].configure(get_block(), this);"));
     assert!(sv.contains("mp.add_reg(sample[i], offset + `UVM_REG_ADDR_WIDTH'h8 + i * `UVM_REG_ADDR_WIDTH'h4, \"RW\");"));
+}
+
+#[test]
+fn reports_overlapping_register_file_member_address_ranges() {
+    let xml = r#"
+<ipxact:component xmlns:ipxact="http://www.accellera.org/XMLSchema/IPXACT/1685-2022">
+  <ipxact:vendor>acme</ipxact:vendor>
+  <ipxact:library>lib</ipxact:library>
+  <ipxact:name>rf_overlap</ipxact:name>
+  <ipxact:version>1.0</ipxact:version>
+  <ipxact:memoryMaps>
+    <ipxact:memoryMap>
+      <ipxact:name>regs</ipxact:name>
+      <ipxact:addressBlock>
+        <ipxact:name>cfg</ipxact:name>
+        <ipxact:baseAddress>0</ipxact:baseAddress>
+        <ipxact:range>0x40</ipxact:range>
+        <ipxact:width>32</ipxact:width>
+        <ipxact:registerFile>
+          <ipxact:name>cluster</ipxact:name>
+          <ipxact:addressOffset>0</ipxact:addressOffset>
+          <ipxact:range>0x20</ipxact:range>
+          <ipxact:register>
+            <ipxact:name>status</ipxact:name>
+            <ipxact:addressOffset>0</ipxact:addressOffset>
+            <ipxact:size>32</ipxact:size>
+            <ipxact:field>
+              <ipxact:name>value</ipxact:name>
+              <ipxact:bitOffset>0</ipxact:bitOffset>
+              <ipxact:bitWidth>32</ipxact:bitWidth>
+              <ipxact:access>read-write</ipxact:access>
+            </ipxact:field>
+          </ipxact:register>
+          <ipxact:register>
+            <ipxact:name>control</ipxact:name>
+            <ipxact:addressOffset>2</ipxact:addressOffset>
+            <ipxact:size>32</ipxact:size>
+            <ipxact:field>
+              <ipxact:name>enable</ipxact:name>
+              <ipxact:bitOffset>0</ipxact:bitOffset>
+              <ipxact:bitWidth>1</ipxact:bitWidth>
+              <ipxact:access>read-write</ipxact:access>
+            </ipxact:field>
+          </ipxact:register>
+        </ipxact:registerFile>
+      </ipxact:addressBlock>
+    </ipxact:memoryMap>
+  </ipxact:memoryMaps>
+</ipxact:component>"#;
+
+    let error = ipxact_to_uvm_reg(xml).unwrap_err().to_string();
+
+    assert!(
+        error.contains(
+            "IP-XACT address ranges `control` and `status` overlap in registerFile `cluster` at offsets 2..3"
+        ),
+        "{error}"
+    );
+}
+
+#[test]
+fn reports_self_overlapping_register_file_member_arrays() {
+    let xml = r#"
+<ipxact:component xmlns:ipxact="http://www.accellera.org/XMLSchema/IPXACT/1685-2022">
+  <ipxact:vendor>acme</ipxact:vendor>
+  <ipxact:library>lib</ipxact:library>
+  <ipxact:name>rf_array_overlap</ipxact:name>
+  <ipxact:version>1.0</ipxact:version>
+  <ipxact:memoryMaps>
+    <ipxact:memoryMap>
+      <ipxact:name>regs</ipxact:name>
+      <ipxact:addressBlock>
+        <ipxact:name>cfg</ipxact:name>
+        <ipxact:baseAddress>0</ipxact:baseAddress>
+        <ipxact:range>0x40</ipxact:range>
+        <ipxact:width>32</ipxact:width>
+        <ipxact:registerFile>
+          <ipxact:name>cluster</ipxact:name>
+          <ipxact:addressOffset>0</ipxact:addressOffset>
+          <ipxact:range>0x20</ipxact:range>
+          <ipxact:register>
+            <ipxact:name>counter</ipxact:name>
+            <ipxact:array>
+              <ipxact:dim>2</ipxact:dim>
+              <ipxact:stride>2</ipxact:stride>
+            </ipxact:array>
+            <ipxact:addressOffset>0</ipxact:addressOffset>
+            <ipxact:size>32</ipxact:size>
+            <ipxact:field>
+              <ipxact:name>value</ipxact:name>
+              <ipxact:bitOffset>0</ipxact:bitOffset>
+              <ipxact:bitWidth>32</ipxact:bitWidth>
+              <ipxact:access>read-write</ipxact:access>
+            </ipxact:field>
+          </ipxact:register>
+        </ipxact:registerFile>
+      </ipxact:addressBlock>
+    </ipxact:memoryMap>
+  </ipxact:memoryMaps>
+</ipxact:component>"#;
+
+    let error = ipxact_to_uvm_reg(xml).unwrap_err().to_string();
+
+    assert!(
+        error.contains(
+            "IP-XACT address ranges `counter` and `counter` overlap in registerFile `cluster` at offsets 2..3"
+        ),
+        "{error}"
+    );
+}
+
+#[test]
+fn reports_register_file_members_that_exceed_register_file_range() {
+    let xml = r#"
+<ipxact:component xmlns:ipxact="http://www.accellera.org/XMLSchema/IPXACT/1685-2022">
+  <ipxact:vendor>acme</ipxact:vendor>
+  <ipxact:library>lib</ipxact:library>
+  <ipxact:name>rf_range</ipxact:name>
+  <ipxact:version>1.0</ipxact:version>
+  <ipxact:memoryMaps>
+    <ipxact:memoryMap>
+      <ipxact:name>regs</ipxact:name>
+      <ipxact:addressBlock>
+        <ipxact:name>cfg</ipxact:name>
+        <ipxact:baseAddress>0</ipxact:baseAddress>
+        <ipxact:range>0x40</ipxact:range>
+        <ipxact:width>32</ipxact:width>
+        <ipxact:registerFile>
+          <ipxact:name>cluster</ipxact:name>
+          <ipxact:addressOffset>0</ipxact:addressOffset>
+          <ipxact:range>4</ipxact:range>
+          <ipxact:register>
+            <ipxact:name>control</ipxact:name>
+            <ipxact:addressOffset>4</ipxact:addressOffset>
+            <ipxact:size>32</ipxact:size>
+            <ipxact:field>
+              <ipxact:name>enable</ipxact:name>
+              <ipxact:bitOffset>0</ipxact:bitOffset>
+              <ipxact:bitWidth>1</ipxact:bitWidth>
+              <ipxact:access>read-write</ipxact:access>
+            </ipxact:field>
+          </ipxact:register>
+        </ipxact:registerFile>
+      </ipxact:addressBlock>
+    </ipxact:memoryMap>
+  </ipxact:memoryMaps>
+</ipxact:component>"#;
+
+    let error = ipxact_to_uvm_reg(xml).unwrap_err().to_string();
+
+    assert!(
+        error.contains(
+            "IP-XACT address range `control` in registerFile `cluster` ends at offset 7, beyond registerFile range 4"
+        ),
+        "{error}"
+    );
+}
+
+#[test]
+fn reports_zero_register_file_range_before_generating_uvm_reg_file() {
+    let xml = r#"
+<ipxact:component xmlns:ipxact="http://www.accellera.org/XMLSchema/IPXACT/1685-2022">
+  <ipxact:vendor>acme</ipxact:vendor>
+  <ipxact:library>lib</ipxact:library>
+  <ipxact:name>rf_zero_range</ipxact:name>
+  <ipxact:version>1.0</ipxact:version>
+  <ipxact:memoryMaps>
+    <ipxact:memoryMap>
+      <ipxact:name>regs</ipxact:name>
+      <ipxact:addressBlock>
+        <ipxact:name>cfg</ipxact:name>
+        <ipxact:baseAddress>0</ipxact:baseAddress>
+        <ipxact:range>4</ipxact:range>
+        <ipxact:width>32</ipxact:width>
+        <ipxact:registerFile>
+          <ipxact:name>cluster</ipxact:name>
+          <ipxact:addressOffset>0</ipxact:addressOffset>
+          <ipxact:range>0</ipxact:range>
+        </ipxact:registerFile>
+      </ipxact:addressBlock>
+    </ipxact:memoryMap>
+  </ipxact:memoryMaps>
+</ipxact:component>"#;
+
+    let error = ipxact_to_uvm_reg(xml).unwrap_err().to_string();
+
+    assert!(
+        error.contains("invalid IP-XACT number for registerFile range: `0`"),
+        "{error}"
+    );
 }
 
 #[test]
@@ -3015,6 +5543,90 @@ fn reports_subspace_segment_range_violations() {
 }
 
 #[test]
+fn reports_unresolved_subspace_map_address_spaces() {
+    let xml = r#"
+<ipxact:component xmlns:ipxact="http://www.accellera.org/XMLSchema/IPXACT/1685-2022">
+  <ipxact:vendor>acme</ipxact:vendor>
+  <ipxact:library>ip</ipxact:library>
+  <ipxact:name>missing_subspace_address_space</ipxact:name>
+  <ipxact:version>1.0</ipxact:version>
+  <ipxact:memoryMaps>
+    <ipxact:memoryMap>
+      <ipxact:name>host</ipxact:name>
+      <ipxact:subspaceMap initiatorRef="missing_init">
+        <ipxact:name>external_window</ipxact:name>
+        <ipxact:baseAddress>0x1000</ipxact:baseAddress>
+      </ipxact:subspaceMap>
+    </ipxact:memoryMap>
+  </ipxact:memoryMaps>
+</ipxact:component>"#;
+
+    let error = ipxact_to_uvm_reg(xml).unwrap_err().to_string();
+
+    assert!(
+        error.contains(
+            "subspaceMap `external_window` initiatorRef `missing_init` does not resolve to a local addressSpace"
+        ),
+        "{error}"
+    );
+}
+
+#[test]
+fn reports_missing_subspace_map_segment_refs() {
+    let xml = r#"
+<ipxact:component xmlns:ipxact="http://www.accellera.org/XMLSchema/IPXACT/1685-2022">
+  <ipxact:vendor>acme</ipxact:vendor>
+  <ipxact:library>ip</ipxact:library>
+  <ipxact:name>missing_subspace_segment</ipxact:name>
+  <ipxact:version>1.0</ipxact:version>
+  <ipxact:busInterfaces>
+    <ipxact:busInterface>
+      <ipxact:name>dma_init</ipxact:name>
+      <ipxact:busType vendor="acme" library="bus" name="axi" version="1.0"/>
+      <ipxact:initiator>
+        <ipxact:addressSpaceRef addressSpaceRef="dma_space"/>
+      </ipxact:initiator>
+    </ipxact:busInterface>
+  </ipxact:busInterfaces>
+  <ipxact:addressSpaces>
+    <ipxact:addressSpace>
+      <ipxact:name>dma_space</ipxact:name>
+      <ipxact:range>0x100</ipxact:range>
+      <ipxact:width>32</ipxact:width>
+      <ipxact:addressUnitBits>8</ipxact:addressUnitBits>
+      <ipxact:localMemoryMap>
+        <ipxact:name>dma_local</ipxact:name>
+        <ipxact:addressBlock>
+          <ipxact:name>dma_regs</ipxact:name>
+          <ipxact:baseAddress>0</ipxact:baseAddress>
+          <ipxact:range>0x10</ipxact:range>
+          <ipxact:width>32</ipxact:width>
+        </ipxact:addressBlock>
+      </ipxact:localMemoryMap>
+    </ipxact:addressSpace>
+  </ipxact:addressSpaces>
+  <ipxact:memoryMaps>
+    <ipxact:memoryMap>
+      <ipxact:name>host</ipxact:name>
+      <ipxact:subspaceMap initiatorRef="dma_init" segmentRef="cfg_seg">
+        <ipxact:name>dma_window</ipxact:name>
+        <ipxact:baseAddress>0x1000</ipxact:baseAddress>
+      </ipxact:subspaceMap>
+    </ipxact:memoryMap>
+  </ipxact:memoryMaps>
+</ipxact:component>"#;
+
+    let error = ipxact_to_uvm_reg(xml).unwrap_err().to_string();
+
+    assert!(
+        error.contains(
+            "subspaceMap `dma_window` segmentRef `cfg_seg` was not found in addressSpace `dma_space`"
+        ),
+        "{error}"
+    );
+}
+
+#[test]
 fn expands_scoped_memory_map_definitions() {
     let xml = r#"
 <ipxact:component xmlns:ipxact="http://www.accellera.org/XMLSchema/IPXACT/1685-2022">
@@ -3104,7 +5716,9 @@ fn expands_scoped_memory_map_definitions() {
     assert_eq!(component.memory_remaps[0].blocks[0].address_unit_bits, "32");
 
     let sv = ipxact_to_uvm_reg(xml).unwrap();
-    assert!(sv.contains("default_map = create_map(\"default_map\", 0, 4, UVM_LITTLE_ENDIAN);"));
+    assert!(
+        sv.contains("default_map = create_map(\"default_map\", 0, 4, UVM_LITTLE_ENDIAN, 1'b0);")
+    );
     assert!(sv.contains("default_map.add_reg(status, `UVM_REG_ADDR_WIDTH'h1, \"RO\");"));
     assert!(sv.contains("default_map.add_submap(b_regs.default_map, `UVM_REG_ADDR_WIDTH'h2);"));
     assert!(
@@ -3235,4 +5849,371 @@ fn expands_scoped_bank_and_memory_remap_definitions() {
     );
     assert!(!sv.contains("a_bank_block"));
     assert!(!sv.contains("a_remap_block"));
+}
+
+fn assert_demo_uvm_golden_patterns(label: &str, sv: &str) {
+    let patterns = [
+        "`ifndef RAL_DEMO_SV",
+        "class ral_reg_regs_status extends uvm_reg;",
+        "class ral_regfile_regs_lane extends uvm_reg_file;",
+        "class ral_block_regs extends uvm_reg_block;",
+        "class ral_sys_demo extends uvm_reg_block;",
+        "rand ral_block_regs regs;",
+        "default_map = create_map(\"default_map\", 0, 4, UVM_LITTLE_ENDIAN, 1'b1);",
+        "done.configure(this, 1, 0, \"RO\", 1'b0, 1'h1, 1'b1, 1'b0, 1);",
+        "status.add_hdl_path_slice({`REGS_HDL_PATH, \".done_q\"}, 0, 1, 1'b1);",
+        "default_map.add_reg(status, `UVM_REG_ADDR_WIDTH'h4, \"RO\");",
+        "default_map.add_submap(regs.default_map, `UVM_REG_ADDR_WIDTH'h1000);",
+        "rand ral_reg_regs_lane_ctrl ctrl;",
+        "ctrl.add_hdl_path_slice(\"top.u_regs.lane.enable_q\", 0, 1, 1'b1);",
+        "mp.add_reg(ctrl, offset + `UVM_REG_ADDR_WIDTH'h0, \"RW\");",
+        "lane[i].map(default_map, `UVM_REG_ADDR_WIDTH'h20 + i * `UVM_REG_ADDR_WIDTH'h10);",
+    ];
+
+    for pattern in patterns {
+        assert!(
+            sv.contains(pattern),
+            "{label}: missing generated UVM golden pattern `{pattern}`"
+        );
+    }
+}
+
+fn assert_generated_sv_structural_gate(label: &str, sv: &str) {
+    assert!(
+        sv.contains("import uvm_pkg::*;"),
+        "{label}: missing uvm_pkg import"
+    );
+    assert!(
+        sv.contains("`include \"uvm_macros.svh\""),
+        "{label}: missing uvm_macros include"
+    );
+    assert!(sv.contains("`ifndef "), "{label}: missing include guard");
+    assert!(
+        sv.contains("`define "),
+        "{label}: missing include guard define"
+    );
+    assert!(
+        sv.trim_end().ends_with("`endif"),
+        "{label}: missing final endif"
+    );
+    assert!(
+        !sv.contains("uvm_reg_map default_map;\n"),
+        "{label}: generated code redeclares uvm_reg_block::default_map"
+    );
+    for line in sv.lines().filter(|line| line.contains("create_map(")) {
+        assert!(
+            line.contains("UVM_LITTLE_ENDIAN, "),
+            "{label}: create_map should pass explicit byte_addressing argument: {line}"
+        );
+    }
+    assert_generated_uvm_call_shapes(label, sv);
+
+    let structurally_active_sv = sv_assuming_protected_sample_macros(sv);
+    let words = sv_words_outside_strings_and_comments(&structurally_active_sv);
+    assert_generated_sv_identifiers(label, &words, sv);
+    assert_balanced_word(label, &words, "class", "endclass");
+    assert_balanced_word(label, &words, "function", "endfunction");
+    assert_balanced_word(label, &words, "covergroup", "endgroup");
+    assert_balanced_word(label, &words, "begin", "end");
+
+    let class_count = words.iter().filter(|word| word.as_str() == "class").count();
+    assert!(class_count > 0, "{label}: no generated classes");
+    assert_eq!(
+        class_count,
+        sv.matches(" extends ").count(),
+        "{label}: every generated class should declare an extends type"
+    );
+    assert_eq!(
+        class_count,
+        sv.matches("`uvm_object_utils(").count(),
+        "{label}: every generated class should be factory registered"
+    );
+    assert!(
+        sv.contains("virtual function void build();") || sv.contains("function new("),
+        "{label}: generated classes should expose UVM construction/build methods"
+    );
+}
+
+fn assert_generated_uvm_call_shapes(label: &str, sv: &str) {
+    for line in sv.lines() {
+        let trimmed = line.trim();
+        if trimmed.contains("create_map(") {
+            assert_call_arg_count(label, trimmed, "create_map", 5);
+        }
+        if trimmed.contains(".add_reg(") {
+            assert_call_arg_count(label, trimmed, ".add_reg", 3);
+        }
+        if trimmed.contains(".add_mem(") {
+            assert_call_arg_count(label, trimmed, ".add_mem", 3);
+        }
+        if trimmed.contains(".add_submap(") {
+            assert_call_arg_count(label, trimmed, ".add_submap", 2);
+        }
+        if trimmed.contains(".add_hdl_path_slice(") {
+            assert_call_arg_count(label, trimmed, ".add_hdl_path_slice", 4);
+        }
+        if trimmed.contains(".configure(") {
+            let count = call_arg_count(trimmed, ".configure")
+                .unwrap_or_else(|| panic!("{label}: malformed configure call: {trimmed}"));
+            assert!(
+                matches!(count, 1 | 2 | 3 | 9),
+                "{label}: unexpected UVM configure argument count {count}: {trimmed}"
+            );
+        }
+    }
+}
+
+fn assert_call_arg_count(label: &str, line: &str, call: &str, expected: usize) {
+    let count = call_arg_count(line, call)
+        .unwrap_or_else(|| panic!("{label}: malformed {call} call: {line}"));
+    assert_eq!(
+        count, expected,
+        "{label}: {call} should have {expected} arguments, found {count}: {line}"
+    );
+}
+
+fn call_arg_count(line: &str, call: &str) -> Option<usize> {
+    let start = line.find(call)?;
+    let open = line[start..].find('(')? + start;
+    let args = call_args_text(line, open)?;
+    if args.trim().is_empty() {
+        return Some(0);
+    }
+
+    let mut count = 1;
+    let mut paren_depth = 0usize;
+    let mut bracket_depth = 0usize;
+    let mut brace_depth = 0usize;
+    let mut in_string = false;
+    let mut escaped = false;
+
+    for ch in args.chars() {
+        if in_string {
+            if escaped {
+                escaped = false;
+            } else if ch == '\\' {
+                escaped = true;
+            } else if ch == '"' {
+                in_string = false;
+            }
+            continue;
+        }
+
+        match ch {
+            '"' => in_string = true,
+            '(' => paren_depth += 1,
+            ')' => paren_depth = paren_depth.saturating_sub(1),
+            '[' => bracket_depth += 1,
+            ']' => bracket_depth = bracket_depth.saturating_sub(1),
+            '{' => brace_depth += 1,
+            '}' => brace_depth = brace_depth.saturating_sub(1),
+            ',' if paren_depth == 0 && bracket_depth == 0 && brace_depth == 0 => count += 1,
+            _ => {}
+        }
+    }
+
+    Some(count)
+}
+
+fn call_args_text(line: &str, open: usize) -> Option<&str> {
+    let mut paren_depth = 0usize;
+    let mut in_string = false;
+    let mut escaped = false;
+    let args_start = open + 1;
+
+    for (offset, ch) in line[open..].char_indices() {
+        let index = open + offset;
+        if in_string {
+            if escaped {
+                escaped = false;
+            } else if ch == '\\' {
+                escaped = true;
+            } else if ch == '"' {
+                in_string = false;
+            }
+            continue;
+        }
+
+        match ch {
+            '"' => in_string = true,
+            '(' => paren_depth += 1,
+            ')' => {
+                paren_depth = paren_depth.checked_sub(1)?;
+                if paren_depth == 0 {
+                    return Some(&line[args_start..index]);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    None
+}
+
+fn assert_generated_sv_identifiers(label: &str, words: &[String], sv: &str) {
+    for pair in words.windows(2) {
+        if pair[0] == "class" {
+            assert!(
+                is_valid_sv_identifier(&pair[1]),
+                "{label}: invalid generated class identifier `{}`",
+                pair[1]
+            );
+        }
+    }
+
+    let mut remaining = sv;
+    while let Some(start) = remaining.find("`uvm_object_utils(") {
+        let after_start = &remaining[start + "`uvm_object_utils(".len()..];
+        let Some(end) = after_start.find(')') else {
+            panic!("{label}: unterminated uvm_object_utils macro");
+        };
+        let name = after_start[..end].trim();
+        assert!(
+            is_valid_sv_identifier(name),
+            "{label}: invalid uvm_object_utils identifier `{name}`"
+        );
+        remaining = &after_start[end + 1..];
+    }
+}
+
+fn is_valid_sv_identifier(value: &str) -> bool {
+    let mut chars = value.chars();
+    let Some(first) = chars.next() else {
+        return false;
+    };
+    if !(first == '_' || first.is_ascii_alphabetic()) {
+        return false;
+    }
+    if !chars.all(|ch| ch == '_' || ch.is_ascii_alphanumeric()) {
+        return false;
+    }
+    !is_sv_keyword_for_test(value)
+}
+
+fn is_sv_keyword_for_test(value: &str) -> bool {
+    matches!(
+        value,
+        "class"
+            | "endclass"
+            | "function"
+            | "endfunction"
+            | "package"
+            | "endpackage"
+            | "rand"
+            | "int"
+            | "bit"
+            | "begin"
+            | "end"
+            | "default"
+            | "for"
+            | "if"
+            | "else"
+            | "this"
+            | "super"
+            | "null"
+    )
+}
+
+fn assert_balanced_word(label: &str, words: &[String], open: &str, close: &str) {
+    let open_count = words.iter().filter(|word| word.as_str() == open).count();
+    let close_count = words.iter().filter(|word| word.as_str() == close).count();
+    assert_eq!(
+        open_count, close_count,
+        "{label}: unbalanced {open}/{close} tokens"
+    );
+}
+
+fn sv_words_outside_strings_and_comments(sv: &str) -> Vec<String> {
+    let mut words = Vec::new();
+    let mut current = String::new();
+    let mut chars = sv.chars().peekable();
+    let mut in_string = false;
+    let mut in_line_comment = false;
+    let mut in_block_comment = false;
+    let mut escaped = false;
+
+    while let Some(ch) = chars.next() {
+        if in_string {
+            if escaped {
+                escaped = false;
+            } else if ch == '\\' {
+                escaped = true;
+            } else if ch == '"' {
+                in_string = false;
+            }
+            continue;
+        }
+        if in_line_comment {
+            if ch == '\n' {
+                in_line_comment = false;
+            }
+            continue;
+        }
+        if in_block_comment {
+            if ch == '*' && chars.peek() == Some(&'/') {
+                chars.next();
+                in_block_comment = false;
+            }
+            continue;
+        }
+
+        match ch {
+            '"' => {
+                push_sv_word(&mut words, &mut current);
+                in_string = true;
+            }
+            '/' if chars.peek() == Some(&'/') => {
+                push_sv_word(&mut words, &mut current);
+                chars.next();
+                in_line_comment = true;
+            }
+            '/' if chars.peek() == Some(&'*') => {
+                push_sv_word(&mut words, &mut current);
+                chars.next();
+                in_block_comment = true;
+            }
+            ch if ch.is_ascii_alphanumeric() || ch == '_' => current.push(ch),
+            _ => push_sv_word(&mut words, &mut current),
+        }
+    }
+    push_sv_word(&mut words, &mut current);
+    words
+}
+
+fn push_sv_word(words: &mut Vec<String>, current: &mut String) {
+    if !current.is_empty() {
+        words.push(std::mem::take(current));
+    }
+}
+
+fn sv_assuming_protected_sample_macros(sv: &str) -> String {
+    let mut out = Vec::new();
+    let mut in_sample_ifdef = false;
+    let mut skipping_else_branch = false;
+
+    for line in sv.lines() {
+        let trimmed = line.trim();
+        if matches!(
+            trimmed,
+            "`ifdef UVM_REG_PROTECTED_SAMPLE" | "`ifdef UVM_MEM_PROTECTED_SAMPLE"
+        ) {
+            in_sample_ifdef = true;
+            skipping_else_branch = false;
+            continue;
+        }
+        if in_sample_ifdef && trimmed == "`else" {
+            skipping_else_branch = true;
+            continue;
+        }
+        if in_sample_ifdef && trimmed == "`endif" {
+            in_sample_ifdef = false;
+            skipping_else_branch = false;
+            continue;
+        }
+        if !skipping_else_branch {
+            out.push(line);
+        }
+    }
+
+    out.join("\n")
 }

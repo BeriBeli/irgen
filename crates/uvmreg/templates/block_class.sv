@@ -30,7 +30,7 @@ class {{ block.class_name }} extends uvm_reg_block;
 
     virtual function void build();
 {%- for map in block.maps %}
-      {{ map.var_name }} = create_map({{ map.create_name }}, 0, {{ map.n_bytes }}, UVM_LITTLE_ENDIAN);
+      {{ map.var_name }} = create_map({{ map.create_name }}, 0, {{ map.n_bytes }}, UVM_LITTLE_ENDIAN, {{ map.byte_addressing }});
 {%- endfor %}
 {%- for mem in block.memories %}
 {%- if mem.coverage_enabled %}
