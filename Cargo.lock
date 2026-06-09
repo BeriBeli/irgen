@@ -469,16 +469,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ip-xact"
-version = "0.3.2"
-dependencies = [
- "irgen-model",
- "quick-xml 0.39.0",
- "thiserror",
- "xsd-parser-types",
-]
-
-[[package]]
 name = "ipxact-codegen"
 version = "0.3.2"
 dependencies = [
@@ -495,9 +485,8 @@ name = "irgen-cli"
 version = "0.3.2"
 dependencies = [
  "clap",
- "ip-xact",
  "irgen-docs",
- "irgen-model",
+ "irgen-ip-xact",
  "irgen-ralf",
  "irgen-snapsheet",
  "irgen-systemrdl",
@@ -509,25 +498,26 @@ name = "irgen-docs"
 version = "0.3.2"
 dependencies = [
  "askama",
- "irgen-model",
  "serde",
  "serde_json",
  "thiserror",
 ]
 
 [[package]]
-name = "irgen-model"
+name = "irgen-ip-xact"
 version = "0.3.2"
 dependencies = [
- "serde",
+ "irgen-snapsheet",
+ "quick-xml 0.39.0",
  "thiserror",
+ "xsd-parser-types",
 ]
 
 [[package]]
 name = "irgen-ralf"
 version = "0.3.2"
 dependencies = [
- "irgen-model",
+ "irgen-snapsheet",
  "thiserror",
 ]
 
@@ -536,7 +526,6 @@ name = "irgen-snapsheet"
 version = "0.3.2"
 dependencies = [
  "calamine",
- "irgen-model",
  "serde",
  "thiserror",
  "toml",
@@ -546,7 +535,7 @@ dependencies = [
 name = "irgen-systemrdl"
 version = "0.3.2"
 dependencies = [
- "irgen-model",
+ "irgen-snapsheet",
  "thiserror",
 ]
 

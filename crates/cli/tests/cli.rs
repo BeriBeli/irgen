@@ -3,7 +3,9 @@ use std::fs;
 use std::path::PathBuf;
 use std::process::Command as ProcessCommand;
 
-use irgen_cli::{Command, IpxactArgs, IpxactStandard, OutputFormat, parse_args, run};
+use irgen_cli::{
+    Command, IpxactArgs, IpxactOutputFormat, IpxactStandard, OutputFormat, parse_args, run,
+};
 
 fn args(values: &[&str]) -> impl Iterator<Item = OsString> {
     values
@@ -149,7 +151,7 @@ fn accepts_explicit_ip_xact_format() {
     };
 
     assert_eq!(parsed.format, OutputFormat::Ipxact);
-    assert_eq!(parsed.ipxact_standard, IpxactStandard::V2014);
+    assert_eq!(parsed.ipxact_standard, IpxactStandard::V2022);
     assert_eq!(parsed.output, None);
 }
 
@@ -186,6 +188,7 @@ fn accepts_ipxact_subcommand() {
         IpxactArgs {
             input: PathBuf::from("nested/input.xml"),
             output: Some(PathBuf::from("nested/uvmreg_demo.sv")),
+            format: IpxactOutputFormat::UvmReg,
             file_layout: irgen_cli::IpxactFileLayout::Single,
             coverage: false,
             view: None,
@@ -208,6 +211,7 @@ fn accepts_ipxact_coverage_option() {
         IpxactArgs {
             input: PathBuf::from("nested/input.xml"),
             output: None,
+            format: IpxactOutputFormat::UvmReg,
             file_layout: irgen_cli::IpxactFileLayout::Single,
             coverage: true,
             view: None,
@@ -230,6 +234,7 @@ fn accepts_ipxact_view_option() {
         IpxactArgs {
             input: PathBuf::from("nested/input.xml"),
             output: None,
+            format: IpxactOutputFormat::UvmReg,
             file_layout: irgen_cli::IpxactFileLayout::Single,
             coverage: false,
             view: Some("gate".into()),
@@ -256,6 +261,7 @@ fn accepts_ipxact_mode_option() {
         IpxactArgs {
             input: PathBuf::from("nested/input.xml"),
             output: None,
+            format: IpxactOutputFormat::UvmReg,
             file_layout: irgen_cli::IpxactFileLayout::Single,
             coverage: false,
             view: None,
@@ -284,6 +290,7 @@ fn accepts_ipxact_library_path_option() {
         IpxactArgs {
             input: PathBuf::from("nested/input.xml"),
             output: None,
+            format: IpxactOutputFormat::UvmReg,
             file_layout: irgen_cli::IpxactFileLayout::Single,
             coverage: false,
             view: None,
@@ -309,15 +316,29 @@ fn accepts_ipxact_file_layout_option() {
 }
 
 #[test]
-fn accepts_explicit_html_format() {
-    let Command::Convert(parsed) =
-        parse_args(snapsheet_args(&["nested/input.xlsx", "--format", "html"])).unwrap()
-    else {
-        panic!("expected conversion command");
+fn accepts_ipxact_html_format() {
+    let Command::Ipxact(parsed) = parse_args(args(&[
+        "ip-xact",
+        "nested/input.xml",
+        "--format",
+        "html",
+        "-o",
+        "nested/docs",
+    ]))
+    .unwrap() else {
+        panic!("expected ip-xact command");
     };
 
-    assert_eq!(parsed.format, OutputFormat::Html);
-    assert_eq!(parsed.output, None);
+    assert_eq!(parsed.format, IpxactOutputFormat::Html);
+    assert_eq!(parsed.output, Some(PathBuf::from("nested/docs")));
+}
+
+#[test]
+fn rejects_html_as_snapsheet_format() {
+    assert_snapsheet_parse_error_contains(
+        &["nested/input.xlsx", "--format", "html"],
+        &["invalid value", "html", "ip-xact"],
+    );
 }
 
 #[test]
@@ -333,71 +354,13 @@ fn accepts_explicit_all_format() {
 }
 
 #[test]
-fn defaults_ipxact_standard_to_2014() {
+fn defaults_ipxact_standard_to_2022() {
     let Command::Convert(parsed) = parse_args(snapsheet_args(&["input.xlsx"])).unwrap() else {
         panic!("expected conversion command");
     };
 
     assert_eq!(parsed.format, OutputFormat::Ipxact);
-    assert_eq!(parsed.ipxact_standard, IpxactStandard::V2014);
-}
-
-#[test]
-fn accepts_explicit_ipxact_2014_standard() {
-    let Command::Convert(parsed) = parse_args(snapsheet_args(&[
-        "input.xlsx",
-        "--standard",
-        "ieee-1685-2014",
-    ]))
-    .unwrap() else {
-        panic!("expected conversion command");
-    };
-
-    assert_eq!(parsed.format, OutputFormat::Ipxact);
-    assert_eq!(parsed.ipxact_standard, IpxactStandard::V2014);
-    assert_eq!(parsed.output, None);
-}
-
-#[test]
-fn accepts_explicit_ipxact_1_4_standard() {
-    let Command::Convert(parsed) =
-        parse_args(snapsheet_args(&["input.xlsx", "--standard", "spirit-1.4"])).unwrap()
-    else {
-        panic!("expected conversion command");
-    };
-
-    assert_eq!(parsed.format, OutputFormat::Ipxact);
-    assert_eq!(parsed.ipxact_standard, IpxactStandard::V1_4);
-    assert_eq!(parsed.output, None);
-}
-
-#[test]
-fn accepts_explicit_ipxact_1_5_standard() {
-    let Command::Convert(parsed) =
-        parse_args(snapsheet_args(&["input.xlsx", "--standard", "spirit-1.5"])).unwrap()
-    else {
-        panic!("expected conversion command");
-    };
-
-    assert_eq!(parsed.format, OutputFormat::Ipxact);
-    assert_eq!(parsed.ipxact_standard, IpxactStandard::V1_5);
-    assert_eq!(parsed.output, None);
-}
-
-#[test]
-fn accepts_explicit_ipxact_2009_standard() {
-    let Command::Convert(parsed) = parse_args(snapsheet_args(&[
-        "input.xlsx",
-        "--standard",
-        "ieee-1685-2009",
-    ]))
-    .unwrap() else {
-        panic!("expected conversion command");
-    };
-
-    assert_eq!(parsed.format, OutputFormat::Ipxact);
-    assert_eq!(parsed.ipxact_standard, IpxactStandard::V2009);
-    assert_eq!(parsed.output, None);
+    assert_eq!(parsed.ipxact_standard, IpxactStandard::V2022);
 }
 
 #[test]
@@ -417,6 +380,22 @@ fn accepts_explicit_ipxact_2022_standard() {
 }
 
 #[test]
+fn accepts_ipxact_generation_options_for_snapsheet() {
+    let Command::Convert(parsed) = parse_args(snapsheet_args(&[
+        "input.xlsx",
+        "--bus-bytes",
+        "8",
+        "--backdoor",
+    ]))
+    .unwrap() else {
+        panic!("expected conversion command");
+    };
+
+    assert_eq!(parsed.bus_bytes.as_deref(), Some("8"));
+    assert!(parsed.backdoor);
+}
+
+#[test]
 fn accepts_explicit_ralf_format() {
     let Command::Convert(parsed) =
         parse_args(snapsheet_args(&["nested/input.xlsx", "--format", "ralf"])).unwrap()
@@ -426,6 +405,28 @@ fn accepts_explicit_ralf_format() {
 
     assert_eq!(parsed.format, OutputFormat::Ralf);
     assert_eq!(parsed.output, None);
+}
+
+#[test]
+fn rejects_html_as_snapsheet_option() {
+    assert_snapsheet_parse_error_contains(
+        &["nested/input.xlsx", "--html"],
+        &["unexpected argument", "--html"],
+    );
+}
+
+#[test]
+fn rejects_invalid_bus_bytes_before_loading_workbook() {
+    assert_eq!(
+        run(snapsheet_args(&[
+            "this-file-does-not-exist.xlsx",
+            "--bus-bytes",
+            "3"
+        ]))
+        .unwrap_err()
+        .to_string(),
+        "invalid --bus-bytes: must be one of 1, 2, 4, 8, or 16 bytes"
+    );
 }
 
 #[test]
@@ -1072,15 +1073,32 @@ fn ipxact_subcommand_reports_ambiguous_external_type_definitions() {
 fn generates_html_output() {
     let input =
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../examples/example_simple.xlsx");
+    let ipxact_output = std::env::temp_dir().join(format!(
+        "irgen-cli-test-{}-example-for-html.xml",
+        std::process::id()
+    ));
     let output_dir = std::env::temp_dir().join(format!(
         "irgen-cli-test-{}-example-html",
         std::process::id()
     ));
+    let _ = fs::remove_file(&ipxact_output);
     let _ = fs::remove_dir_all(&output_dir);
 
-    let result = run([
+    run([
         OsString::from("snapsheet"),
         OsString::from(input),
+        OsString::from("--format"),
+        OsString::from("ip-xact"),
+        OsString::from("-o"),
+        OsString::from(&ipxact_output),
+    ]
+    .into_iter())
+    .unwrap();
+    assert!(ipxact_output.is_file());
+
+    let result = run([
+        OsString::from("ip-xact"),
+        OsString::from(&ipxact_output),
         OsString::from("--format"),
         OsString::from("html"),
         OsString::from("-o"),
@@ -1108,6 +1126,7 @@ fn generates_html_output() {
     assert!(register_page.contains("<strong>Value After Reset:</strong> 0"));
     assert!(output_dir.join("assets/register_reference.css").is_file());
     assert!(output_dir.join("assets/register_reference.js").is_file());
+    let _ = fs::remove_file(ipxact_output);
     let _ = fs::remove_dir_all(output_dir);
 }
 
@@ -1131,32 +1150,14 @@ fn generates_all_outputs() {
     .unwrap();
 
     assert_eq!(result.as_deref(), Some(output_dir.as_path()));
-    let ipxact_1_4 =
-        fs::read_to_string(output_dir.join("example_simple-ip-xact-spirit-1.4.xml")).unwrap();
-    let ipxact_1_5 =
-        fs::read_to_string(output_dir.join("example_simple-ip-xact-spirit-1.5.xml")).unwrap();
-    let ipxact_2009 =
-        fs::read_to_string(output_dir.join("example_simple-ip-xact-ieee-1685-2009.xml")).unwrap();
-    let ipxact_2014 =
-        fs::read_to_string(output_dir.join("example_simple-ip-xact-ieee-1685-2014.xml")).unwrap();
     let ipxact_2022 =
         fs::read_to_string(output_dir.join("example_simple-ip-xact-ieee-1685-2022.xml")).unwrap();
     let ralf = fs::read_to_string(output_dir.join("example_simple.ralf")).unwrap();
     let rdl = fs::read_to_string(output_dir.join("example_simple.rdl")).unwrap();
-    let html = fs::read_to_string(output_dir.join("html/index.html")).unwrap();
-    assert!(ipxact_1_4.contains("http://www.spiritconsortium.org/XMLSchema/SPIRIT/1.4"));
-    assert!(ipxact_1_5.contains("http://www.spiritconsortium.org/XMLSchema/SPIRIT/1.5"));
-    assert!(ipxact_2009.contains("http://www.spiritconsortium.org/XMLSchema/SPIRIT/1685-2009"));
-    assert!(ipxact_2014.contains("http://www.accellera.org/XMLSchema/IPXACT/1685-2014"));
     assert!(ipxact_2022.contains("http://www.accellera.org/XMLSchema/IPXACT/1685-2022"));
     assert!(ralf.contains("block regs {"));
     assert!(rdl.contains("addrmap example_simple {"));
-    assert!(html.contains("<!doctype html>"));
-    assert!(
-        output_dir
-            .join("html/assets/register_reference.css")
-            .is_file()
-    );
+    assert!(!output_dir.join("html").exists());
     let _ = fs::remove_dir_all(output_dir);
 }
 
@@ -1174,7 +1175,7 @@ fn generates_and_validates_ipxact_output() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
     let input = root.join("examples/example.xlsx");
     let spec = root.join("snapsheet.toml");
-    let schema = root.join("crates/ipxact/schema/1685-2014/index.xsd");
+    let schema = root.join("crates/ipxact/schema/1685-2022/index.xsd");
     let output =
         std::env::temp_dir().join(format!("irgen-cli-test-{}-example.xml", std::process::id()));
     let _ = fs::remove_file(&output);
@@ -1194,7 +1195,7 @@ fn generates_and_validates_ipxact_output() {
 
     assert_eq!(result.as_deref(), Some(output.as_path()));
     let xml = fs::read_to_string(&output).unwrap();
-    assert!(xml.contains("http://www.accellera.org/XMLSchema/IPXACT/1685-2014"));
+    assert!(xml.contains("http://www.accellera.org/XMLSchema/IPXACT/1685-2022"));
     let compact = compact_xml(&xml);
     let reg1_start = compact
         .find("<ipxact:register><ipxact:name>reg1</ipxact:name>")
@@ -1205,36 +1206,6 @@ fn generates_and_validates_ipxact_output() {
     let reg1_xml = &compact[reg1_start..reg1_start + reg2_offset];
     assert_eq!(reg1_xml.matches("<ipxact:field>").count(), 4);
     let _ = fs::remove_file(output);
-}
-
-#[test]
-fn generates_and_validates_complex_ipxact_1_4_output() {
-    generate_and_validate_complex_ipxact(
-        "spirit-1.4",
-        "crates/ipxact/schema/1.4/index.xsd",
-        "http://www.spiritconsortium.org/XMLSchema/SPIRIT/1.4",
-        "<spirit:register><spirit:name>reg1</spirit:name>",
-    );
-}
-
-#[test]
-fn generates_and_validates_complex_ipxact_1_5_output() {
-    generate_and_validate_complex_ipxact(
-        "spirit-1.5",
-        "crates/ipxact/schema/1.5/index.xsd",
-        "http://www.spiritconsortium.org/XMLSchema/SPIRIT/1.5",
-        "<spirit:register><spirit:name>reg1</spirit:name>",
-    );
-}
-
-#[test]
-fn generates_and_validates_complex_ipxact_2009_output() {
-    generate_and_validate_complex_ipxact(
-        "ieee-1685-2009",
-        "crates/ipxact/schema/1685-2009/index.xsd",
-        "http://www.spiritconsortium.org/XMLSchema/SPIRIT/1685-2009",
-        "<spirit:register><spirit:name>reg1</spirit:name>",
-    );
 }
 
 #[test]
@@ -1449,9 +1420,9 @@ fn rejects_duplicate_ipxact_standard() {
         &[
             "input.xlsx",
             "--standard",
-            "ieee-1685-2014",
+            "ieee-1685-2022",
             "--standard",
-            "ieee-1685-2014",
+            "ieee-1685-2022",
         ],
         &["cannot be used multiple times", "--standard"],
     );
@@ -1461,15 +1432,7 @@ fn rejects_duplicate_ipxact_standard() {
 fn rejects_unsupported_ipxact_standard() {
     assert_snapsheet_parse_error_contains(
         &["input.xlsx", "--standard", "2020"],
-        &[
-            "invalid value",
-            "2020",
-            "spirit-1.4",
-            "spirit-1.5",
-            "ieee-1685-2009",
-            "ieee-1685-2014",
-            "ieee-1685-2022",
-        ],
+        &["invalid value", "2020", "ieee-1685-2022"],
     );
 }
 
@@ -1481,7 +1444,7 @@ fn rejects_ipxact_standard_for_non_ipxact_format() {
             "--format",
             "systemrdl",
             "--standard",
-            "ieee-1685-2014",
+            "ieee-1685-2022",
         ]))
         .err()
         .as_deref(),
@@ -1497,7 +1460,7 @@ fn rejects_ipxact_standard_for_all_format() {
             "--format",
             "all",
             "--standard",
-            "ieee-1685-2014",
+            "ieee-1685-2022",
         ]))
         .err()
         .as_deref(),

@@ -1,5 +1,5 @@
 [package]
-name = "ip-xact"
+name = "irgen-ip-xact"
 version.workspace = true
 edition.workspace = true
 
@@ -8,7 +8,7 @@ name = "ip_xact"
 path = "src/lib.rs"
 
 [dependencies]
-irgen-model = { path = "../model" }
+irgen-snapsheet = { path = "../snapsheet" }
 quick-xml = { workspace = true }
 thiserror = { workspace = true }
 xsd-parser-types = { workspace = true }

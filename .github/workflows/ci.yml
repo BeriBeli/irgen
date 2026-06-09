@@ -105,4 +105,4 @@ jobs:
         run: cargo test --locked -p ip-xact --test ipxact_xml
       - name: Validate IP-XACT against official XSD
         if: runner.os == 'Linux'
-        run: cargo run --locked -p irgen-cli -- snapsheet examples/example.xlsx --config snapsheet.toml --standard ieee-1685-2014 -o target/irgen-configured-example.xml --validate crates/ipxact/schema/1685-2014/index.xsd
+        run: cargo run --locked -p irgen-cli -- snapsheet examples/example.xlsx --config snapsheet.toml --standard ieee-1685-2022 -o target/irgen-configured-example.xml --validate crates/ipxact/schema/1685-2022/index.xsd

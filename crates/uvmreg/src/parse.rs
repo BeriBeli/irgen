@@ -10,6 +10,8 @@ use crate::model::{
 use crate::numeric::{parse_bool_expr_with_symbols, parse_u64_expr, parse_u64_expr_with_symbols};
 use crate::{Error, Result};
 
+const IPXACT_2022_NAMESPACE: &str = "http://www.accellera.org/XMLSchema/IPXACT/1685-2022";
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct LibraryRef {
     pub vendor: String,
@@ -743,8 +745,16 @@ fn parse_xml(xml: &str) -> Result<XmlNode> {
 
     loop {
         match reader.read_event()? {
-            Event::Start(event) => stack.push(xml_node(&event, &reader)?),
+            Event::Start(event) => {
+                if stack.is_empty() && root.is_none() {
+                    validate_ipxact_namespace(&event, &reader)?;
+                }
+                stack.push(xml_node(&event, &reader)?);
+            }
             Event::Empty(event) => {
+                if stack.is_empty() && root.is_none() {
+                    validate_ipxact_namespace(&event, &reader)?;
+                }
                 let node = xml_node(&event, &reader)?;
                 push_node(&mut stack, &mut root, node);
             }
@@ -775,6 +785,46 @@ fn parse_xml(xml: &str) -> Result<XmlNode> {
     }
 
     root.ok_or(Error::MissingElement("component"))
+}
+
+fn validate_ipxact_namespace(event: &BytesStart<'_>, reader: &Reader<&[u8]>) -> Result<()> {
+    let namespace = root_namespace(event, reader)?;
+    if namespace.as_deref() == Some(IPXACT_2022_NAMESPACE) {
+        return Ok(());
+    }
+
+    Err(Error::UnsupportedNamespace(
+        namespace.unwrap_or_else(|| "<none>".into()),
+    ))
+}
+
+fn root_namespace(event: &BytesStart<'_>, reader: &Reader<&[u8]>) -> Result<Option<String>> {
+    let element_name = event.name();
+    let element_name = element_name.as_ref();
+    let prefix = element_name
+        .iter()
+        .position(|byte| *byte == b':')
+        .map(|index| &element_name[..index]);
+
+    for attribute in event.attributes() {
+        let attribute = attribute?;
+        let key = attribute.key.as_ref();
+        let matches_namespace = match prefix {
+            Some(prefix) => key
+                .strip_prefix(b"xmlns:")
+                .is_some_and(|attribute_prefix| attribute_prefix == prefix),
+            None => key == b"xmlns",
+        };
+        if matches_namespace {
+            return Ok(Some(
+                attribute
+                    .decode_and_unescape_value(reader.decoder())?
+                    .into_owned(),
+            ));
+        }
+    }
+
+    Ok(None)
 }
 
 fn xml_general_ref_text(reference: &str) -> String {
@@ -2104,10 +2154,7 @@ fn normalize_bool_text(
             expression: expression.into(),
         });
     }
-    Err(Error::InvalidBoolean {
-        field,
-        value: value.into(),
-    })
+    Err(Error::InvalidBoolean { field, value })
 }
 
 fn parse_u64_text(definitions: &Definitions, field: &'static str, value: &str) -> Result<u64> {

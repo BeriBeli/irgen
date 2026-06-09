@@ -1,244 +1,94 @@
 # irgen Roadmap
 
-## Direction
+## Current Direction
 
-The current product goal is a CLI-first register generation toolkit. It
-converts workbook snapsheets into register-oriented SPIRIT/IP-XACT, RALF,
-SystemRDL, and static register documentation, and it generates UVM RAL
-SystemVerilog directly from IP-XACT component XML. Future generated artifacts
-should stay CLI-first as well: additional documentation formats,
-verification-facing HDL backdoor metadata, software-facing headers, and
-hardware-facing register files should be added as explicit output formats or
-narrow crates rather than by introducing UI runtime dependencies.
+`irgen` stays CLI-first. Each output format should live behind a narrow crate
+and an explicit command path.
 
-IEEE 1685-2014 is the default IP-XACT output standard. SPIRIT 1.4, SPIRIT 1.5,
-IEEE 1685-2009, IEEE 1685-2014, and IEEE 1685-2022 are available for the
-current snapsheet register-table subset, but the project does not claim a
-complete general-purpose IP-XACT library for every root document and schema
-feature.
+Current user flows:
+
+- workbook snapsheet -> IP-XACT 2022 / RALF / SystemRDL
+- IP-XACT component XML -> UVM RAL SystemVerilog
+- IP-XACT component XML -> static HTML docs
+
+Snapsheet input should not depend on documentation output directly. HTML is
+generated from IP-XACT input with `irgen ip-xact --format html`.
 
 ## Crate Boundaries
 
 - `crates/cli`: command-line entry point.
-- `crates/snapsheet`: spreadsheet loading, row validation, array expansion, and
-  register aggregation.
-- `crates/model`: lightweight register IR shared by output crates.
-- `crates/ipxact`: generated IP-XACT schema modules and register-oriented
-  exporters for SPIRIT 1.4, SPIRIT 1.5, IEEE 1685-2009, IEEE 1685-2014, and
-  IEEE 1685-2022.
-- `crates/ipxact-codegen`: local `xsd-parser` based generator for refreshing
-  the versioned Rust schema modules.
-- `crates/docs`: static register documentation view and HTML site generator.
+- `crates/snapsheet`: workbook parsing and validation.
+- `crates/ipxact`: IEEE 1685-2022 exporter from the snapsheet model.
+- `crates/ipxact-codegen`: local schema-code generator.
 - `crates/ralf`: RALF model and serializer.
 - `crates/systemrdl`: SystemRDL model and serializer.
-- `crates/uvmreg`: direct IP-XACT component XML to UVM IEEE 2020 register model
-  generator.
+- `crates/uvmreg`: direct IP-XACT XML to UVM RAL generator.
+- `crates/docs`: static documentation generator used by `irgen ip-xact`.
 
 Active dependency direction:
 
 ```text
-cli -> snapsheet -> model
-cli -> ip-xact -> model
-cli -> docs -> model
-cli -> ralf -> model
-cli -> systemrdl -> model
+cli -> snapsheet
+cli -> ipxact -> snapsheet
+cli -> ralf -> snapsheet
+cli -> systemrdl -> snapsheet
 cli -> uvmreg
+cli -> docs
 ```
 
-Do not restore a generic `core` facade unless there is a concrete shared API
-that needs it.
-
-## Register Grouping
-
-`crates/snapsheet/src/register.rs` intentionally groups rows by `REG`.
-
-A single register may contain multiple fields, with one spreadsheet row per
-field, so rows with the same register identity must aggregate into one register
-model. This behavior is required for correct IP-XACT field emission.
+Do not add a generic facade crate unless there is a concrete shared API that
+needs it.
 
 ## Current Capability
 
-- Converts workbook input (`.xlsx`, `.xlsm`, `.xls`, `.xlsb`, or `.ods`) into
-  IP-XACT XML, RALF, and SystemRDL.
-- Supports `--format ip-xact|ralf|systemrdl|html|all`.
-- Supports `--standard spirit-1.4|spirit-1.5|ieee-1685-2009|ieee-1685-2014|ieee-1685-2022`,
-  with IEEE 1685-2014 as the default for IP-XACT output.
-- Supports `--config <snapsheet.toml>`.
-- Supports opt-in `--validate <schema.xsd>` for IP-XACT XML via `xmllint`.
-- Generates a static HTML register documentation site with shared assets, block
-  index pages, register detail pages, deterministic anchors, and search data.
-- Validates common workbook failures before conversion, including duplicate
-  fields, overlapping bit ranges, malformed arrays, invalid attributes,
-  address collisions, out-of-range registers, and reset values that do not fit.
-- Emits register arrays as IP-XACT `registerFile` arrays where the target
-  schema supports them. SPIRIT 1.4 has no `registerFile`, so 1.4 output
-  flattens those arrays into ordinary registers.
-- Carries field-level HDL backdoor paths from the optional `PATH` column through
-  IP-XACT, RALF, and SystemRDL output. Reserved fields and explicit `-` values
-  suppress field HDL paths.
-- Uses checked `u64` arithmetic for addresses and array expansion.
+- Reads `.xlsx`, `.xlsm`, `.xls`, `.xlsb`, and `.ods` workbooks.
+- Emits IEEE 1685-2022 IP-XACT, RALF, and SystemRDL from snapsheets.
+- Emits single repeated registers as register arrays, and groups matching
+  repeated register windows as registerFile arrays.
+- Splits wide spreadsheet registers by configured bus width.
+- Supports `--bus-bytes`, `--backdoor`, `--config`, and IP-XACT `--validate`.
+- Treats `RESET = -` as no reset and no compare.
+- Marks reserved fields in IP-XACT and suppresses their backdoor paths.
+- Generates UVM RAL from IP-XACT, including split-file output and optional
+  coverage hooks.
+- Generates static HTML documentation only from IP-XACT input.
 
-## Documentation Map
+## Near-Term Work
 
-- `docs/snapsheet-format.md`: workbook layout, TOML configuration, array
-  rules, and parser validation behavior.
-- `docs/ralf-generation.md`: RALF model coverage, snapsheet mapping, and
-  limitations.
-- `docs/systemrdl-generation.md`: SystemRDL model coverage, snapsheet mapping,
-  and limitations.
-- `docs/ipxact-generation.md`: supported IP-XACT standards, schema/codegen
-  layout, and current coverage.
-- `docs/uvmreg-generation.md`: direct IP-XACT input to UVM IEEE 2020 RAL
-  generation coverage, five-version usability assessment, limitations, and
-  remaining work.
+1. Keep the IEEE 1685-2022 exporter small and reproducible from
+   `crates/ipxact-codegen`.
+2. Add realistic IP-XACT fixtures for the UVM RAL and HTML paths.
+3. Improve diagnostics for unsupported IP-XACT features in `uvmreg`.
+4. Add more snapsheet fixtures for bus-width splitting, reserved fields, and
+   reset/no-compare behavior.
+5. Consider plain Markdown documentation output after the HTML path stabilizes.
 
-## P0: IP-XACT Register Component Output
+## Out Of Scope For Now
 
-Closed for the current snapsheet component milestone.
-
-Current state:
-
-- The CLI emits schema-valid register-oriented component XML for SPIRIT 1.4,
-  SPIRIT 1.5, IEEE 1685-2009, IEEE 1685-2014, and IEEE 1685-2022.
-- The `ip-xact` crate owns conversion from `irgen_model` into
-  standard-specific IP-XACT XML.
-- The `model` crate stays independent of IP-XACT schema crates.
-- Multi-root, general-purpose IP-XACT authoring is intentionally out of scope
-  for the current CLI path.
-
-## P1: Stabilization And Cleanup
-
-Status: Active.
-
-- Keep generated IP-XACT schema modules reproducible from
-  `crates/ipxact/schema` and `crates/ipxact-codegen`.
-- Keep register-oriented exporters small and explicit so standard-specific
-  behavior stays visible.
-- Add new workbook fixtures as parser failure modes are discovered.
-- Decide whether XML schema validation should remain opt-in CLI behavior or
-  become part of release verification only.
-
-## P2: Register Documentation Outputs
-
-Status: Partially shipped.
-
-Implemented:
-
-- `crates/docs` provides a documentation-oriented register view derived from the
-  current model: blocks, register-file arrays, registers, fields, offsets, bit
-  ranges, reset values, access attributes, and descriptions.
-- `--format html` generates a static HTML documentation site with no active web
-  server dependency.
-- `--format all` includes the HTML documentation site under `html/`.
-- HTML output uses deterministic anchors for blocks, registers, and fields.
-- HTML and future text documentation have a shared model boundary in
-  `crates/docs::view`, so address, field, reset, and access data should not
-  diverge across formats.
-
-Remaining:
-
-- Add Markdown or another plain-text register documentation format suitable for
-  code review and release artifacts.
-
-Acceptance gates:
-
-- Documentation output must preserve register ordering and array expansion
-  semantics from the snapsheet parser.
-- HTML and text documentation must share one model so they cannot diverge on
-  addresses, bit ranges, reset values, or access modes.
-- Generated docs should include deterministic anchors for blocks, registers,
-  and fields.
-
-## P3: HDL Backdoor Path Support
-
-Status: Closed for the current field-level scope.
-
-Implemented:
-
-- `irgen_model::base::Field` carries an optional `hdl_path`.
-- Snapsheet parsing supports an optional `PATH` column. Blank path cells default
-  non-reserved fields to the field name, `-` disables the path, and reserved
-  fields do not emit HDL paths.
-- IEEE 1685-2014 and IEEE 1685-2022 emit field HDL paths through standard
-  `accessHandles`; SPIRIT 1.4, SPIRIT 1.5, and IEEE 1685-2009 do not emit HDL
-  paths because they lack the same standard register-model access-handle
-  structure. Generated blocks do not get macro-backed HDL paths.
-- RALF and SystemRDL outputs preserve field HDL paths; SystemRDL uses
-  `hdl_path_slice` for fields.
-- Tests cover field-level paths, disabled paths, reserved-field suppression,
-  register-file array naming behavior, and IP-XACT standard-specific emission.
-- Keep backdoor paths as verification metadata only; they must not imply RTL
-  implementation, bus behavior, or generated software accessors.
-
-Acceptance gates:
-
-- Backdoor path output must be deterministic and must round-trip through the
-  relevant text serializers without changing register addresses or field
-  semantics.
-- Tests should cover register-file arrays, explicit field-level paths, disabled
-  paths, and missing paths for reserved fields.
-
-## P4: Software-Facing Outputs
-
-Status: Not started.
-
-- Add C header generation after the documentation view and HDL backdoor
-  metadata are stable.
-- Start with conservative constants and macros: base addresses, register
-  offsets, field shifts, masks, reset values, and access comments.
-- Avoid generated read/write helper functions until address-space ownership,
-  volatile access width, endian assumptions, and side-effect semantics are
-  explicitly modeled.
-- Add naming-policy tests so generated identifiers are deterministic, valid C,
-  collision-resistant, and configurable where necessary.
-
-## P5: Register-File And RTL Outputs
-
-Status: Partially active for UVM RAL.
-
-- Treat register-file generation as higher risk than documentation or C
-  headers because it implies hardware behavior, not just register metadata.
-- Before adding a register-file output, decide the target explicitly:
-  SystemVerilog RTL register file, UVM RAL, a machine-readable manifest, or
-  another consumer-specific file.
-- If SystemVerilog RTL returns, add it as a dedicated crate with an explicit
-  behavior model for clocks, resets, bus protocol, write masks, read data,
-  access side effects, reserved fields, and generated assertions.
-- UVM RAL generation is active as a separate `uvmreg` crate and `ip-xact`
-  subcommand. It intentionally does not reuse the snapsheet IR path. The
-  current milestone is common engineering usability for IP-XACT component XML;
-  see `docs/uvmreg-generation.md` for scope and remaining gates.
-
-## P6: Multi-Standard IP-XACT
-
-Status: Active but intentionally narrow.
-
-- Current CLI support emits and validates the register-oriented component subset
-  for SPIRIT 1.4, SPIRIT 1.5, IEEE 1685-2009, IEEE 1685-2014, and
-  IEEE 1685-2022.
-- Expand individual standards beyond the current register-oriented component
-  subset before claiming complete coverage for that standard.
-- Add representative schema validation for non-component root documents and
-  optional schema branches only if the project starts exposing those documents
-  through public APIs.
+- Restoring older IP-XACT output standards.
+- Emitting vendor-specific IP-XACT extensions from snapsheet metadata.
+- Generating HTML directly from snapsheets.
+- Generating RTL register files.
+- Full multi-root IP-XACT library management.
 
 ## Verification
 
-Useful gates:
+Useful local gates:
 
 ```text
 cargo fmt --all
-cargo test -p ip-xact --test ipxact_xml
-cargo test -p irgen-cli
+cargo test -p irgen-snapsheet -p irgen-ip-xact -p irgen-ralf -p irgen-systemrdl -p irgen-cli
+cargo test -p irgen-uvmreg
+cargo check -p ipxact-codegen
 cargo check --workspace
-cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
 git diff --check
 ```
 
-Release-oriented smoke checks:
+Release smoke examples:
 
 ```text
-cargo build --release --locked --bin irgen --offline
+cargo build --release --locked --bin irgen
 target/release/irgen snapsheet examples/example.xlsx --config snapsheet.toml -o /tmp/irgen-example.xml
-target/release/irgen snapsheet examples/example.xlsx --config snapsheet.toml --standard ieee-1685-2014 --validate crates/ipxact/schema/1685-2014/index.xsd
+target/release/irgen snapsheet examples/example.xlsx --config snapsheet.toml --validate crates/ipxact/schema/1685-2022/index.xsd
+target/release/irgen ip-xact /tmp/irgen-example.xml --format html -o /tmp/irgen-example-html
 ```

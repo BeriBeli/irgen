@@ -1,95 +1,76 @@
 # IP-XACT Generation
 
-## Status
+`irgen snapsheet` emits register-oriented IEEE 1685-2022 component XML from
+the snapsheet model.
 
-`irgen` emits register-oriented IP-XACT component XML from the shared
-`irgen_model` register model. IEEE 1685-2014 is the default CLI output
-standard, and the current CLI supports these schema standards:
+Only IEEE 1685-2022 is supported on the snapsheet output path. Keeping one
+standard avoids divergent generated RAL metadata.
 
-| CLI standard | Schema family | Rust module | Notes |
-| --- | --- | --- | --- |
-| `spirit-1.4` | SPIRIT 1.4 | `v1_4` | Uses the `spirit:` namespace. The schema has no `registerFile`, so register-file arrays are flattened into ordinary registers. |
-| `spirit-1.5` | SPIRIT 1.5 | `v1_5` | Uses the `spirit:` namespace and emits register-file arrays. |
-| `ieee-1685-2009` | IEEE 1685-2009 | `v2009` | Uses the `spirit:` namespace and emits register-file arrays. |
-| `ieee-1685-2014` | IEEE 1685-2014 | `v2014` | Default output. Uses the `ipxact:` namespace and emits HDL paths through standard `accessHandles`. |
-| `ieee-1685-2022` | IEEE 1685-2022 | `v2022` | Uses the `ipxact:` namespace, 2022 array syntax, and standard `accessHandles`. |
+## CLI
 
-The emitters cover the register-oriented component subset produced by
-snapsheets: memory maps, address blocks, registers, register-file arrays where
-the target schema supports them, fields, resets, and field access metadata.
-They are not complete models for every IP-XACT root document or schema feature.
+```sh
+cargo run -p irgen-cli -- snapsheet examples/example_simple.xlsx
+cargo run -p irgen-cli -- snapsheet examples/example.xlsx --config snapsheet.toml
+cargo run -p irgen-cli -- snapsheet examples/example.xlsx --standard ieee-1685-2022
+```
 
-Generated IP-XACT does not emit Synopsys `snps:*` vendor extensions. Legacy
-snapsheet `SETTING` values are parsed for workbook compatibility, but they are
-not serialized as vendor metadata.
+`--format ip-xact` is the default. When `-o/--output` is omitted, output is
+written as `<component>.xml`.
 
-## Crate Layout
-
-- `crates/model`: schema-independent register model.
-- `crates/ipxact`: conversion from `irgen_model` to standard-specific
-  IP-XACT XML.
-- `crates/ipxact-codegen`: `xsd-parser` based generator for the versioned Rust
-  schema modules.
-- `crates/ipxact/schema`: third-party schema files used for generation and XSD
-  validation.
-
-The dependency direction is intentionally one-way: the `ip-xact` crate depends on
-`irgen_model`, and `irgen_model` does not depend on IP-XACT schemas or XML
-serialization.
-
-## Standard Behavior
-
-SPIRIT 1.4, SPIRIT 1.5, and IEEE 1685-2009 outputs do not carry HDL backdoor
-paths because those schemas do not provide the same standard register-model
-`accessHandles` structure used by IEEE 1685-2014 and IEEE 1685-2022. IEEE
-1685-2014 and IEEE 1685-2022 preserve field HDL paths, but generated address
-blocks/register files/registers do not receive macro-backed HDL paths. RALF
-and SystemRDL outputs still preserve field HDL paths independently of IP-XACT
-standard selection.
-
-`--format all` writes one IP-XACT file for each supported standard:
+`--format all` writes one IP-XACT file:
 
 ```text
-<component>-ip-xact-spirit-1.4.xml
-<component>-ip-xact-spirit-1.5.xml
-<component>-ip-xact-ieee-1685-2009.xml
-<component>-ip-xact-ieee-1685-2014.xml
 <component>-ip-xact-ieee-1685-2022.xml
 ```
 
+## Coverage
+
+The exporter covers the register-oriented subset produced by snapsheets:
+
+- component VLNV
+- memory maps and address blocks
+- registers, register arrays, and registerFile arrays
+- fields, access policies, resets, and descriptions
+- field HDL paths through standard `accessHandles`
+- `testable=false` and `reserved=true` field metadata
+
+It is not a general IP-XACT authoring library for every root document or schema
+feature.
+
+Generated IP-XACT does not emit vendor-specific `snps:*` extensions.
+
+## Backdoor Paths
+
+Snapsheet `PATH` cells are treated as complete HDL paths. They are used only
+when `--backdoor` is passed or `register.backdoor = true` is set in
+`snapsheet.toml`.
+
+Reserved fields and blank or `-` paths do not emit backdoor metadata.
+
 ## Validation
 
-IP-XACT XSD validation is opt-in from the CLI:
+XSD validation is opt-in and requires `xmllint`:
 
 ```sh
-cargo run -p irgen-cli -- snapsheet examples/example.xlsx --config snapsheet.toml --standard ieee-1685-2022 --validate crates/ipxact/schema/1685-2022/index.xsd
+cargo run -p irgen-cli -- snapsheet examples/example.xlsx \
+  --config snapsheet.toml \
+  --validate crates/ipxact/schema/1685-2022/index.xsd
 ```
 
 Useful local gates:
 
 ```text
 cargo fmt --all
-cargo test -p ip-xact --test ipxact_xml
+cargo test -p irgen-ip-xact --test ipxact_xml
 cargo test -p irgen-cli
 cargo check --workspace
-cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
 ```
 
-`xmllint` is required for tests or CLI runs that perform official XSD
-validation. Tests skip XSD checks when `xmllint` is unavailable.
+## Crates
 
-## Schema Sources
-
-Official schema files live under
-`crates/ipxact/schema/{1.4,1.5,1685-2009,1685-2014,1685-2022}`.
-
-- Accellera SPIRIT 1.4 schemas:
-  <https://www.accellera.org/XMLSchema/SPIRIT/1.4/>
-- Accellera SPIRIT 1.5 schemas:
-  <https://www.accellera.org/XMLSchema/SPIRIT/1.5/>
-- Accellera IEEE 1685-2009 schemas:
-  <https://www.accellera.org/XMLSchema/SPIRIT/1685-2009/>
-- Accellera IEEE 1685-2014 schemas:
-  <https://www.accellera.org/XMLSchema/IPXACT/1685-2014/>
-- Accellera IEEE 1685-2022 schemas:
-  <https://www.accellera.org/XMLSchema/IPXACT/1685-2022/>
+- `crates/ipxact`: IEEE 1685-2022 XML exporter.
+- `crates/snapsheet`: workbook parser and register model used by snapsheet
+  exporters.
+- `crates/ipxact-codegen`: local `xsd-parser` based schema generator.
+- `crates/ipxact/schema/1685-2022`: third-party XSD files used for generation
+  and validation.

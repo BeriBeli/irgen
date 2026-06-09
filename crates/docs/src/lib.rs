@@ -1,6 +1,7 @@
 mod anchor;
 mod error;
 mod html;
+pub mod model;
 mod view;
 
 pub use error::Error;

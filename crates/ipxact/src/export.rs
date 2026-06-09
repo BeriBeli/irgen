@@ -1,52 +1,58 @@
-use irgen_model::attr::{
-    extract_access_value, extract_modified_write_value, extract_read_action_value,
-};
-use irgen_model::base::{Block, Component, Field, Register, RegisterFile};
+use irgen_snapsheet::model::{Block, Component, Field, Register, RegisterFile};
 use quick_xml::events::Event;
 use quick_xml::{Reader, Writer};
 
+use crate::attr::{extract_access_value, extract_modified_write_value, extract_read_action_value};
 use crate::{Error, Result};
 
-const NS_1_4: &str = "http://www.spiritconsortium.org/XMLSchema/SPIRIT/1.4";
-const NS_1_5: &str = "http://www.spiritconsortium.org/XMLSchema/SPIRIT/1.5";
-const NS_2009: &str = "http://www.spiritconsortium.org/XMLSchema/SPIRIT/1685-2009";
-const NS_2014: &str = "http://www.accellera.org/XMLSchema/IPXACT/1685-2014";
-const NS_2022: &str = "http://www.accellera.org/XMLSchema/IPXACT/1685-2022";
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Standard {
+    Ieee1685_2022,
+}
+
+impl Standard {
+    fn namespace(self) -> &'static str {
+        match self {
+            Self::Ieee1685_2022 => "http://www.accellera.org/XMLSchema/IPXACT/1685-2022",
+        }
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Version {
-    V1_4,
-    V1_5,
-    V2009,
-    V2014,
-    V2022,
+pub struct ExportOptions {
+    pub standard: Standard,
 }
 
-pub fn serialize_1_4(component: &Component) -> Result<String> {
-    serialize_component(component, Version::V1_4)
+impl Default for ExportOptions {
+    fn default() -> Self {
+        Self {
+            standard: Standard::Ieee1685_2022,
+        }
+    }
 }
 
-pub fn serialize_1_5(component: &Component) -> Result<String> {
-    serialize_component(component, Version::V1_5)
-}
-
-pub fn serialize_2009(component: &Component) -> Result<String> {
-    serialize_component(component, Version::V2009)
-}
-
-pub fn serialize_2014(component: &Component) -> Result<String> {
-    serialize_component(component, Version::V2014)
+pub fn serialize(component: &Component) -> Result<String> {
+    serialize_with_options(component, ExportOptions::default())
 }
 
 pub fn serialize_2022(component: &Component) -> Result<String> {
-    serialize_component(component, Version::V2022)
+    serialize_with_options(
+        component,
+        ExportOptions {
+            standard: Standard::Ieee1685_2022,
+        },
+    )
 }
 
-fn serialize_component(component: &Component, version: Version) -> Result<String> {
+pub fn serialize_with_options(component: &Component, options: ExportOptions) -> Result<String> {
+    serialize_component(component, options)
+}
+
+fn serialize_component(component: &Component, options: ExportOptions) -> Result<String> {
     let mut xml = String::new();
     xml.push_str(r#"<?xml version="1.0" encoding="UTF-8"?>"#);
     xml.push_str(r#"<ipxact:component xmlns:ipxact=""#);
-    xml.push_str(namespace(version));
+    xml.push_str(options.standard.namespace());
     xml.push_str(r#"" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">"#);
     element(&mut xml, "vendor", component.vendor());
     element(&mut xml, "library", component.library());
@@ -55,28 +61,23 @@ fn serialize_component(component: &Component, version: Version) -> Result<String
     xml.push_str("<ipxact:memoryMaps><ipxact:memoryMap>");
     element(&mut xml, "name", component.name());
     for block in component.blks() {
-        write_address_block(&mut xml, block, version)?;
+        write_address_block(&mut xml, block, options)?;
     }
     xml.push_str("</ipxact:memoryMap></ipxact:memoryMaps></ipxact:component>");
-    if version.uses_spirit_prefix() {
-        xml = xml
-            .replace("xmlns:ipxact=", "xmlns:spirit=")
-            .replace("ipxact:", "spirit:");
-    }
     format_xml(&xml)
 }
 
-fn write_address_block(xml: &mut String, block: &Block, version: Version) -> Result<()> {
+fn write_address_block(xml: &mut String, block: &Block, options: ExportOptions) -> Result<()> {
     xml.push_str("<ipxact:addressBlock>");
     element(xml, "name", block.name());
     element(xml, "baseAddress", block.offset());
     element(xml, "range", block.range());
     element(xml, "width", block.size());
     for register in block.regs() {
-        write_register(xml, register, version, None, None)?;
+        write_register(xml, register, options, None, None)?;
     }
     for register_file in block.register_files() {
-        write_register_file(xml, register_file, version)?;
+        write_register_file(xml, register_file, options)?;
     }
 
     xml.push_str("</ipxact:addressBlock>");
@@ -86,39 +87,17 @@ fn write_address_block(xml: &mut String, block: &Block, version: Version) -> Res
 fn write_register_file(
     xml: &mut String,
     register_file: &RegisterFile,
-    version: Version,
+    options: ExportOptions,
 ) -> Result<()> {
-    if version == Version::V1_4 {
-        for register in register_file.regs() {
-            let name = format!("{}_{}", register_file.name(), register.name());
-            let offset = add_address_offsets(register_file.offset(), register.offset());
-            write_register(
-                xml,
-                register,
-                version,
-                Some(&name),
-                Some((&offset, Some(register_file.dim()))),
-            )?;
-        }
-        return Ok(());
-    }
-
     xml.push_str("<ipxact:registerFile>");
     element(xml, "name", register_file.name());
-    match version {
-        Version::V2022 => {
-            xml.push_str("<ipxact:array>");
-            element(xml, "dim", register_file.dim());
-            xml.push_str("</ipxact:array>");
-        }
-        Version::V1_4 | Version::V1_5 | Version::V2009 | Version::V2014 => {
-            element(xml, "dim", register_file.dim())
-        }
-    }
+    xml.push_str("<ipxact:array>");
+    element(xml, "dim", register_file.dim());
+    xml.push_str("</ipxact:array>");
     element(xml, "addressOffset", register_file.offset());
     element(xml, "range", register_file.range());
     for register in register_file.regs() {
-        write_register(xml, register, version, None, None)?;
+        write_register(xml, register, options, None, None)?;
     }
     xml.push_str("</ipxact:registerFile>");
     Ok(())
@@ -127,7 +106,7 @@ fn write_register_file(
 fn write_register(
     xml: &mut String,
     register: &Register,
-    version: Version,
+    options: ExportOptions,
     name_override: Option<&str>,
     offset_and_dim_override: Option<(&str, Option<&str>)>,
 ) -> Result<()> {
@@ -138,6 +117,16 @@ fn write_register(
         name_override.unwrap_or_else(|| register.name()),
     );
     optional_element(xml, "description", register.desc());
+    if let Some(array) = register.array() {
+        xml.push_str("<ipxact:array>");
+        for dim in array.dims() {
+            element(xml, "dim", dim);
+        }
+        if let Some(stride) = array.stride() {
+            element(xml, "stride", stride);
+        }
+        xml.push_str("</ipxact:array>");
+    }
     if let Some((_, Some(dim))) = offset_and_dim_override {
         element(xml, "dim", dim);
     }
@@ -150,70 +139,42 @@ fn write_register(
     );
     element(xml, "size", register.size());
     for field in register.fields() {
-        write_field(xml, field, version)?;
+        write_field(xml, field, options)?;
     }
     xml.push_str("</ipxact:register>");
     Ok(())
 }
 
-fn write_field(xml: &mut String, field: &Field, version: Version) -> Result<()> {
+fn write_field(xml: &mut String, field: &Field, options: ExportOptions) -> Result<()> {
     xml.push_str("<ipxact:field>");
     element(xml, "name", field.name());
     optional_element(xml, "description", field.desc());
-    match version {
-        Version::V1_4 | Version::V1_5 | Version::V2009 => {}
-        Version::V2014 => {
-            if should_emit_hdl_path(field)
-                && let Some(path) = field.hdl_path()
-            {
-                write_sliced_access_handles_2014(xml, path);
-            }
-        }
-        Version::V2022 => {
-            if should_emit_hdl_path(field)
-                && let Some(path) = field.hdl_path()
-            {
-                write_sliced_access_handles_2022(xml, path);
-            }
-        }
+    if should_emit_hdl_path(field)
+        && let Some(path) = field.hdl_path()
+    {
+        write_sliced_access_handles(xml, path, options.standard);
     }
     element(xml, "bitOffset", field.offset());
-    match version {
-        Version::V1_4 | Version::V1_5 | Version::V2009 => element(xml, "bitWidth", field.width()),
-        Version::V2014 => {
-            write_resets(xml, field.reset(), version);
-            element(xml, "bitWidth", field.width());
-        }
-        Version::V2022 => {
-            element(xml, "bitWidth", field.width());
-            write_resets(xml, field.reset(), version);
-        }
+    element(xml, "bitWidth", field.width());
+    write_resets(xml, field.reset());
+    xml.push_str("<ipxact:fieldAccessPolicies><ipxact:fieldAccessPolicy>");
+    element(xml, "access", &access_value(field)?);
+    optional_owned_element(xml, "modifiedWriteValue", modified_write_value(field)?);
+    optional_owned_element(xml, "readAction", read_action_value(field)?);
+    if let Some(testable) = field.testable() {
+        element(xml, "testable", if testable { "true" } else { "false" });
     }
-
-    match version {
-        Version::V1_4 => {
-            element(xml, "access", &access_value(field)?);
-        }
-        Version::V1_5 | Version::V2009 | Version::V2014 => {
-            element(xml, "access", &access_value(field)?);
-            optional_owned_element(xml, "modifiedWriteValue", modified_write_value(field)?);
-            optional_owned_element(xml, "readAction", read_action_value(field)?);
-        }
-        Version::V2022 => {
-            xml.push_str("<ipxact:fieldAccessPolicies><ipxact:fieldAccessPolicy>");
-            element(xml, "access", &access_value(field)?);
-            optional_owned_element(xml, "modifiedWriteValue", modified_write_value(field)?);
-            optional_owned_element(xml, "readAction", read_action_value(field)?);
-            xml.push_str("</ipxact:fieldAccessPolicy></ipxact:fieldAccessPolicies>");
-        }
+    if field.reserved() || is_reserved_field_name(field.name()) {
+        element(xml, "reserved", "true");
     }
+    xml.push_str("</ipxact:fieldAccessPolicy></ipxact:fieldAccessPolicies>");
 
     xml.push_str("</ipxact:field>");
     Ok(())
 }
 
-fn write_resets(xml: &mut String, reset: &str, version: Version) {
-    if reset.is_empty() && version == Version::V2022 {
+fn write_resets(xml: &mut String, reset: &str) {
+    if reset.is_empty() || reset.trim() == "-" {
         return;
     }
     xml.push_str("<ipxact:resets><ipxact:reset>");
@@ -221,16 +182,14 @@ fn write_resets(xml: &mut String, reset: &str, version: Version) {
     xml.push_str("</ipxact:reset></ipxact:resets>");
 }
 
-fn write_sliced_access_handles_2014(xml: &mut String, path: &str) {
-    xml.push_str("<ipxact:accessHandles><ipxact:accessHandle><ipxact:slices><ipxact:slice><ipxact:pathSegments><ipxact:pathSegment>");
-    element(xml, "pathSegmentName", path);
-    xml.push_str("</ipxact:pathSegment></ipxact:pathSegments></ipxact:slice></ipxact:slices></ipxact:accessHandle></ipxact:accessHandles>");
-}
-
-fn write_sliced_access_handles_2022(xml: &mut String, path: &str) {
-    xml.push_str("<ipxact:accessHandles><ipxact:accessHandle><ipxact:slices><ipxact:slice><ipxact:pathSegments>");
-    element(xml, "pathSegment", path);
-    xml.push_str("</ipxact:pathSegments></ipxact:slice></ipxact:slices></ipxact:accessHandle></ipxact:accessHandles>");
+fn write_sliced_access_handles(xml: &mut String, path: &str, standard: Standard) {
+    match standard {
+        Standard::Ieee1685_2022 => {
+            xml.push_str("<ipxact:accessHandles><ipxact:accessHandle><ipxact:slices><ipxact:slice><ipxact:pathSegments>");
+            element(xml, "pathSegment", path);
+            xml.push_str("</ipxact:pathSegments></ipxact:slice></ipxact:slices></ipxact:accessHandle></ipxact:accessHandles>");
+        }
+    }
 }
 
 fn element(xml: &mut String, name: &str, value: &str) {
@@ -283,16 +242,6 @@ fn format_xml(xml: &str) -> Result<String> {
         .map_err(|error| Error::Serialize(error.to_string()))?;
     formatted.push('\n');
     Ok(formatted)
-}
-
-fn namespace(version: Version) -> &'static str {
-    match version {
-        Version::V1_4 => NS_1_4,
-        Version::V1_5 => NS_1_5,
-        Version::V2009 => NS_2009,
-        Version::V2014 => NS_2014,
-        Version::V2022 => NS_2022,
-    }
 }
 
 fn access_value(field: &Field) -> Result<String> {
@@ -352,32 +301,4 @@ fn is_reserved_field_name(field_name: &str) -> bool {
         .or_else(|| lower.strip_prefix("rsvd"));
 
     suffix.is_some_and(|suffix| !suffix.is_empty() && suffix.chars().all(|ch| ch.is_ascii_digit()))
-}
-
-impl Version {
-    fn uses_spirit_prefix(self) -> bool {
-        matches!(self, Self::V1_4 | Self::V1_5 | Self::V2009)
-    }
-}
-
-fn add_address_offsets(base: &str, offset: &str) -> String {
-    let Some(base) = parse_integer(base) else {
-        return offset.to_owned();
-    };
-    let Some(offset) = parse_integer(offset) else {
-        return format!("{base}+{offset}");
-    };
-    format!("0x{:x}", base + offset)
-}
-
-fn parse_integer(value: &str) -> Option<u64> {
-    let value = value.trim();
-    if let Some(hex) = value
-        .strip_prefix("0x")
-        .or_else(|| value.strip_prefix("0X"))
-    {
-        u64::from_str_radix(hex, 16).ok()
-    } else {
-        value.parse().ok()
-    }
 }

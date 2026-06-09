@@ -26,12 +26,13 @@ reset = "RESET"
 register_description = "REG_DESC"
 description = "FIELD_DESC"
 path = "PATH"
-setting = "SETTING"
 
 [register]
 inherit_address = true
 inherit_register = true
 # default_description = ""
+bus_bytes = "0x4"
+backdoor = false
 default_array_step_bytes = "0x4"
 max_array_elements = 1000000
 register_size = "infer_from_fields"

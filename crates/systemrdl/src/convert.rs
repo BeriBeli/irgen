@@ -1,15 +1,15 @@
-use irgen_model::base;
+use irgen_snapsheet::model as snapsheet_model;
 
 use crate::ast::*;
 use crate::error::Error;
 use crate::serialize::serialize_document;
 use crate::util::{access_properties, bytes_from_bits, rdl_number, sanitize_string};
 
-pub fn serialize_systemrdl(component: &base::Component) -> Result<String, Error> {
+pub fn serialize_systemrdl(component: &snapsheet_model::Component) -> Result<String, Error> {
     Ok(serialize_document(&component_to_document(component)?))
 }
 
-pub fn component_to_document(component: &base::Component) -> Result<Document, Error> {
+pub fn component_to_document(component: &snapsheet_model::Component) -> Result<Document, Error> {
     let mut top = Component::new(ComponentKind::AddrMap, component.name());
     top.properties.push(PropertyAssignment::value(
         "name",
@@ -30,7 +30,7 @@ pub fn component_to_document(component: &base::Component) -> Result<Document, Er
     })
 }
 
-fn block_to_addrmap(block: &base::Block) -> Result<Component, Error> {
+fn block_to_addrmap(block: &snapsheet_model::Block) -> Result<Component, Error> {
     let mut addrmap = Component::new(ComponentKind::AddrMap, block.name());
     addrmap.properties.push(PropertyAssignment::value(
         "name",
@@ -60,7 +60,7 @@ fn block_to_addrmap(block: &base::Block) -> Result<Component, Error> {
     Ok(addrmap)
 }
 
-fn register_instance(register: &base::Register) -> Result<Instance, Error> {
+fn register_instance(register: &snapsheet_model::Register) -> Result<Instance, Error> {
     let mut reg = Component::new(ComponentKind::Reg, register.name());
     reg.properties.push(PropertyAssignment::value(
         "regwidth",
@@ -80,11 +80,24 @@ fn register_instance(register: &base::Register) -> Result<Instance, Error> {
     }
 
     let mut instance = Instance::new(reg, register.name());
+    if let Some(array) = register.array() {
+        instance.array = Some(Array {
+            dimensions: array
+                .dims()
+                .iter()
+                .map(|dim| ArrayDimension::Count(Expression::Number(dim.clone())))
+                .collect(),
+        });
+        instance.stride = array
+            .stride()
+            .map(|stride| rdl_number("register stride", stride))
+            .transpose()?;
+    }
     instance.address = Some(rdl_number("register offset", register.offset())?);
     Ok(instance)
 }
 
-fn field_instance(field: &base::Field) -> Result<Instance, Error> {
+fn field_instance(field: &snapsheet_model::Field) -> Result<Instance, Error> {
     let mut field_component = Component::new(ComponentKind::Field, field.name());
     field_component
         .properties
@@ -116,11 +129,18 @@ fn field_instance(field: &base::Field) -> Result<Instance, Error> {
         msb: Expression::Number(msb.to_string()),
         lsb: Some(Expression::Number(lsb.to_string())),
     });
-    instance.reset = Some(rdl_number("field reset", field.reset())?);
+    if has_reset(field.reset()) {
+        instance.reset = Some(rdl_number("field reset", field.reset())?);
+    }
     Ok(instance)
 }
 
-fn field_hdl_path(field: &base::Field) -> Option<String> {
+fn has_reset(reset: &str) -> bool {
+    let reset = reset.trim();
+    !reset.is_empty() && reset != "-"
+}
+
+fn field_hdl_path(field: &snapsheet_model::Field) -> Option<String> {
     if is_reserved_field_name(field.name()) {
         return None;
     }

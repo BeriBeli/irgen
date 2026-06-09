@@ -1,8 +1,8 @@
 use askama::Template;
-use irgen_model::base::Component;
 use serde::Serialize;
 
 use crate::error::Error;
+use crate::model::Component;
 use crate::view::{BlockView, DocumentView, FieldView, RegisterSource, RegisterView};
 
 const CSS: &str = include_str!("../assets/register_reference.css");
@@ -426,7 +426,7 @@ fn index_range(dim: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use irgen_model::base::{Block, Component, Field, Register, RegisterFile};
+    use crate::model::{Block, Component, Field, Register, RegisterFile};
 
     use super::serialize_html_site;
 

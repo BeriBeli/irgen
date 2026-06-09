@@ -4,8 +4,8 @@ use irgen_uvmreg::{
     serialize_uvm_reg_with_options,
 };
 
-const IPXACT_2014: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
-<ipxact:component xmlns:ipxact="http://www.accellera.org/XMLSchema/IPXACT/1685-2014">
+const IPXACT_COMMON: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+<ipxact:component xmlns:ipxact="http://www.accellera.org/XMLSchema/IPXACT/1685-2022">
   <ipxact:vendor>example.com</ipxact:vendor>
   <ipxact:library>ip</ipxact:library>
   <ipxact:name>demo</ipxact:name>
@@ -497,7 +497,7 @@ const IPXACT_2022: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
 
 #[test]
 fn parses_ipxact_register_subset() {
-    let component = parse_ipxact(IPXACT_2014).unwrap();
+    let component = parse_ipxact(IPXACT_COMMON).unwrap();
 
     assert_eq!(component.name, "demo");
     assert_eq!(component.blocks[0].registers[0].name, "status");
@@ -515,97 +515,26 @@ fn parses_ipxact_register_subset() {
 }
 
 #[test]
-fn parses_all_supported_ipxact_namespaces() {
-    let variants = [
-        (
-            "spirit",
-            "http://www.spiritconsortium.org/XMLSchema/SPIRIT/1.4",
-        ),
-        (
-            "spirit",
-            "http://www.spiritconsortium.org/XMLSchema/SPIRIT/1.5",
-        ),
-        (
-            "spirit",
-            "http://www.spiritconsortium.org/XMLSchema/SPIRIT/1685-2009",
-        ),
-        (
-            "ipxact",
-            "http://www.accellera.org/XMLSchema/IPXACT/1685-2014",
-        ),
-        (
-            "ipxact",
-            "http://www.accellera.org/XMLSchema/IPXACT/1685-2022",
-        ),
-    ];
+fn rejects_non_2022_ipxact_namespaces() {
+    let xml = IPXACT_COMMON.replace(
+        "http://www.accellera.org/XMLSchema/IPXACT/1685-2022",
+        "urn:unsupported-ipxact-namespace",
+    );
+    let error = parse_ipxact(&xml).unwrap_err().to_string();
 
-    for (prefix, namespace) in variants {
-        let xml = IPXACT_2014.replace("ipxact", prefix).replace(
-            "http://www.accellera.org/XMLSchema/IPXACT/1685-2014",
-            namespace,
-        );
-        let component = parse_ipxact(&xml).unwrap();
-        assert_eq!(component.name, "demo");
-    }
+    assert!(error.contains("unsupported IP-XACT namespace"), "{error}");
 }
 
 #[test]
-fn generates_structurally_valid_uvm_for_all_supported_ipxact_namespaces() {
-    let variants = [
-        (
-            "spirit-1.4",
-            "spirit",
-            "http://www.spiritconsortium.org/XMLSchema/SPIRIT/1.4",
-        ),
-        (
-            "spirit-1.5",
-            "spirit",
-            "http://www.spiritconsortium.org/XMLSchema/SPIRIT/1.5",
-        ),
-        (
-            "ieee-1685-2009",
-            "spirit",
-            "http://www.spiritconsortium.org/XMLSchema/SPIRIT/1685-2009",
-        ),
-        (
-            "ieee-1685-2014",
-            "ipxact",
-            "http://www.accellera.org/XMLSchema/IPXACT/1685-2014",
-        ),
-        (
-            "ieee-1685-2022",
-            "ipxact",
-            "http://www.accellera.org/XMLSchema/IPXACT/1685-2022",
-        ),
-    ];
+fn renders_uvm_ieee_2022_register_model() {
+    let sv = ipxact_to_uvm_reg(IPXACT_COMMON).unwrap();
 
-    for (label, prefix, namespace) in variants {
-        let xml = IPXACT_2014.replace("ipxact", prefix).replace(
-            "http://www.accellera.org/XMLSchema/IPXACT/1685-2014",
-            namespace,
-        );
-        let sv = ipxact_to_uvm_reg(&xml).unwrap();
-
-        assert!(sv.contains("class ral_sys_demo extends uvm_reg_block;"));
-        assert!(sv.contains("class ral_reg_regs_status extends uvm_reg;"));
-        assert!(
-            sv.contains("default_map.add_submap(regs.default_map, `UVM_REG_ADDR_WIDTH'h1000);")
-        );
-        assert_generated_sv_structural_gate(label, &sv);
-        assert_demo_uvm_golden_patterns(label, &sv);
-    }
-}
-
-#[test]
-fn renders_uvm_ieee_2020_register_model() {
-    let sv = ipxact_to_uvm_reg(IPXACT_2014).unwrap();
-
-    assert_demo_uvm_golden_patterns("ieee-2020-register-model", &sv);
+    assert_demo_uvm_golden_patterns("ieee-2022-register-model", &sv);
 }
 
 #[test]
 fn generated_uvm_systemverilog_passes_structural_gate() {
-    let common_sv = ipxact_to_uvm_reg(IPXACT_2014).unwrap();
+    let common_sv = ipxact_to_uvm_reg(IPXACT_COMMON).unwrap();
     assert_generated_sv_structural_gate("common-golden", &common_sv);
     assert_demo_uvm_golden_patterns("common-golden", &common_sv);
 
@@ -1565,7 +1494,7 @@ fn reports_requested_field_access_policy_mode_without_matching_or_generic_policy
 
 #[test]
 fn optionally_renders_register_bit_coverage() {
-    let component = parse_ipxact(IPXACT_2014).unwrap();
+    let component = parse_ipxact(IPXACT_COMMON).unwrap();
     let sv = serialize_uvm_reg_with_options(&component, RenderOptions { coverage: true }).unwrap();
 
     assert!(sv.contains("local uvm_reg_data_t m_data;"));

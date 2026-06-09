@@ -1,10 +1,9 @@
 use std::collections::HashMap;
 
-use irgen_model::base::{Block, Component, Register, RegisterFile};
-
 use crate::config::SnapsheetConfig;
 use crate::error::{Error, ValidationIssue};
 use crate::excel::Table;
+use crate::model::{Block, Component, Register, RegisterFile};
 use crate::number::{format_address, parse_literal, parse_u64};
 
 pub(crate) fn parse_component(
@@ -44,6 +43,11 @@ where
 {
     let columns = &config.columns.address_block;
     table.require_columns(&columns.required())?;
+    let bus_bits = config
+        .register
+        .parse_bus_bytes()
+        .map_err(|message| Error::validation(table.sheet(), None, None, None, None, message))?
+        * 8;
 
     let mut blocks = Vec::new();
     let mut names = HashMap::<String, usize>::new();
@@ -218,7 +222,7 @@ where
             name.into(),
             format_address(offset),
             format_address(actual_range),
-            "32".into(),
+            bus_bits.to_string(),
             registers,
             register_files,
         ));
@@ -273,9 +277,29 @@ fn register_end(register: &Register) -> Result<u64, String> {
     let offset = parse_literal(register.offset())?;
     let bits = parse_literal(register.size())?;
     let bytes = bits / 8;
+    let array_span = if let Some(array) = register.array() {
+        let count = array.dims().iter().try_fold(1_u64, |product, dim| {
+            let dim = parse_literal(dim)?;
+            product
+                .checked_mul(dim)
+                .ok_or_else(|| "register array dimension overflows u64".to_string())
+        })?;
+        let stride = array
+            .stride()
+            .map(parse_literal)
+            .transpose()?
+            .unwrap_or(bytes);
+        count
+            .checked_sub(1)
+            .and_then(|last_index| last_index.checked_mul(stride))
+            .ok_or_else(|| "register array range overflows u64".to_string())?
+    } else {
+        0
+    };
 
     offset
-        .checked_add(bytes)
+        .checked_add(array_span)
+        .and_then(|end| end.checked_add(bytes))
         .ok_or_else(|| "register address overflows u64".to_string())
 }
 
@@ -293,7 +317,7 @@ fn collect_validation(issues: &mut Vec<ValidationIssue>, error: Error) -> Result
 mod tests {
     use super::*;
     use crate::config::SnapsheetConfig;
-    use irgen_model::base::Field;
+    use crate::model::Field;
 
     const BLOCK_COLUMNS: &[&str] = &["BLOCK", "OFFSET", "RANGE"];
 

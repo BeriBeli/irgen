@@ -50,6 +50,12 @@ impl SnapsheetConfig {
                 message: "register.default_array_step_bytes must be greater than zero".into(),
             });
         }
+        self.register
+            .parse_bus_bytes()
+            .map_err(|message| Error::Config {
+                path: path.into(),
+                message: format!("invalid register.bus_bytes: {message}"),
+            })?;
         if self.workbook.sheets.register_sheet != "block_name" {
             return Err(Error::Config {
                 path: path.into(),
@@ -187,7 +193,6 @@ pub struct RegisterColumns {
     pub reset: String,
     pub description: String,
     pub path: String,
-    pub setting: String,
 }
 
 impl RegisterColumns {
@@ -217,7 +222,6 @@ impl Default for RegisterColumns {
             reset: "RESET".into(),
             description: "FIELD_DESC".into(),
             path: "PATH".into(),
-            setting: "SETTING".into(),
         }
     }
 }
@@ -228,6 +232,8 @@ pub struct RegisterConfig {
     pub inherit_address: bool,
     pub inherit_register: bool,
     pub default_description: String,
+    pub bus_bytes: String,
+    pub backdoor: bool,
     pub default_array_step_bytes: String,
     pub max_array_elements: usize,
     pub register_size: String,
@@ -241,6 +247,14 @@ impl RegisterConfig {
         parse_literal(&self.default_array_step_bytes)
     }
 
+    pub fn parse_bus_bytes(&self) -> Result<u64, String> {
+        let bytes = parse_literal(&self.bus_bytes)?;
+        match bytes {
+            1 | 2 | 4 | 8 | 16 => Ok(bytes),
+            _ => Err("must be one of 1, 2, 4, 8, or 16 bytes".into()),
+        }
+    }
+
     pub(crate) fn blank_field_name_uses_register(&self) -> bool {
         self.blank_field_name == "register_name"
     }
@@ -252,6 +266,8 @@ impl Default for RegisterConfig {
             inherit_address: false,
             inherit_register: false,
             default_description: String::new(),
+            bus_bytes: "0x4".into(),
+            backdoor: false,
             default_array_step_bytes: "0x4".into(),
             max_array_elements: 1_000_000,
             register_size: "infer_from_fields".into(),
@@ -356,15 +372,28 @@ impl ReservedConfig {
         if !self.enabled {
             return true;
         }
-        let lower = name.to_ascii_lowercase();
-        if let Some(suffix) = lower.strip_prefix("reserved") {
-            return !suffix.is_empty() && suffix.chars().all(|ch| ch.is_ascii_digit());
-        }
-        if let Some(suffix) = lower.strip_prefix("rsvd") {
-            return !suffix.is_empty() && suffix.chars().all(|ch| ch.is_ascii_digit());
-        }
-        true
+        !has_reserved_prefix(name) || is_default_reserved_name(name)
     }
+
+    pub(crate) fn is_reserved_field_name(&self, name: &str) -> bool {
+        self.enabled && is_default_reserved_name(name)
+    }
+}
+
+fn is_default_reserved_name(name: &str) -> bool {
+    let lower = name.to_ascii_lowercase();
+    if let Some(suffix) = lower.strip_prefix("reserved") {
+        return !suffix.is_empty() && suffix.chars().all(|ch| ch.is_ascii_digit());
+    }
+    if let Some(suffix) = lower.strip_prefix("rsvd") {
+        return !suffix.is_empty() && suffix.chars().all(|ch| ch.is_ascii_digit());
+    }
+    false
+}
+
+fn has_reserved_prefix(name: &str) -> bool {
+    let lower = name.to_ascii_lowercase();
+    lower.starts_with("reserved") || lower.starts_with("rsvd")
 }
 
 impl Default for ReservedConfig {

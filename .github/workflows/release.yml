@@ -103,6 +103,11 @@ jobs:
       - uses: actions/download-artifact@v8.0.1
         with:
           path: dist
+      - name: Package examples
+        run: |
+          mkdir -p dist/release-examples/examples
+          cp examples/*.xlsx examples/*.xlsm examples/*.ods dist/release-examples/examples/
+          tar -C dist/release-examples -czf "dist/irgen-${GITHUB_REF_NAME}-examples.tar.gz" examples
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3.0.0
         with:
@@ -110,6 +115,3 @@ jobs:
           files: |
             dist/**/irgen-*
             snapsheet.toml
-            examples/*.xlsx
-            examples/*.xlsm
-            examples/*.ods

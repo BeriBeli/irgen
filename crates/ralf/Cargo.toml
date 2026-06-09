@@ -4,5 +4,5 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
-irgen-model = { path = "../model" }
+irgen-snapsheet = { path = "../snapsheet" }
 thiserror = { workspace = true }

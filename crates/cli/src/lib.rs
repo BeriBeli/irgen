@@ -9,8 +9,6 @@ use clap::{Parser, ValueEnum, error::ErrorKind};
 pub enum OutputFormat {
     #[value(name = "all")]
     All,
-    #[value(name = "html")]
-    Html,
     #[value(name = "ip-xact")]
     Ipxact,
     #[value(name = "ralf")]
@@ -23,7 +21,6 @@ impl OutputFormat {
     fn file_extension(self) -> Option<&'static str> {
         match self {
             Self::All => None,
-            Self::Html => None,
             Self::Ipxact => Some("xml"),
             Self::Ralf => Some("ralf"),
             Self::SystemRdl => Some("rdl"),
@@ -33,14 +30,6 @@ impl OutputFormat {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum IpxactStandard {
-    #[value(name = "spirit-1.4")]
-    V1_4,
-    #[value(name = "spirit-1.5")]
-    V1_5,
-    #[value(name = "ieee-1685-2009")]
-    V2009,
-    #[value(name = "ieee-1685-2014")]
-    V2014,
     #[value(name = "ieee-1685-2022")]
     V2022,
 }
@@ -53,6 +42,14 @@ pub enum IpxactFileLayout {
     Blocks,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum IpxactOutputFormat {
+    #[value(name = "uvm-reg")]
+    UvmReg,
+    #[value(name = "html")]
+    Html,
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub struct ConvertArgs {
     pub input: PathBuf,
@@ -61,12 +58,15 @@ pub struct ConvertArgs {
     pub ipxact_standard: IpxactStandard,
     pub snapsheet_spec: Option<PathBuf>,
     pub validate_xsd: Option<PathBuf>,
+    pub bus_bytes: Option<String>,
+    pub backdoor: bool,
 }
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct IpxactArgs {
     pub input: PathBuf,
     pub output: Option<PathBuf>,
+    pub format: IpxactOutputFormat,
     pub file_layout: IpxactFileLayout,
     pub coverage: bool,
     pub view: Option<String>,
@@ -124,17 +124,25 @@ fn run_convert(args: ConvertArgs) -> Result<Option<PathBuf>, CliError> {
         )));
     }
 
-    let loaded = if let Some(spec) = &args.snapsheet_spec {
-        irgen_snapsheet::load_excel_with_config_file(&args.input, spec)
+    let mut config = if let Some(spec) = &args.snapsheet_spec {
+        irgen_snapsheet::SnapsheetConfig::from_toml_file(spec)
     } else {
-        irgen_snapsheet::load_excel(&args.input)
+        Ok(irgen_snapsheet::SnapsheetConfig::default())
     }
     .map_err(|error| CliError::Runtime(error.to_string()))?;
-    let output_path = resolved_output_path(&args, &loaded.compo);
-    if args.format == OutputFormat::Html {
-        write_html_output(&loaded.compo, &output_path)?;
-        return Ok(Some(output_path));
+    if let Some(bus_bytes) = &args.bus_bytes {
+        config.register.bus_bytes = bus_bytes.clone();
+        config
+            .register
+            .parse_bus_bytes()
+            .map_err(|message| CliError::Usage(format!("invalid --bus-bytes: {message}")))?;
     }
+    if args.backdoor {
+        config.register.backdoor = true;
+    }
+    let loaded = irgen_snapsheet::load_excel_with_config(&args.input, &config)
+        .map_err(|error| CliError::Runtime(error.to_string()))?;
+    let output_path = resolved_output_path(&args, &loaded.compo);
     if args.format == OutputFormat::All {
         write_all_outputs(&loaded.compo, &output_path)?;
         return Ok(Some(output_path));
@@ -142,7 +150,6 @@ fn run_convert(args: ConvertArgs) -> Result<Option<PathBuf>, CliError> {
 
     let content = match args.format {
         OutputFormat::All => unreachable!("ALL output is handled before string serialization"),
-        OutputFormat::Html => unreachable!("HTML output is handled before string serialization"),
         OutputFormat::Ipxact => serialize_ipxact(&loaded.compo, args.ipxact_standard)?,
         OutputFormat::Ralf => irgen_ralf::serialize_ralf(&loaded.compo)
             .map_err(|error| CliError::Runtime(error.to_string()))?,
@@ -170,24 +177,37 @@ fn run_ipxact(args: IpxactArgs) -> Result<Option<PathBuf>, CliError> {
     let render_options = irgen_uvmreg::RenderOptions {
         coverage: args.coverage,
     };
-    match args.file_layout {
-        IpxactFileLayout::Single => {
-            let output_path = args
-                .output
-                .unwrap_or_else(|| default_ipxact_output_path(&component.name));
-            let content = irgen_uvmreg::serialize_uvm_reg_with_options(&component, render_options)
+    match args.format {
+        IpxactOutputFormat::UvmReg => match args.file_layout {
+            IpxactFileLayout::Single => {
+                let output_path = args
+                    .output
+                    .unwrap_or_else(|| default_ipxact_output_path(&component.name));
+                let content =
+                    irgen_uvmreg::serialize_uvm_reg_with_options(&component, render_options)
+                        .map_err(|error| CliError::Runtime(error.to_string()))?;
+                write_text_output(&output_path, content)?;
+                Ok(Some(output_path))
+            }
+            IpxactFileLayout::Blocks => {
+                let output_path = args
+                    .output
+                    .unwrap_or_else(|| default_ipxact_blocks_output_path(&component.name));
+                let files = irgen_uvmreg::serialize_uvm_reg_by_block_with_options(
+                    &component,
+                    render_options,
+                )
                 .map_err(|error| CliError::Runtime(error.to_string()))?;
-            write_text_output(&output_path, content)?;
-            Ok(Some(output_path))
-        }
-        IpxactFileLayout::Blocks => {
+                write_rendered_files(&output_path, files)?;
+                Ok(Some(output_path))
+            }
+        },
+        IpxactOutputFormat::Html => {
             let output_path = args
                 .output
-                .unwrap_or_else(|| default_ipxact_blocks_output_path(&component.name));
-            let files =
-                irgen_uvmreg::serialize_uvm_reg_by_block_with_options(&component, render_options)
-                    .map_err(|error| CliError::Runtime(error.to_string()))?;
-            write_rendered_files(&output_path, files)?;
+                .unwrap_or_else(|| default_ipxact_html_output_path(&component.name));
+            let docs_component = docs_component_from_ipxact(&component);
+            write_html_output(&docs_component, &output_path)?;
             Ok(Some(output_path))
         }
     }
@@ -317,7 +337,7 @@ fn collect_ipxact_matches_in_file(
 }
 
 fn write_all_outputs(
-    component: &irgen_model::base::Component,
+    component: &irgen_snapsheet::model::Component,
     output: &Path,
 ) -> Result<(), CliError> {
     fs::create_dir_all(output).map_err(|error| {
@@ -328,22 +348,6 @@ fn write_all_outputs(
     })?;
 
     let stem = component_file_stem(component);
-    write_text_output(
-        &output.join(format!("{stem}-ip-xact-spirit-1.4.xml")),
-        serialize_ipxact(component, IpxactStandard::V1_4)?,
-    )?;
-    write_text_output(
-        &output.join(format!("{stem}-ip-xact-spirit-1.5.xml")),
-        serialize_ipxact(component, IpxactStandard::V1_5)?,
-    )?;
-    write_text_output(
-        &output.join(format!("{stem}-ip-xact-ieee-1685-2009.xml")),
-        serialize_ipxact(component, IpxactStandard::V2009)?,
-    )?;
-    write_text_output(
-        &output.join(format!("{stem}-ip-xact-ieee-1685-2014.xml")),
-        serialize_ipxact(component, IpxactStandard::V2014)?,
-    )?;
     write_text_output(
         &output.join(format!("{stem}-ip-xact-ieee-1685-2022.xml")),
         serialize_ipxact(component, IpxactStandard::V2022)?,
@@ -358,27 +362,14 @@ fn write_all_outputs(
         irgen_systemrdl::serialize_systemrdl(component)
             .map_err(|error| CliError::Runtime(error.to_string()))?,
     )?;
-    write_html_output(component, &output.join("html"))?;
     Ok(())
 }
 
 fn serialize_ipxact(
-    component: &irgen_model::base::Component,
+    component: &irgen_snapsheet::model::Component,
     standard: IpxactStandard,
 ) -> Result<String, CliError> {
     match standard {
-        IpxactStandard::V1_4 => {
-            ip_xact::serialize_1_4(component).map_err(|error| CliError::Runtime(error.to_string()))
-        }
-        IpxactStandard::V1_5 => {
-            ip_xact::serialize_1_5(component).map_err(|error| CliError::Runtime(error.to_string()))
-        }
-        IpxactStandard::V2009 => {
-            ip_xact::serialize_2009(component).map_err(|error| CliError::Runtime(error.to_string()))
-        }
-        IpxactStandard::V2014 => {
-            ip_xact::serialize_2014(component).map_err(|error| CliError::Runtime(error.to_string()))
-        }
         IpxactStandard::V2022 => {
             ip_xact::serialize_2022(component).map_err(|error| CliError::Runtime(error.to_string()))
         }
@@ -386,7 +377,7 @@ fn serialize_ipxact(
 }
 
 fn write_html_output(
-    component: &irgen_model::base::Component,
+    component: &irgen_docs::model::Component,
     output: &Path,
 ) -> Result<(), CliError> {
     fs::create_dir_all(output).map_err(|error| {
@@ -417,25 +408,19 @@ fn write_html_output(
     Ok(())
 }
 
-fn resolved_output_path(args: &ConvertArgs, component: &irgen_model::base::Component) -> PathBuf {
+fn resolved_output_path(
+    args: &ConvertArgs,
+    component: &irgen_snapsheet::model::Component,
+) -> PathBuf {
     args.output.clone().unwrap_or_else(|| match args.format {
-        OutputFormat::Html => default_input_output_path(&args.input, args.format),
         OutputFormat::All | OutputFormat::Ipxact | OutputFormat::Ralf | OutputFormat::SystemRdl => {
             default_component_output_path(component, args.format)
         }
     })
 }
 
-fn default_input_output_path(input: &Path, format: OutputFormat) -> PathBuf {
-    let stem = input.file_stem().unwrap_or(input.as_os_str());
-    match format.file_extension() {
-        Some(extension) => PathBuf::from(stem).with_extension(extension),
-        None => PathBuf::from(stem),
-    }
-}
-
 fn default_component_output_path(
-    component: &irgen_model::base::Component,
+    component: &irgen_snapsheet::model::Component,
     format: OutputFormat,
 ) -> PathBuf {
     let stem = component_file_stem(component);
@@ -445,7 +430,7 @@ fn default_component_output_path(
     }
 }
 
-fn component_file_stem(component: &irgen_model::base::Component) -> String {
+fn component_file_stem(component: &irgen_snapsheet::model::Component) -> String {
     file_stem_from_name(component.name())
 }
 
@@ -455,6 +440,10 @@ fn default_ipxact_output_path(component_name: &str) -> PathBuf {
 
 fn default_ipxact_blocks_output_path(component_name: &str) -> PathBuf {
     PathBuf::from(format!("ral_{}", file_stem_from_name(component_name)))
+}
+
+fn default_ipxact_html_output_path(component_name: &str) -> PathBuf {
+    PathBuf::from(file_stem_from_name(component_name)).with_extension("html")
 }
 
 fn file_stem_from_name(name: &str) -> String {
@@ -470,6 +459,94 @@ fn file_stem_from_name(name: &str) -> String {
         "component".into()
     } else {
         stem
+    }
+}
+
+fn docs_component_from_ipxact(component: &irgen_uvmreg::Component) -> irgen_docs::model::Component {
+    irgen_docs::model::Component::new(
+        component.vendor.clone(),
+        component.library.clone(),
+        component.name.clone(),
+        component.version.clone(),
+        component
+            .blocks
+            .iter()
+            .map(docs_block_from_ipxact)
+            .collect(),
+    )
+}
+
+fn docs_block_from_ipxact(block: &irgen_uvmreg::AddressBlock) -> irgen_docs::model::Block {
+    irgen_docs::model::Block::new_with_register_files(
+        block.name.clone(),
+        block.base_address.clone(),
+        block.range.clone(),
+        block.width.clone(),
+        block
+            .registers
+            .iter()
+            .map(docs_register_from_ipxact)
+            .collect(),
+        block
+            .register_files
+            .iter()
+            .map(docs_register_file_from_ipxact)
+            .collect(),
+    )
+}
+
+fn docs_register_file_from_ipxact(
+    register_file: &irgen_uvmreg::RegisterFile,
+) -> irgen_docs::model::RegisterFile {
+    irgen_docs::model::RegisterFile::new(
+        register_file.name.clone(),
+        register_file.address_offset.clone(),
+        register_file.range.clone(),
+        register_file.dim.clone(),
+        register_file
+            .registers
+            .iter()
+            .map(docs_register_from_ipxact)
+            .collect(),
+    )
+}
+
+fn docs_register_from_ipxact(register: &irgen_uvmreg::Register) -> irgen_docs::model::Register {
+    irgen_docs::model::Register::new(
+        register.name.clone(),
+        register.address_offset.clone(),
+        register.size.clone(),
+        register.fields.iter().map(docs_field_from_ipxact).collect(),
+    )
+}
+
+fn docs_field_from_ipxact(field: &irgen_uvmreg::Field) -> irgen_docs::model::Field {
+    irgen_docs::model::Field::new_with_options(irgen_docs::model::FieldOptions {
+        name: field.name.clone(),
+        offset: field.bit_offset.clone(),
+        width: field.bit_width.clone(),
+        attr: field.access.clone().unwrap_or_default(),
+        reset: field
+            .reset
+            .clone()
+            .or_else(|| field.resets.first().map(|reset| reset.value.clone()))
+            .unwrap_or_default(),
+        desc: String::new(),
+        hdl_path: field.hdl_path.clone(),
+        testable: field.testable.as_deref().and_then(parse_ipxact_bool),
+        reserved: field
+            .reserved
+            .as_deref()
+            .and_then(parse_ipxact_bool)
+            .unwrap_or(false),
+    })
+}
+
+fn parse_ipxact_bool(value: &str) -> Option<bool> {
+    match value.trim() {
+        "1" | "true" => Some(true),
+        "0" | "false" => Some(false),
+        _ => None,
     }
 }
 
@@ -553,13 +630,19 @@ struct RawSnapsheetArgs {
 
     #[arg(long = "validate", value_name = "schema.xsd")]
     validate_xsd: Option<PathBuf>,
+
+    #[arg(long = "bus-bytes", value_name = "bytes", default_value = "4")]
+    bus_bytes: Option<String>,
+
+    #[arg(long = "backdoor")]
+    backdoor: bool,
 }
 
 #[derive(Debug, Parser)]
 #[command(
     name = "irgen ip-xact",
     version,
-    about = "Generate UVM register model SystemVerilog from an IP-XACT component XML file."
+    about = "Generate UVM register model SystemVerilog or HTML docs from an IP-XACT component XML file."
 )]
 struct RawIpxactArgs {
     #[arg(value_name = "input.xml")]
@@ -567,6 +650,15 @@ struct RawIpxactArgs {
 
     #[arg(short = 'o', long = "output", value_name = "path")]
     output: Option<PathBuf>,
+
+    #[arg(
+        short = 'f',
+        long = "format",
+        value_enum,
+        default_value = "uvm-reg",
+        value_name = "name"
+    )]
+    format: IpxactOutputFormat,
 
     #[arg(
         long = "file-layout",
@@ -622,8 +714,8 @@ fn root_help() -> String {
         "  irgen <COMMAND> [OPTIONS]\n",
         "\n",
         "Commands:\n",
-        "  snapsheet  Convert a register spreadsheet into IP-XACT, RALF, SystemRDL, HTML, or all outputs\n",
-        "  ip-xact    Generate UVM register model SystemVerilog from an IP-XACT component XML file\n",
+        "  snapsheet  Convert a register spreadsheet into IP-XACT, RALF, SystemRDL, or all outputs\n",
+        "  ip-xact    Generate UVM register model SystemVerilog or HTML docs from an IP-XACT component XML file\n",
         "\n",
         "Options:\n",
         "  -h, --help     Print help\n",
@@ -640,8 +732,8 @@ fn root_command_hint() -> &'static str {
         "  irgen <COMMAND> [OPTIONS]\n",
         "\n",
         "Commands:\n",
-        "  snapsheet  Convert a register spreadsheet into IP-XACT, RALF, SystemRDL, HTML, or all outputs\n",
-        "  ip-xact    Generate UVM register model SystemVerilog from an IP-XACT component XML file\n",
+        "  snapsheet  Convert a register spreadsheet into IP-XACT, RALF, SystemRDL, or all outputs\n",
+        "  ip-xact    Generate UVM register model SystemVerilog or HTML docs from an IP-XACT component XML file\n",
         "\n",
         "Run `irgen --help` for more information.\n",
     )
@@ -674,6 +766,7 @@ fn parse_ipxact_args(args: impl Iterator<Item = OsString>) -> Result<Command, St
         Ok(raw) => Ok(Command::Ipxact(IpxactArgs {
             input: raw.input,
             output: raw.output,
+            format: raw.format,
             file_layout: raw.file_layout,
             coverage: raw.coverage,
             view: raw.view,
@@ -696,7 +789,7 @@ fn convert_raw_args(raw: RawSnapsheetArgs) -> Result<Command, String> {
     if raw.format != OutputFormat::Ipxact && raw.ipxact_standard.is_some() {
         return Err("--standard can only be used with --format ip-xact".into());
     }
-    let ipxact_standard = raw.ipxact_standard.unwrap_or(IpxactStandard::V2014);
+    let ipxact_standard = raw.ipxact_standard.unwrap_or(IpxactStandard::V2022);
     Ok(Command::Convert(ConvertArgs {
         input: raw.input,
         output: raw.output,
@@ -704,6 +797,8 @@ fn convert_raw_args(raw: RawSnapsheetArgs) -> Result<Command, String> {
         ipxact_standard,
         snapsheet_spec: raw.snapsheet_spec,
         validate_xsd: raw.validate_xsd,
+        bus_bytes: raw.bus_bytes,
+        backdoor: raw.backdoor,
     }))
 }
 
@@ -711,8 +806,8 @@ fn convert_raw_args(raw: RawSnapsheetArgs) -> Result<Command, String> {
 mod tests {
     use super::*;
 
-    fn component(name: &str) -> irgen_model::base::Component {
-        irgen_model::base::Component::new(
+    fn component(name: &str) -> irgen_snapsheet::model::Component {
+        irgen_snapsheet::model::Component::new(
             "example.com".into(),
             "IP".into(),
             name.into(),
@@ -726,9 +821,11 @@ mod tests {
             input: PathBuf::from("input.xlsx"),
             output,
             format,
-            ipxact_standard: IpxactStandard::V2014,
+            ipxact_standard: IpxactStandard::V2022,
             snapsheet_spec: None,
             validate_xsd: None,
+            bus_bytes: Some("4".into()),
+            backdoor: false,
         }
     }
 
@@ -755,14 +852,6 @@ mod tests {
         assert_eq!(
             resolved_output_path(&args(OutputFormat::All, None), &component("soc_regs")),
             PathBuf::from("soc_regs")
-        );
-    }
-
-    #[test]
-    fn keeps_html_default_directory_based_on_input_name() {
-        assert_eq!(
-            resolved_output_path(&args(OutputFormat::Html, None), &component("soc_regs")),
-            PathBuf::from("input")
         );
     }
 

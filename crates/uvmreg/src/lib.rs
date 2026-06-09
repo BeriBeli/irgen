@@ -124,6 +124,8 @@ pub enum Error {
     },
     #[error("IP-XACT root element must be component, found `{0}`")]
     UnsupportedRoot(String),
+    #[error("unsupported IP-XACT namespace `{0}` (only IEEE 1685-2022 is supported)")]
+    UnsupportedNamespace(String),
     #[error("external IP-XACT typeDefinitionsRef not found: `{0}`")]
     ExternalTypeDefinitionsNotFound(String),
     #[error(

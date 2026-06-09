@@ -1,6 +1,8 @@
 use super::*;
-use irgen_model::base::{Block as BaseBlock, Component as BaseComponent, Field as BaseField};
-use irgen_model::base::{Register as BaseRegister, RegisterFile as BaseRegisterFile};
+use irgen_snapsheet::model::{
+    Block as BaseBlock, Component as BaseComponent, Field as BaseField, Register as BaseRegister,
+    RegisterFile as BaseRegisterFile,
+};
 
 #[test]
 fn serializes_core_systemrdl_model() {

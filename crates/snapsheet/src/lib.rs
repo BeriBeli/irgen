@@ -1,5 +1,7 @@
+mod attr;
 pub mod config;
 pub mod error;
+pub mod model;
 
 mod excel;
 mod number;
@@ -11,9 +13,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use calamine::{Reader, open_workbook_auto};
-use irgen_model::base::Component;
 
 pub use config::SnapsheetConfig;
+use model::Component;
 
 use error::Error;
 use excel::Table;

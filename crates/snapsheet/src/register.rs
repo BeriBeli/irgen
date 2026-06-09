@@ -1,11 +1,10 @@
 use std::collections::HashMap;
 
-use irgen_model::attr::extract_access_value;
-use irgen_model::base::{Field, Register, RegisterFile};
-
+use crate::attr::extract_access_value;
 use crate::config::SnapsheetConfig;
 use crate::error::{Error, ValidationIssue};
 use crate::excel::{Row, Table};
+use crate::model::{Field, FieldOptions, Register, RegisterArray, RegisterFile};
 use crate::number::{format_address, literal_fits_bits, parse_literal, parse_u64};
 
 #[cfg(test)]
@@ -25,7 +24,6 @@ struct RegisterGroup {
     source_row: usize,
     spec: String,
     description: String,
-    csr_setting: Option<String>,
     offset: u64,
     fields: Vec<ParsedField>,
     ranges: Vec<(u64, u64, String)>,
@@ -55,7 +53,6 @@ struct ParsedField {
     source_row: usize,
     field: Field,
     uses_register_name: bool,
-    hdl_path_uses_register_name: bool,
 }
 
 impl ParsedField {
@@ -68,21 +65,17 @@ impl ParsedField {
             return self.field.clone();
         }
 
-        let hdl_path = if self.hdl_path_uses_register_name {
-            Some(register.into())
-        } else {
-            self.field.hdl_path().map(str::to_owned)
-        };
-
-        Field::new_with_hdl_path(
-            register.into(),
-            self.field.offset().into(),
-            self.field.width().into(),
-            self.field.attr().into(),
-            self.field.reset().into(),
-            self.field.desc().into(),
-            hdl_path,
-        )
+        Field::new_with_options(FieldOptions {
+            name: register.into(),
+            offset: self.field.offset().into(),
+            width: self.field.width().into(),
+            attr: self.field.attr().into(),
+            reset: self.field.reset().into(),
+            desc: self.field.desc().into(),
+            hdl_path: self.field.hdl_path().map(str::to_owned),
+            testable: self.field.testable(),
+            reserved: self.field.reserved(),
+        })
     }
 }
 
@@ -155,6 +148,26 @@ pub(crate) fn parse_registers(
 ) -> Result<(Vec<Register>, Vec<RegisterFile>), Error> {
     let columns = &config.columns.register;
     table.require_columns(&columns.required())?;
+    let bus_bytes = config.register.parse_bus_bytes().map_err(|message| {
+        Error::validation(
+            table.sheet(),
+            None,
+            None,
+            Some(block),
+            None,
+            format!("invalid register.bus_bytes: {message}"),
+        )
+    })?;
+    let bus_bits = bus_bytes.checked_mul(8).ok_or_else(|| {
+        Error::validation(
+            table.sheet(),
+            None,
+            None,
+            Some(block),
+            None,
+            "register.bus_bytes overflows bit width",
+        )
+    })?;
 
     let mut current_addr = None;
     let mut current_spec = None;
@@ -235,9 +248,6 @@ pub(crate) fn parse_registers(
             if groups[index].description.is_empty() {
                 groups[index].description = register_description(columns, row);
             }
-            if let Err(error) = update_csr_setting(config, table, row, block, &mut groups[index]) {
-                collect_validation(&mut issues, error)?;
-            }
             if let Err(error) = add_field(config, table, row, block, &mut groups[index], field) {
                 collect_validation(&mut issues, error)?;
             }
@@ -246,15 +256,11 @@ pub(crate) fn parse_registers(
                 source_row: row.number(),
                 spec: spec.into(),
                 description: register_description(columns, row),
-                csr_setting: None,
                 offset,
                 fields: Vec::new(),
                 ranges: Vec::new(),
                 width: 0,
             };
-            if let Err(error) = update_csr_setting(config, table, row, block, &mut group) {
-                collect_validation(&mut issues, error)?;
-            }
             match add_field(config, table, row, block, &mut group, field) {
                 Ok(()) => groups.push(group),
                 Err(error) => collect_validation(&mut issues, error)?,
@@ -290,7 +296,18 @@ pub(crate) fn parse_registers(
                 continue;
             }
         } {
-            let byte_width = group.width / 8;
+            let byte_width = physical_register_count(group.width, bus_bits)
+                .and_then(|count| count.checked_mul(bus_bytes))
+                .ok_or_else(|| {
+                    Error::validation(
+                        table.sheet(),
+                        Some(group.source_row),
+                        Some(&columns.bit),
+                        Some(block),
+                        Some(&group.spec),
+                        "register byte width overflows u64",
+                    )
+                })?;
             let file_index = register_file_groups
                 .iter()
                 .position(|file| file.array.has_same_layout(&array) && file.contains(group.offset));
@@ -359,7 +376,18 @@ pub(crate) fn parse_registers(
             }
             names.insert(name.clone(), group.source_row);
 
-            let byte_width = group.width / 8;
+            let byte_width = physical_register_count(group.width, bus_bits)
+                .and_then(|count| count.checked_mul(bus_bytes))
+                .ok_or_else(|| {
+                    Error::validation(
+                        table.sheet(),
+                        Some(group.source_row),
+                        Some(&columns.bit),
+                        Some(block),
+                        Some(&name),
+                        "register byte width overflows u64",
+                    )
+                })?;
             let Some(end) = group.offset.checked_add(byte_width) else {
                 collect_validation(
                     &mut issues,
@@ -415,21 +443,15 @@ pub(crate) fn parse_registers(
                 continue;
             }
             occupied_registers.push((group.offset, end, name.clone(), group.source_row));
-            let fields = match fields_for_register(config, table, block, &group, &name) {
-                Ok(fields) => fields,
-                Err(error) => {
-                    collect_validation(&mut issues, error)?;
-                    continue;
-                }
-            };
-            registers.push(Register::new_with_description_and_csr_setting(
-                name,
-                format_address(group.offset),
-                group.width.to_string(),
-                group.description,
-                group.csr_setting,
-                fields,
-            ));
+            let new_registers =
+                match physical_registers_for_group(config, table, block, &group, &name, bus_bits) {
+                    Ok(registers) => registers,
+                    Err(error) => {
+                        collect_validation(&mut issues, error)?;
+                        continue;
+                    }
+                };
+            registers.extend(new_registers);
         }
     }
 
@@ -437,8 +459,44 @@ pub(crate) fn parse_registers(
     let mut register_files = Vec::new();
 
     for file in register_file_groups {
+        let emit_as_register_array = file.ranges.len() == 1;
         let file_name = register_file_name(&file);
-        if let Some(previous_row) = duplicate_name_row(
+        let range_owner = if emit_as_register_array {
+            file.registers
+                .first()
+                .map(|register| register.name().to_owned())
+                .unwrap_or_else(|| file.spec.clone())
+        } else {
+            file_name.clone()
+        };
+        if emit_as_register_array {
+            let mut collided = false;
+            for register in &file.registers {
+                if let Some(previous_row) = duplicate_name_row(
+                    config.validation.reject_duplicate_registers,
+                    &names,
+                    register.name(),
+                ) {
+                    collect_validation(
+                        &mut issues,
+                        Error::validation(
+                            table.sheet(),
+                            Some(file.source_row),
+                            Some(&columns.register),
+                            Some(block),
+                            Some(register.name()),
+                            format!(
+                                "register name collides with the definition on row {previous_row}"
+                            ),
+                        ),
+                    )?;
+                    collided = true;
+                }
+            }
+            if collided {
+                continue;
+            }
+        } else if let Some(previous_row) = duplicate_name_row(
             config.validation.reject_duplicate_registers,
             &names,
             &file_name,
@@ -497,7 +555,7 @@ pub(crate) fn parse_registers(
                     Some(file.source_row),
                     Some(&columns.address),
                     Some(block),
-                    Some(&file_name),
+                    Some(&range_owner),
                     "register address overflows u64",
                 ),
             )?;
@@ -511,7 +569,7 @@ pub(crate) fn parse_registers(
                     Some(file.source_row),
                     Some(&columns.address),
                     Some(block),
-                    Some(&file_name),
+                    Some(&range_owner),
                     format!(
                         "register range {}..{} exceeds address block range {}",
                         format_address(file.offset),
@@ -535,21 +593,68 @@ pub(crate) fn parse_registers(
                     Some(file.source_row),
                     Some(&columns.address),
                     Some(block),
-                    Some(&file_name),
+                    Some(&range_owner),
                     format!("address overlaps register `{other_name}` from row {other_row}"),
                 ),
             )?;
             continue;
         }
-        names.insert(file_name.clone(), file.source_row);
-        occupied.push((file.offset, end, file_name.clone(), file.source_row));
-        register_files.push(RegisterFile::new(
-            file_name,
-            format_address(file.offset),
-            format_address(file.array.stride),
-            file.array.dim().to_string(),
-            file.registers,
-        ));
+        occupied.push((file.offset, end, range_owner, file.source_row));
+        if emit_as_register_array {
+            let dims = vec![file.array.dim().to_string()];
+            let stride = Some(format_address(file.array.stride));
+            for register in file.registers {
+                let child_offset = match parse_literal(register.offset()) {
+                    Ok(offset) => offset,
+                    Err(message) => {
+                        collect_validation(
+                            &mut issues,
+                            Error::validation(
+                                table.sheet(),
+                                Some(file.source_row),
+                                Some(&columns.address),
+                                Some(block),
+                                Some(register.name()),
+                                message,
+                            ),
+                        )?;
+                        continue;
+                    }
+                };
+                let Some(offset) = file.offset.checked_add(child_offset) else {
+                    collect_validation(
+                        &mut issues,
+                        Error::validation(
+                            table.sheet(),
+                            Some(file.source_row),
+                            Some(&columns.address),
+                            Some(block),
+                            Some(register.name()),
+                            "register address overflows u64",
+                        ),
+                    )?;
+                    continue;
+                };
+                names.insert(register.name().into(), file.source_row);
+                registers.push(Register::new_arrayed(
+                    register.name().into(),
+                    format_address(offset),
+                    register.size().into(),
+                    register.desc().into(),
+                    RegisterArray::new(dims.clone(), stride.clone()),
+                    register.fields().to_vec(),
+                ));
+            }
+        } else {
+            names.insert(file_name.clone(), file.source_row);
+            register_files.push(RegisterFile::new(
+                file_name,
+                format_address(file.offset),
+                format_address(file.array.stride),
+                file.array.dim().to_string(),
+                file.registers,
+            ));
+        }
     }
 
     if !issues.is_empty() {
@@ -591,6 +696,10 @@ fn add_register_to_file(
     group: &RegisterGroup,
 ) -> Result<(), Error> {
     let columns = &config.columns.register;
+    let bus_bytes = config.register.parse_bus_bytes().map_err(|message| {
+        Error::validation(table.sheet(), None, None, Some(block), None, message)
+    })?;
+    let bus_bits = bus_bytes * 8;
     let relative_offset = group.offset.checked_sub(file.offset).ok_or_else(|| {
         Error::validation(
             table.sheet(),
@@ -601,7 +710,18 @@ fn add_register_to_file(
             "register file child offset underflows",
         )
     })?;
-    let byte_width = group.width / 8;
+    let byte_width = physical_register_count(group.width, bus_bits)
+        .and_then(|count| count.checked_mul(bus_bytes))
+        .ok_or_else(|| {
+            Error::validation(
+                table.sheet(),
+                Some(group.source_row),
+                Some(&columns.bit),
+                Some(block),
+                Some(&group.spec),
+                "register byte width overflows u64",
+            )
+        })?;
     let relative_end = relative_offset.checked_add(byte_width).ok_or_else(|| {
         Error::validation(
             table.sheet(),
@@ -679,24 +799,258 @@ fn add_register_to_file(
         ));
     }
 
-    let fields = fields_for_register(config, table, block, group, &name)?;
+    let registers = physical_registers_for_group(config, table, block, group, &name, bus_bits)?
+        .into_iter()
+        .map(|register| {
+            let absolute_offset = parse_literal(register.offset()).unwrap_or(group.offset);
+            let child_offset = absolute_offset.saturating_sub(file.offset);
+            Register::new_with_description(
+                register.name().into(),
+                format_address(child_offset),
+                register.size().into(),
+                register.desc().into(),
+                register.fields().to_vec(),
+            )
+        })
+        .collect::<Vec<_>>();
     file.ranges.push((
         relative_offset,
         relative_end,
         name.clone(),
         group.source_row,
     ));
-    file.registers
-        .push(Register::new_with_description_and_csr_setting(
-            name,
-            format_address(relative_offset),
-            group.width.to_string(),
-            group.description.clone(),
-            group.csr_setting.clone(),
-            fields,
-        ));
+    file.registers.extend(registers);
 
     Ok(())
+}
+
+fn fields_for_register(
+    config: &SnapsheetConfig,
+    table: &Table,
+    block: &str,
+    group: &RegisterGroup,
+    register_name: &str,
+) -> Result<Vec<Field>, Error> {
+    let mut fields = Vec::with_capacity(group.fields.len());
+    let mut names = HashMap::<String, usize>::new();
+
+    for field in &group.fields {
+        let field = if field.uses_register_name {
+            validate_field_identifier(
+                config,
+                table,
+                field.source_row,
+                block,
+                &group.spec,
+                register_name,
+            )?;
+            field.for_register(register_name)
+        } else {
+            field.field.clone()
+        };
+        validate_field_identifier(
+            config,
+            table,
+            group.source_row,
+            block,
+            register_name,
+            field.name(),
+        )?;
+        if config.validation.reject_duplicate_fields
+            && let Some(previous_row) = names.insert(field.name().into(), group.source_row)
+        {
+            return Err(Error::validation(
+                table.sheet(),
+                Some(group.source_row),
+                Some(&config.columns.register.field),
+                Some(block),
+                Some(register_name),
+                format!(
+                    "field `{}` is duplicated by the definition on row {previous_row}",
+                    field.name()
+                ),
+            ));
+        }
+        fields.push(field);
+    }
+
+    Ok(fields)
+}
+
+fn physical_register_count(width_bits: u64, bus_bits: u64) -> Option<u64> {
+    if bus_bits == 0 {
+        return None;
+    }
+    Some(width_bits.div_ceil(bus_bits).max(1))
+}
+
+fn physical_registers_for_group(
+    config: &SnapsheetConfig,
+    table: &Table,
+    block: &str,
+    group: &RegisterGroup,
+    register_name: &str,
+    bus_bits: u64,
+) -> Result<Vec<Register>, Error> {
+    let bus_bytes = bus_bits / 8;
+    let count = physical_register_count(group.width, bus_bits).ok_or_else(|| {
+        Error::validation(
+            table.sheet(),
+            Some(group.source_row),
+            Some(&config.columns.register.bit),
+            Some(block),
+            Some(register_name),
+            "register.bus_bytes must be greater than zero",
+        )
+    })?;
+    let fields = fields_for_register(config, table, block, group, register_name)?;
+    let mut registers = Vec::new();
+
+    for index in 0..count {
+        let chunk_start = index * bus_bits;
+        let chunk_end = chunk_start + bus_bits;
+        let name = if count == 1 {
+            register_name.to_owned()
+        } else {
+            format!("{register_name}_{index}")
+        };
+        let offset = group
+            .offset
+            .checked_add(index.checked_mul(bus_bytes).ok_or_else(|| {
+                Error::validation(
+                    table.sheet(),
+                    Some(group.source_row),
+                    Some(&config.columns.register.address),
+                    Some(block),
+                    Some(register_name),
+                    "register address overflows u64",
+                )
+            })?)
+            .ok_or_else(|| {
+                Error::validation(
+                    table.sheet(),
+                    Some(group.source_row),
+                    Some(&config.columns.register.address),
+                    Some(block),
+                    Some(register_name),
+                    "register address overflows u64",
+                )
+            })?;
+        let chunk_fields = fields_for_physical_register(
+            config,
+            table,
+            block,
+            group,
+            &fields,
+            chunk_start,
+            chunk_end,
+        )?;
+        registers.push(Register::new_with_description(
+            name,
+            format_address(offset),
+            bus_bits.to_string(),
+            group.description.clone(),
+            chunk_fields,
+        ));
+    }
+
+    Ok(registers)
+}
+
+fn fields_for_physical_register(
+    config: &SnapsheetConfig,
+    table: &Table,
+    block: &str,
+    group: &RegisterGroup,
+    fields: &[Field],
+    chunk_start: u64,
+    chunk_end: u64,
+) -> Result<Vec<Field>, Error> {
+    let mut chunk_fields = Vec::new();
+    for field in fields {
+        let start = field.offset().parse::<u64>().expect("validated bit offset");
+        let width = field.width().parse::<u64>().expect("validated field width");
+        let end = start.checked_add(width).ok_or_else(|| {
+            Error::validation(
+                table.sheet(),
+                Some(group.source_row),
+                Some(&config.columns.register.bit),
+                Some(block),
+                Some(&group.spec),
+                "field bit range overflows u64",
+            )
+        })?;
+        let overlap_start = start.max(chunk_start);
+        let overlap_end = end.min(chunk_end);
+        if overlap_start >= overlap_end {
+            continue;
+        }
+
+        let split = start < chunk_start || end > chunk_end;
+        let local_width = overlap_end - overlap_start;
+        let reset =
+            reset_slice(field.reset(), overlap_start - start, local_width).map_err(|message| {
+                Error::validation(
+                    table.sheet(),
+                    Some(group.source_row),
+                    Some(&config.columns.register.reset),
+                    Some(block),
+                    Some(&group.spec),
+                    message,
+                )
+            })?;
+        chunk_fields.push(Field::new_with_options(FieldOptions {
+            name: if split {
+                format!(
+                    "{}_{}",
+                    field.name(),
+                    chunk_start / (chunk_end - chunk_start)
+                )
+            } else {
+                field.name().into()
+            },
+            offset: (overlap_start - chunk_start).to_string(),
+            width: local_width.to_string(),
+            attr: field.attr().into(),
+            reset,
+            desc: field.desc().into(),
+            hdl_path: (!split)
+                .then(|| field.hdl_path().map(str::to_owned))
+                .flatten(),
+            testable: field.testable(),
+            reserved: field.reserved(),
+        }));
+    }
+    Ok(chunk_fields)
+}
+
+fn reset_slice(reset: &str, right_shift: u64, width: u64) -> Result<String, String> {
+    if reset.trim().is_empty() {
+        return Ok(String::new());
+    }
+    if width > 128 {
+        return Err("cannot split reset values wider than 128 bits".into());
+    }
+    let value = parse_literal_u128(reset)?;
+    let mask = if width == 128 {
+        u128::MAX
+    } else {
+        (1_u128 << width) - 1
+    };
+    Ok(format!("0x{:X}", (value >> right_shift) & mask))
+}
+
+fn parse_literal_u128(value: &str) -> Result<u128, String> {
+    let value = value.trim();
+    let (digits, radix) = value
+        .strip_prefix("0x")
+        .or_else(|| value.strip_prefix("0X"))
+        .map_or((value, 10), |digits| (digits, 16));
+    if digits.is_empty() {
+        return Err(format!("invalid unsigned integer `{value}`"));
+    }
+    u128::from_str_radix(digits, radix)
+        .map_err(|_| format!("invalid unsigned integer `{value}`; use decimal or 0x-prefixed hex"))
 }
 
 fn parse_field(
@@ -734,11 +1088,12 @@ fn parse_field(
     let bit = table.require(row, &columns.bit, Some(block), Some(register))?;
     let attribute = table.require(row, &columns.access, Some(block), Some(register))?;
     let reset = table.require(row, &columns.reset, Some(block), Some(register))?;
+    let reset_disables_compare = reset.trim() == "-";
+    let reset_value = if reset_disables_compare { "" } else { reset };
     let description = row
         .get(&columns.description)
         .unwrap_or(&config.register.default_description);
-    let (hdl_path, hdl_path_uses_register_name) =
-        hdl_path_from_row(table, row, &columns.path, name, uses_register_name);
+    let hdl_path = hdl_path_from_row(config, table, row, &columns.path);
 
     let (msb, lsb) = parse_bit_range(config, table, row, block, register, bit)?;
     let width = msb
@@ -796,8 +1151,8 @@ fn parse_field(
         )
     })?;
 
-    if config.validation.check_reset_fits_width {
-        let reset_fits = literal_fits_bits(reset, width).map_err(|message| {
+    if config.validation.check_reset_fits_width && !reset_disables_compare {
+        let reset_fits = literal_fits_bits(reset_value, width).map_err(|message| {
             Error::validation(
                 table.sheet(),
                 Some(row.number()),
@@ -821,35 +1176,33 @@ fn parse_field(
 
     Ok(ParsedField {
         source_row: row.number(),
-        field: Field::new_with_hdl_path(
-            name.into(),
-            lsb.to_string(),
-            width.to_string(),
-            attribute.into(),
-            reset.into(),
-            description.into(),
+        field: Field::new_with_options(FieldOptions {
+            name: name.into(),
+            offset: lsb.to_string(),
+            width: width.to_string(),
+            attr: attribute.into(),
+            reset: reset_value.into(),
+            desc: description.into(),
             hdl_path,
-        ),
+            testable: reset_disables_compare.then_some(false),
+            reserved: config.reserved.is_reserved_field_name(name),
+        }),
         uses_register_name,
-        hdl_path_uses_register_name,
     })
 }
 
 fn hdl_path_from_row(
+    config: &SnapsheetConfig,
     table: &Table,
     row: &Row,
     column: &str,
-    field_name: &str,
-    uses_register_name: bool,
-) -> (Option<String>, bool) {
-    if table.has_column(column) {
-        match row.get(column) {
-            Some("-") => (None, false),
-            Some(path) => (Some(path.into()), false),
-            None => (Some(field_name.into()), uses_register_name),
-        }
-    } else {
-        (Some(field_name.into()), uses_register_name)
+) -> Option<String> {
+    if !config.register.backdoor || !table.has_column(column) {
+        return None;
+    }
+    match row.get(column) {
+        Some("-") | None => None,
+        Some(path) => Some(path.into()),
     }
 }
 
@@ -857,62 +1210,6 @@ fn register_description(columns: &crate::config::RegisterColumns, row: &Row) -> 
     row.get(&columns.register_description)
         .map(str::to_owned)
         .unwrap_or_default()
-}
-
-fn update_csr_setting(
-    config: &SnapsheetConfig,
-    table: &Table,
-    row: &Row,
-    block: &str,
-    group: &mut RegisterGroup,
-) -> Result<(), Error> {
-    let column = &config.columns.register.setting;
-    let Some(csr_setting) = row.get(column) else {
-        return Ok(());
-    };
-    validate_csr_setting(config, table, row, block, &group.spec, csr_setting)?;
-
-    if let Some(existing) = &group.csr_setting {
-        if existing != csr_setting {
-            return Err(Error::validation(
-                table.sheet(),
-                Some(row.number()),
-                Some(column),
-                Some(block),
-                Some(&group.spec),
-                format!("CSR setting `{csr_setting}` conflicts with earlier `{existing}`"),
-            ));
-        }
-    } else {
-        group.csr_setting = Some(csr_setting.into());
-    }
-
-    Ok(())
-}
-
-fn validate_csr_setting(
-    config: &SnapsheetConfig,
-    table: &Table,
-    row: &Row,
-    block: &str,
-    register: &str,
-    csr_setting: &str,
-) -> Result<(), Error> {
-    if matches!(
-        csr_setting,
-        "NO_CSR_TEST" | "NO_CSR_R_TEST" | "NO_CSR_W_TEST"
-    ) {
-        return Ok(());
-    }
-
-    Err(Error::validation(
-        table.sheet(),
-        Some(row.number()),
-        Some(&config.columns.register.setting),
-        Some(block),
-        Some(register),
-        format!("CSR setting `{csr_setting}` must be NO_CSR_TEST, NO_CSR_R_TEST, or NO_CSR_W_TEST"),
-    ))
 }
 
 fn add_field(
@@ -979,47 +1276,6 @@ fn add_field(
     group.ranges.push((start, end, field.name().into()));
     group.fields.push(field);
     Ok(())
-}
-
-fn fields_for_register(
-    config: &SnapsheetConfig,
-    table: &Table,
-    block: &str,
-    group: &RegisterGroup,
-    register: &str,
-) -> Result<Vec<Field>, Error> {
-    let mut fields = Vec::with_capacity(group.fields.len());
-    let mut names = HashMap::<String, usize>::new();
-
-    for parsed in &group.fields {
-        let field = parsed.for_register(register);
-        validate_field_identifier(
-            config,
-            table,
-            parsed.source_row,
-            block,
-            register,
-            field.name(),
-        )?;
-        if config.validation.reject_duplicate_fields
-            && let Some(previous_row) = names.insert(field.name().into(), parsed.source_row)
-        {
-            return Err(Error::validation(
-                table.sheet(),
-                Some(parsed.source_row),
-                Some(&config.columns.register.field),
-                Some(block),
-                Some(register),
-                format!(
-                    "field `{}` is duplicated by the definition on row {previous_row}",
-                    field.name()
-                ),
-            ));
-        }
-        fields.push(field);
-    }
-
-    Ok(fields)
 }
 
 fn parse_bit_range(
@@ -1103,7 +1359,7 @@ fn parse_array_spec(
     };
     if !config.register.array.enabled {
         return Err(invalid(
-            "registerFile arrays require register.array.enabled = true in snapsheet.toml".into(),
+            "register arrays require register.array.enabled = true in snapsheet.toml".into(),
         ));
     }
     let (base, suffix) = spec
@@ -1208,24 +1464,6 @@ mod tests {
         )
     }
 
-    fn table_with_csr_setting(rows: &[&[&str]]) -> Table {
-        Table::for_test(
-            "regs",
-            &[
-                "ADDR",
-                "REG",
-                "FIELD",
-                "BIT",
-                "WIDTH",
-                "ATTR",
-                "RESET",
-                "FIELD_DESC",
-                "SETTING",
-            ],
-            rows,
-        )
-    }
-
     fn parse_registers(
         table: &Table,
         block: &str,
@@ -1276,7 +1514,7 @@ mod tests {
         assert!(
             error
                 .to_string()
-                .contains("registerFile arrays require register.array.enabled = true")
+                .contains("register arrays require register.array.enabled = true")
         );
     }
 
@@ -1295,16 +1533,15 @@ mod tests {
 
         let (registers, register_files) = parse_registers(&table, "regs", 0x1_0000_0100).unwrap();
 
-        assert!(registers.is_empty());
-        assert_eq!(register_files[0].name(), "regfile_0");
-        assert_eq!(register_files[0].offset(), "0x100000000");
-        assert_eq!(register_files[0].range(), "0x4");
-        assert_eq!(register_files[0].dim(), "2");
-        assert_eq!(register_files[0].regs()[0].offset(), "0x0");
+        assert!(register_files.is_empty());
+        assert_eq!(registers[0].name(), "reg");
+        assert_eq!(registers[0].offset(), "0x100000000");
+        assert_eq!(registers[0].array().unwrap().dims(), &["2".to_string()]);
+        assert_eq!(registers[0].array().unwrap().stride(), Some("0x4"));
     }
 
     #[test]
-    fn uses_array_step_as_register_file_range() {
+    fn uses_array_step_as_register_array_stride() {
         let table = table(&[&[
             "0x100",
             "reg{n}, n=range(1, 3, 0x10)",
@@ -1318,11 +1555,11 @@ mod tests {
 
         let (registers, register_files) = parse_registers(&table, "regs", 0x200).unwrap();
 
-        assert!(registers.is_empty());
-        assert_eq!(register_files[0].name(), "regfile_0");
-        assert_eq!(register_files[0].offset(), "0x100");
-        assert_eq!(register_files[0].range(), "0x10");
-        assert_eq!(register_files[0].dim(), "2");
+        assert!(register_files.is_empty());
+        assert_eq!(registers[0].name(), "reg");
+        assert_eq!(registers[0].offset(), "0x100");
+        assert_eq!(registers[0].array().unwrap().dims(), &["2".to_string()]);
+        assert_eq!(registers[0].array().unwrap().stride(), Some("0x10"));
     }
 
     #[test]
@@ -1340,10 +1577,10 @@ mod tests {
 
         let (registers, register_files) = parse_registers(&table, "regs", 0x20000).unwrap();
 
-        assert!(registers.is_empty());
-        assert_eq!(register_files[0].offset(), "0x10");
-        assert_eq!(register_files[0].range(), "0x100");
-        assert_eq!(register_files[0].dim(), "512");
+        assert!(register_files.is_empty());
+        assert_eq!(registers[0].offset(), "0x10");
+        assert_eq!(registers[0].array().unwrap().dims(), &["512".to_string()]);
+        assert_eq!(registers[0].array().unwrap().stride(), Some("0x100"));
     }
 
     #[test]
@@ -1435,9 +1672,49 @@ mod tests {
         let (registers, register_files) = parse_registers(&table, "regs", 16).unwrap();
 
         assert!(register_files.is_empty());
-        assert_eq!(registers[0].size(), "128");
+        assert_eq!(registers.len(), 4);
+        assert_eq!(registers[0].name(), "reg_0");
+        assert_eq!(registers[0].size(), "32");
         assert_eq!(registers[0].fields()[0].offset(), "0");
-        assert_eq!(registers[0].fields()[0].width(), "128");
+        assert_eq!(registers[0].fields()[0].width(), "32");
+        assert_eq!(registers[3].name(), "reg_3");
+        assert_eq!(registers[3].offset(), "0xC");
+    }
+
+    #[test]
+    fn splits_field_that_crosses_bus_boundary() {
+        let table = table(&[
+            &["0", "reg", "cross", "[35:30]", "6", "RW", "0x2D", ""],
+            &["", "", "pad", "[63:36]", "28", "RO", "0", ""],
+        ]);
+
+        let (registers, register_files) = parse_registers(&table, "regs", 8).unwrap();
+
+        assert!(register_files.is_empty());
+        assert_eq!(registers.len(), 2);
+        assert_eq!(registers[0].name(), "reg_0");
+        assert_eq!(registers[0].fields()[0].name(), "cross_0");
+        assert_eq!(registers[0].fields()[0].offset(), "30");
+        assert_eq!(registers[0].fields()[0].width(), "2");
+        assert_eq!(registers[0].fields()[0].reset(), "0x1");
+        assert_eq!(registers[1].name(), "reg_1");
+        assert_eq!(registers[1].fields()[0].name(), "cross_1");
+        assert_eq!(registers[1].fields()[0].offset(), "0");
+        assert_eq!(registers[1].fields()[0].width(), "4");
+        assert_eq!(registers[1].fields()[0].reset(), "0xB");
+    }
+
+    #[test]
+    fn rejects_ascending_bit_ranges() {
+        let table = table(&[&["0", "reg", "cross", "[30:35]", "6", "RW", "0", ""]]);
+
+        let error = parse_registers(&table, "regs", 8).unwrap_err();
+
+        assert!(
+            error
+                .to_string()
+                .contains("bit range MSB must be greater than or equal to LSB")
+        );
     }
 
     #[test]
@@ -1447,7 +1724,10 @@ mod tests {
             &["", "", "low", "[15:0]", "RW", "0", ""],
         ]);
 
-        let (registers, register_files) = parse_registers(&table, "regs", 4).unwrap();
+        let mut config = complex_config();
+        config.register.backdoor = true;
+        let (registers, register_files) =
+            super::parse_registers(&config, &table, "regs", 4).unwrap();
 
         assert!(register_files.is_empty());
         assert_eq!(registers[0].size(), "32");
@@ -1467,7 +1747,11 @@ mod tests {
         let (registers, register_files) = parse_registers(&table, "regs", 8).unwrap();
 
         assert!(register_files.is_empty());
-        assert_eq!(registers[0].size(), "64");
+        assert_eq!(registers.len(), 2);
+        assert_eq!(registers[0].size(), "32");
+        assert_eq!(registers[1].size(), "32");
+        assert_eq!(registers[1].fields()[0].name(), "high");
+        assert_eq!(registers[1].fields()[0].offset(), "0");
     }
 
     #[test]
@@ -1511,7 +1795,10 @@ mod tests {
             ],
         );
 
-        let (registers, register_files) = parse_registers(&table, "regs", 4).unwrap();
+        let mut config = complex_config();
+        config.register.backdoor = true;
+        let (registers, register_files) =
+            super::parse_registers(&config, &table, "regs", 4).unwrap();
 
         assert!(register_files.is_empty());
         assert_eq!(registers[0].desc(), "Register level description");
@@ -1522,14 +1809,17 @@ mod tests {
     fn defaults_empty_field_name_to_register_name() {
         let table = table(&[&["0", "reg", "", "[31:0]", "32", "RW", "0", ""]]);
 
-        let (registers, register_files) = parse_registers(&table, "regs", 4).unwrap();
+        let mut config = complex_config();
+        config.register.backdoor = true;
+        let (registers, register_files) =
+            super::parse_registers(&config, &table, "regs", 4).unwrap();
 
         assert!(register_files.is_empty());
         assert_eq!(registers[0].fields()[0].name(), "reg");
     }
 
     #[test]
-    fn defaults_empty_field_name_to_register_file_child_register_name() {
+    fn defaults_empty_field_name_to_array_register_name() {
         let table = table(&[&[
             "0",
             "reg{n}, n=range(1, 3)",
@@ -1543,8 +1833,8 @@ mod tests {
 
         let (registers, register_files) = parse_registers(&table, "regs", 12).unwrap();
 
-        assert!(registers.is_empty());
-        assert_eq!(register_files[0].regs()[0].fields()[0].name(), "reg");
+        assert!(register_files.is_empty());
+        assert_eq!(registers[0].fields()[0].name(), "reg");
     }
 
     #[test]
@@ -1564,7 +1854,10 @@ mod tests {
             &["", "", "masked", "[15:8]", "8", "RO", "0", "", "-"],
         ]);
 
-        let (registers, register_files) = parse_registers(&table, "regs", 4).unwrap();
+        let mut config = complex_config();
+        config.register.backdoor = true;
+        let (registers, register_files) =
+            super::parse_registers(&config, &table, "regs", 4).unwrap();
 
         assert!(register_files.is_empty());
         assert_eq!(registers[0].fields()[0].hdl_path(), Some("dut.reg.done_q"));
@@ -1572,85 +1865,45 @@ mod tests {
     }
 
     #[test]
-    fn reads_optional_csr_setting_column() {
-        let table = table_with_csr_setting(&[
-            &[
-                "0",
-                "skip_all_tests",
-                "high",
-                "[31:16]",
-                "16",
-                "RW",
-                "0",
-                "",
-                "NO_CSR_TEST",
-            ],
-            &["", "", "low", "[15:0]", "16", "RW", "0", "", ""],
-            &["4", "normal", "value", "[31:0]", "32", "RW", "0", "", ""],
-        ]);
-
-        let (registers, register_files) = parse_registers(&table, "regs", 8).unwrap();
-
-        assert!(register_files.is_empty());
-        assert_eq!(registers[0].csr_setting(), Some("NO_CSR_TEST"));
-        assert_eq!(registers[1].csr_setting(), None);
-    }
-
-    #[test]
-    fn rejects_invalid_csr_setting() {
-        let table = table_with_csr_setting(&[&[
+    fn ignores_hdl_path_column_without_backdoor() {
+        let table = table_with_path(&[&[
             "0",
             "reg",
-            "value",
+            "done",
             "[31:0]",
             "32",
             "RW",
             "0",
             "",
-            "NO_CSR_X_TEST",
+            "dut.reg.done_q",
         ]]);
 
-        let error = parse_registers(&table, "regs", 4).unwrap_err();
+        let (registers, register_files) = parse_registers(&table, "regs", 4).unwrap();
 
-        assert!(error.to_string().contains(
-            "CSR setting `NO_CSR_X_TEST` must be NO_CSR_TEST, NO_CSR_R_TEST, or NO_CSR_W_TEST"
-        ));
+        assert!(register_files.is_empty());
+        assert_eq!(registers[0].fields()[0].hdl_path(), None);
     }
 
     #[test]
-    fn rejects_conflicting_csr_settings_for_same_register() {
-        let table = table_with_csr_setting(&[
-            &[
-                "0",
-                "reg",
-                "high",
-                "[31:16]",
-                "16",
-                "RW",
-                "0",
-                "",
-                "NO_CSR_R_TEST",
-            ],
-            &[
-                "",
-                "",
-                "low",
-                "[15:0]",
-                "16",
-                "RW",
-                "0",
-                "",
-                "NO_CSR_W_TEST",
-            ],
-        ]);
+    fn reset_dash_marks_field_not_testable_without_reset() {
+        let table = table(&[&["0", "reg", "value", "[31:0]", "32", "RW", "-", ""]]);
 
-        let error = parse_registers(&table, "regs", 4).unwrap_err();
+        let (registers, register_files) = parse_registers(&table, "regs", 4).unwrap();
 
-        assert!(
-            error
-                .to_string()
-                .contains("CSR setting `NO_CSR_W_TEST` conflicts with earlier `NO_CSR_R_TEST`")
-        );
+        assert!(register_files.is_empty());
+        let field = &registers[0].fields()[0];
+        assert_eq!(field.reset(), "");
+        assert_eq!(field.testable(), Some(false));
+    }
+
+    #[test]
+    fn reserved_fields_are_marked_reserved() {
+        let table = table(&[&["0", "reg", "reserved0", "[31:0]", "32", "RO", "0", ""]]);
+
+        let (registers, register_files) = parse_registers(&table, "regs", 4).unwrap();
+
+        assert!(register_files.is_empty());
+        assert!(registers[0].fields()[0].reserved());
     }
 
     #[test]
@@ -1669,12 +1922,9 @@ mod tests {
 
         let (registers, register_files) = parse_registers(&table, "regs", 12).unwrap();
 
-        assert!(registers.is_empty());
-        assert_eq!(register_files[0].regs()[0].fields()[0].name(), "reg");
-        assert_eq!(
-            register_files[0].regs()[0].fields()[0].hdl_path(),
-            Some("reg")
-        );
+        assert!(register_files.is_empty());
+        assert_eq!(registers[0].fields()[0].name(), "reg");
+        assert_eq!(registers[0].fields()[0].hdl_path(), None);
     }
 
     #[test]
@@ -1724,9 +1974,9 @@ mod tests {
         let (registers, register_files) =
             super::parse_registers(&config, &table, "regs", 0x20).unwrap();
 
-        assert!(registers.is_empty());
-        assert_eq!(register_files[0].range(), "0x8");
-        assert_eq!(register_files[0].regs()[0].fields()[0].desc(), "");
+        assert!(register_files.is_empty());
+        assert_eq!(registers[0].array().unwrap().stride(), Some("0x8"));
+        assert_eq!(registers[0].fields()[0].desc(), "");
     }
 
     #[test]
@@ -1896,7 +2146,7 @@ mod tests {
                 "0",
                 "",
             ],
-            &["8", "regfile_0", "value", "[31:0]", "32", "RW", "0", ""],
+            &["8", "reg", "value", "[31:0]", "32", "RW", "0", ""],
         ]);
 
         let error = parse_registers(&table, "regs", 12).unwrap_err();

@@ -1,9 +1,11 @@
 use super::*;
-use irgen_model::base::{Block as BaseBlock, Component, Field as BaseField};
-use irgen_model::base::{Register as BaseRegister, RegisterFile as BaseRegisterFile};
+use irgen_snapsheet::model::{
+    Block as BaseBlock, Component, Field as BaseField, Register as BaseRegister,
+    RegisterFile as BaseRegisterFile,
+};
 
 #[test]
-fn serializes_block_registers_and_fields_from_base_model() {
+fn serializes_block_registers_and_fields_from_snapsheet_model() {
     let component = Component::new(
         "example.com".into(),
         "IP".into(),
@@ -39,7 +41,7 @@ fn serializes_block_registers_and_fields_from_base_model() {
 }
 
 #[test]
-fn omits_empty_blocks_from_base_model() {
+fn omits_empty_blocks_from_snapsheet_model() {
     let component = Component::new(
         "example.com".into(),
         "IP".into(),
@@ -126,7 +128,7 @@ fn omits_empty_blocks_from_system_instances() {
 }
 
 #[test]
-fn serializes_register_file_arrays_from_base_model() {
+fn serializes_register_file_arrays_from_snapsheet_model() {
     let component = Component::new(
         "example.com".into(),
         "IP".into(),

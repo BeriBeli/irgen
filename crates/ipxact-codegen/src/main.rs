@@ -12,28 +12,10 @@ use xsd_parser::{
     pipeline::renderer::NamespaceSerialization,
 };
 
-const VERSIONS: &[Version] = &[
-    Version {
-        schema: "1.4",
-        module: "v1_4",
-    },
-    Version {
-        schema: "1.5",
-        module: "v1_5",
-    },
-    Version {
-        schema: "1685-2009",
-        module: "v2009",
-    },
-    Version {
-        schema: "1685-2014",
-        module: "v2014",
-    },
-    Version {
-        schema: "1685-2022",
-        module: "v2022",
-    },
-];
+const VERSIONS: &[Version] = &[Version {
+    schema: "1685-2022",
+    module: "v2022",
+}];
 
 fn main() -> Result<()> {
     let args = Args::parse(env::args().skip(1))?;
@@ -125,9 +107,7 @@ fn write_module(module: &Module, path: &Path, out_dir: &Path, version: Version) 
 }
 
 fn apply_generated_fixes(version: Version, path: &Path, code: &mut String) {
-    if (version.schema == "1685-2014" || version.schema == "1685-2022")
-        && path == Path::new("model").join("quick_xml_deserialize")
-    {
+    if version.schema == "1685-2022" && path == Path::new("model").join("quick_xml_deserialize") {
         code.push_str(
             r#"
 
@@ -264,7 +244,7 @@ Generate IP-XACT Rust modules using xsd-parser.
 Usage:
   cargo run -p ipxact-codegen -- [--schema-dir crates/ipxact/schema] \\
                                  [--out-dir crates/ipxact/src] \\
-                                 [--version 1.4|1.5|1685-2009|1685-2014|1685-2022|v1_4|v1_5|v2009|v2014|v2022|comma-list]
+                                 [--version 1685-2022|v2022|comma-list]
 "
     );
 }

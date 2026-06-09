@@ -1,155 +1,112 @@
 # irgen
 
-`irgen` is a CLI-first register generation toolkit. It converts structured
-workbook snapsheets into register-oriented SPIRIT/IP-XACT XML, RALF, SystemRDL,
-or HTML register documentation, and it generates UVM RAL SystemVerilog from
-IP-XACT component XML.
+`irgen` is a CLI-first register generation toolkit.
+
+It currently has two user-facing flows:
+
+- `irgen snapsheet`: convert workbook register tables into IEEE 1685-2022
+  IP-XACT, RALF, SystemRDL, or all three text outputs.
+- `irgen ip-xact`: generate UVM RAL SystemVerilog or static HTML register
+  documentation from an IP-XACT component XML file.
 
 ## Quick Start
 
-`irgen` has two subcommands:
-
-- `snapsheet`: convert workbook snapsheets into IP-XACT, RALF, SystemRDL, HTML,
-  or all supported outputs.
-- `ip-xact`: generate UVM register model SystemVerilog from an IP-XACT
-  component XML file.
-
-Generate IP-XACT XML:
+Build the CLI:
 
 ```sh
-./irgen snapsheet examples/example_simple.xlsx
+cargo build --release
 ```
 
-Snapsheet input can be `.xlsx`, `.xlsm`, `.xls`, `.xlsb`, or `.ods` as long as
-the workbook uses the expected sheet and column layout.
-
-When `-o/--output` is omitted, IP-XACT, RALF, SystemRDL, and all-output paths
-are written in the current directory using the component name:
-`<component>.xml`, `<component>.ralf`, `<component>.rdl`, or `<component>/`.
-HTML output still defaults to the input file stem, such as `example_simple/`.
-
-IP-XACT output defaults to IEEE 1685-2014. SPIRIT 1.4, SPIRIT 1.5,
-IEEE 1685-2009, IEEE 1685-2014, and IEEE 1685-2022 can also be specified
-explicitly for the current register-oriented subset:
+Generate IEEE 1685-2022 IP-XACT from a workbook:
 
 ```sh
-./irgen snapsheet examples/example_simple.xlsx --standard spirit-1.4
-./irgen snapsheet examples/example_simple.xlsx --standard spirit-1.5
-./irgen snapsheet examples/example_simple.xlsx --standard ieee-1685-2009
-./irgen snapsheet examples/example_simple.xlsx --standard ieee-1685-2014
-./irgen snapsheet examples/example_simple.xlsx --standard ieee-1685-2022
+./target/release/irgen snapsheet examples/example_simple.xlsx
 ```
-
-The IP-XACT emitters cover the register-oriented component subset produced by
-snapsheets: memory maps, address blocks, registers, register-file arrays where
-the target schema supports them, fields, resets, and field access metadata.
-They are not complete models for every IP-XACT root document or schema feature.
-SPIRIT 1.4 does not define `registerFile`, so register-file arrays are flattened
-into ordinary registers in 1.4 output.
-
-Field HDL backdoor paths in IEEE 1685-2014 and IEEE 1685-2022 are emitted
-through standard `accessHandles`. The SPIRIT 1.4, SPIRIT 1.5, and IEEE
-1685-2009 emitters do not carry HDL paths because those standards do not
-provide the same standard register-model access-handle structure. Generated
-IP-XACT does not add macro-backed block HDL paths or emit Synopsys `snps:*`
-vendor extensions.
 
 Generate RALF or SystemRDL:
 
 ```sh
-./irgen snapsheet examples/example_simple.xlsx --format ralf
-./irgen snapsheet examples/example_simple.xlsx --format systemrdl
+./target/release/irgen snapsheet examples/example_simple.xlsx --format ralf
+./target/release/irgen snapsheet examples/example_simple.xlsx --format systemrdl
 ```
 
-Generate DWC-style HTML register documentation. HTML output is a directory with
-an `index.html`, shared assets, block index pages, and register detail pages:
+Generate all snapsheet text outputs:
 
 ```sh
-./irgen snapsheet examples/example_simple.xlsx --format html
+./target/release/irgen snapsheet examples/example_simple.xlsx --format all -o generated
 ```
 
-Generate every supported output format at once:
+The `all` output directory contains:
+
+```text
+<component>-ip-xact-ieee-1685-2022.xml
+<component>.ralf
+<component>.rdl
+```
+
+Generate UVM RAL from IP-XACT:
 
 ```sh
-./irgen snapsheet examples/example_simple.xlsx --format all
+./target/release/irgen ip-xact path/to/component.xml
+./target/release/irgen ip-xact path/to/component.xml --coverage
+./target/release/irgen ip-xact path/to/component.xml --file-layout blocks -o ral_component
 ```
 
-The all-output directory contains `<component>-ip-xact-spirit-1.4.xml`,
-`<component>-ip-xact-spirit-1.5.xml`,
-`<component>-ip-xact-ieee-1685-2009.xml`,
-`<component>-ip-xact-ieee-1685-2014.xml`,
-`<component>-ip-xact-ieee-1685-2022.xml`, `<component>.ralf`,
-`<component>.rdl`, and an `html/` documentation directory.
-
-Write to a specific output path:
+Generate HTML documentation from IP-XACT:
 
 ```sh
-./irgen snapsheet examples/example_simple.xlsx -o output.xml
-./irgen snapsheet examples/example_simple.xlsx --format html -o docs-html
-./irgen snapsheet examples/example_simple.xlsx --format all -o generated
+./target/release/irgen ip-xact path/to/component.xml --format html -o docs-html
 ```
 
-Use a TOML snapsheet specification for custom sheet names, column names, array
-syntax, inherited cells, and stricter validation:
+`snapsheet` does not generate HTML directly. Convert the workbook to IP-XACT
+first, then run `irgen ip-xact --format html` if documentation is needed.
+
+## Snapsheet Inputs
+
+Workbook input may be `.xlsx`, `.xlsm`, `.xls`, `.xlsb`, or `.ods`.
+
+Default parsing works with `examples/example_simple.xlsx`. Use
+`--config snapsheet.toml` for custom sheet/column names, inherited cells,
+register arrays, reserved-field checks, and optional backdoor paths:
 
 ```sh
-./irgen snapsheet examples/example.xlsx --config snapsheet.toml
+./target/release/irgen snapsheet examples/example.xlsx --config snapsheet.toml
 ```
 
-Validate generated IP-XACT XML with `xmllint` and an explicit XSD:
+Useful snapsheet options:
 
 ```sh
-./irgen snapsheet examples/example_simple.xlsx --standard spirit-1.5 --validate crates/ipxact/schema/1.5/index.xsd
+./target/release/irgen snapsheet input.xlsx --bus-bytes 8
+./target/release/irgen snapsheet input.xlsx --backdoor
+./target/release/irgen snapsheet input.xlsx --validate crates/ipxact/schema/1685-2022/index.xsd
 ```
 
-`--validate` and `--standard` are only available with `--format ip-xact`.
+`--validate` requires `xmllint` and is only valid with `--format ip-xact`.
+`--standard` currently accepts only `ieee-1685-2022`.
 
-Generate UVM RAL SystemVerilog from an IP-XACT component XML file:
+## Output Defaults
 
-```sh
-./irgen ip-xact path/to/component.xml
-./irgen ip-xact path/to/component.xml -o ral_component.sv
-./irgen ip-xact path/to/component.xml --coverage
-./irgen ip-xact path/to/component.xml --file-layout blocks -o ral_component
-```
+When `-o/--output` is omitted:
 
-When `-o/--output` is omitted, the `ip-xact` subcommand writes
-`ral_<component-name>.sv` in the current directory. Pass `--file-layout blocks`
-to write a directory instead: a top-level `ral_<component-name>.sv` that
-includes one `ral_block_<block-name>.sv` file per address block. With block
-layout and no `-o/--output`, the output directory defaults to
-`ral_<component-name>`.
-
-For IEEE 1685-2022 `externalTypeDefinitions`, the CLI scans XML files in the
-input file's directory and any `--library-path` directories. It matches
-referenced documents by VLNV and follows IP-XACT `catalog` files.
-
-Pass `--coverage` to emit UVM `UVM_CVR_REG_BITS` register bit coverage support
-in the generated register classes. The consuming testbench and simulator run
-must still enable UVM RAL coverage collection for coverage to appear in reports.
+- `snapsheet --format ip-xact` writes `<component>.xml`
+- `snapsheet --format ralf` writes `<component>.ralf`
+- `snapsheet --format systemrdl` writes `<component>.rdl`
+- `snapsheet --format all` writes `<component>/`
+- `ip-xact` writes `ral_<component>.sv`
+- `ip-xact --file-layout blocks` writes `ral_<component>/`
+- `ip-xact --format html` writes `<component>.html/`
 
 ## Documentation
 
-- [Snapsheet format](docs/snapsheet-format.md): workbook layout, TOML parser
-  configuration, arrays, reserved fields, and validation behavior.
-- [RALF generation](docs/ralf-generation.md): RALF model coverage, snapsheet
-  mapping, and current limitations.
-- [SystemRDL generation](docs/systemrdl-generation.md): SystemRDL model
-  coverage, snapsheet mapping, and current limitations.
-- [IP-XACT generation](docs/ipxact-generation.md): supported schema standards,
-  crate layout, and current register-oriented coverage.
-- [UVM register model generation](docs/uvmreg-generation.md): IP-XACT input to
-  UVM IEEE 2020 RAL coverage, five-version usability assessment, and remaining
-  work.
-- [Roadmap](docs/roadmap.md): crate boundaries, milestones, and useful
-  verification gates.
+- [Snapsheet format](docs/snapsheet-format.md)
+- [IP-XACT generation](docs/ipxact-generation.md)
+- [RALF generation](docs/ralf-generation.md)
+- [SystemRDL generation](docs/systemrdl-generation.md)
+- [UVM RAL and HTML from IP-XACT](docs/uvmreg-generation.md)
+- [Roadmap](docs/roadmap.md)
 
 ## Examples
 
-- `examples/example_simple.xlsx` uses the default no-TOML workbook format.
-- `examples/example.xlsx` plus `snapsheet.toml` shows the richer configurable
-  format.
-- `examples/example_simple.xlsm` and `examples/example_simple.ods` mirror the
-  default workbook in additional supported formats.
-- `examples/example.xlsm` and `examples/example.ods` mirror the configured
-  workbook in additional supported formats.
+- `examples/example_simple.xlsx`: default workbook layout.
+- `examples/example.xlsx` with `snapsheet.toml`: configured workbook layout.
+- `.xlsm` and `.ods` variants mirror the workbook examples.

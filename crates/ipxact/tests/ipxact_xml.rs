@@ -1,11 +1,13 @@
-use irgen_model::base::{Block, Component, Field, Register, RegisterFile};
+use irgen_snapsheet::model::{
+    Block, Component, Field, FieldOptions, Register, RegisterArray, RegisterFile,
+};
 
 fn compact_xml(xml: &str) -> String {
     xml.split_whitespace().collect()
 }
 
 #[test]
-fn emits_field_elements_in_ipxact_2014_order() {
+fn emits_field_elements_in_ipxact_order() {
     let component = Component::new(
         "example.com".into(),
         "ip".into(),
@@ -32,17 +34,18 @@ fn emits_field_elements_in_ipxact_2014_order() {
         )],
     );
 
-    let xml = ip_xact::serialize_2014(&component).expect("component should serialize");
+    let xml = ip_xact::serialize(&component).expect("component should serialize");
 
     let bit_offset = xml.find("<ipxact:bitOffset>").unwrap();
-    let resets = xml.find("<ipxact:resets>").unwrap();
     let bit_width = xml.find("<ipxact:bitWidth>").unwrap();
+    let resets = xml.find("<ipxact:resets>").unwrap();
     let access = xml.find("<ipxact:access>").unwrap();
     let modified_write = xml.find("<ipxact:modifiedWriteValue>").unwrap();
 
     assert!(bit_offset < resets);
-    assert!(resets < bit_width);
-    assert!(bit_width < access);
+    assert!(bit_offset < bit_width);
+    assert!(bit_width < resets);
+    assert!(resets < access);
     assert!(access < modified_write);
     assert!(xml.contains("<ipxact:modifiedWriteValue>oneToClear</ipxact:modifiedWriteValue>"));
 }
@@ -75,7 +78,7 @@ fn emits_pretty_printed_ipxact_xml() {
         )],
     );
 
-    let xml = ip_xact::serialize_2014(&component).expect("component should serialize");
+    let xml = ip_xact::serialize(&component).expect("component should serialize");
 
     assert!(xml.starts_with("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"));
     assert!(xml.contains("\n  <ipxact:vendor>example.com</ipxact:vendor>\n"));
@@ -131,30 +134,20 @@ fn emits_standard_hdl_paths_for_ipxact_versions_that_support_them() {
         )],
     );
 
-    let access_handle_2014 = r#"<ipxact:accessHandles><ipxact:accessHandle><ipxact:slices><ipxact:slice><ipxact:pathSegments><ipxact:pathSegment><ipxact:pathSegmentName>u_status.done_q</ipxact:pathSegmentName></ipxact:pathSegment></ipxact:pathSegments></ipxact:slice></ipxact:slices></ipxact:accessHandle></ipxact:accessHandles>"#;
-    let access_handle_2022 = r#"<ipxact:accessHandles><ipxact:accessHandle><ipxact:slices><ipxact:slice><ipxact:pathSegments><ipxact:pathSegment>u_status.done_q</ipxact:pathSegment></ipxact:pathSegments></ipxact:slice></ipxact:slices></ipxact:accessHandle></ipxact:accessHandles>"#;
-    let reserved_access_path_2014 = "<ipxact:pathSegmentName>reserved0</ipxact:pathSegmentName>";
-    let disabled_access_path_2014 = "<ipxact:pathSegmentName>no_path</ipxact:pathSegmentName>";
-    let reserved_access_path_2022 = "<ipxact:pathSegment>reserved0</ipxact:pathSegment>";
-    let disabled_access_path_2022 = "<ipxact:pathSegment>no_path</ipxact:pathSegment>";
+    let access_handle = r#"<ipxact:accessHandles><ipxact:accessHandle><ipxact:slices><ipxact:slice><ipxact:pathSegments><ipxact:pathSegment>u_status.done_q</ipxact:pathSegment></ipxact:pathSegments></ipxact:slice></ipxact:slices></ipxact:accessHandle></ipxact:accessHandles>"#;
+    let reserved_access_path = "<ipxact:pathSegment>reserved0</ipxact:pathSegment>";
+    let disabled_access_path = "<ipxact:pathSegment>no_path</ipxact:pathSegment>";
 
-    let ipxact_2009 = ip_xact::serialize_2009(&component).expect("component should serialize");
-    let ipxact_2014 = ip_xact::serialize_2014(&component).expect("component should serialize");
-    let ipxact_2022 = ip_xact::serialize_2022(&component).expect("component should serialize");
-    let compact_2014 = compact_xml(&ipxact_2014);
-    let compact_2022 = compact_xml(&ipxact_2022);
+    let ipxact = ip_xact::serialize(&component).expect("component should serialize");
+    let compact = compact_xml(&ipxact);
 
-    assert!(compact_2014.contains(access_handle_2014));
-    assert!(compact_2022.contains(access_handle_2022));
-    assert!(!ipxact_2009.contains("u_status.done_q"));
-    assert!(!ipxact_2014.contains(reserved_access_path_2014));
-    assert!(!ipxact_2014.contains(disabled_access_path_2014));
-    assert!(!ipxact_2022.contains(reserved_access_path_2022));
-    assert!(!ipxact_2022.contains(disabled_access_path_2022));
+    assert!(compact.contains(access_handle));
+    assert!(!ipxact.contains(reserved_access_path));
+    assert!(!ipxact.contains(disabled_access_path));
 }
 
 #[test]
-fn does_not_emit_register_csr_setting_vendor_extension() {
+fn emits_register_arrays() {
     let component = Component::new(
         "example.com".into(),
         "ip".into(),
@@ -165,49 +158,29 @@ fn does_not_emit_register_csr_setting_vendor_extension() {
             "0x0".into(),
             "0x8".into(),
             "32".into(),
-            vec![
-                Register::new_with_description_and_csr_setting(
-                    "skip".into(),
-                    "0x0".into(),
+            vec![Register::new_arrayed(
+                "status".into(),
+                "0x0".into(),
+                "32".into(),
+                String::new(),
+                RegisterArray::new(vec!["4".into()], Some("0x4".into())),
+                vec![Field::new(
+                    "value".into(),
+                    "0".into(),
                     "32".into(),
+                    "RW".into(),
+                    "0".into(),
                     String::new(),
-                    Some("NO_CSR_TEST".into()),
-                    vec![Field::new(
-                        "value".into(),
-                        "0".into(),
-                        "32".into(),
-                        "RW".into(),
-                        "0".into(),
-                        String::new(),
-                    )],
-                ),
-                Register::new(
-                    "normal".into(),
-                    "0x4".into(),
-                    "32".into(),
-                    vec![Field::new(
-                        "value".into(),
-                        "0".into(),
-                        "32".into(),
-                        "RW".into(),
-                        "0".into(),
-                        String::new(),
-                    )],
-                ),
-            ],
+                )],
+            )],
         )],
     );
 
-    let ipxact_2009 = ip_xact::serialize_2009(&component).expect("component should serialize");
-    let ipxact_2014 = ip_xact::serialize_2014(&component).expect("component should serialize");
-    let ipxact_2022 = ip_xact::serialize_2022(&component).expect("component should serialize");
+    let ipxact = ip_xact::serialize(&component).expect("component should serialize");
 
-    assert!(!ipxact_2009.contains("snps:"));
-    assert!(!ipxact_2014.contains("snps:"));
-    assert!(!ipxact_2022.contains("snps:"));
-    assert!(!ipxact_2009.contains("csrSetting"));
-    assert!(!ipxact_2014.contains("csrSetting"));
-    assert!(!ipxact_2022.contains("csrSetting"));
+    assert!(ipxact.contains("<ipxact:array>"));
+    assert!(ipxact.contains("<ipxact:dim>4</ipxact:dim>"));
+    assert!(ipxact.contains("<ipxact:stride>0x4</ipxact:stride>"));
 }
 
 #[test]
@@ -245,11 +218,59 @@ fn emits_register_file_arrays() {
         )],
     );
 
-    let xml = ip_xact::serialize_2014(&component).expect("component should serialize");
+    let xml = ip_xact::serialize(&component).expect("component should serialize");
 
     assert!(xml.contains("<ipxact:registerFile>"));
     assert!(xml.contains("<ipxact:dim>4</ipxact:dim>"));
     assert!(xml.contains("<ipxact:addressOffset>0x10</ipxact:addressOffset>"));
     assert!(xml.contains("<ipxact:range>0x10</ipxact:range>"));
     assert!(compact_xml(&xml).contains("<ipxact:register><ipxact:name>lane</ipxact:name>"));
+}
+
+#[test]
+fn emits_testable_and_reserved_field_access_policy() {
+    let component = Component::new(
+        "example.com".into(),
+        "ip".into(),
+        "example".into(),
+        "1.0".into(),
+        vec![Block::new(
+            "regs".into(),
+            "0x0".into(),
+            "0x4".into(),
+            "32".into(),
+            vec![Register::new(
+                "status".into(),
+                "0x0".into(),
+                "32".into(),
+                vec![
+                    Field::new_with_options(FieldOptions {
+                        name: "skip_compare".into(),
+                        offset: "0".into(),
+                        width: "1".into(),
+                        attr: "RW".into(),
+                        reset: String::new(),
+                        desc: String::new(),
+                        hdl_path: None,
+                        testable: Some(false),
+                        reserved: false,
+                    }),
+                    Field::new(
+                        "reserved0".into(),
+                        "1".into(),
+                        "1".into(),
+                        "RO".into(),
+                        "0".into(),
+                        String::new(),
+                    ),
+                ],
+            )],
+        )],
+    );
+
+    let xml = ip_xact::serialize(&component).expect("component should serialize");
+
+    assert!(xml.contains("<ipxact:testable>false</ipxact:testable>"));
+    assert!(xml.contains("<ipxact:reserved>true</ipxact:reserved>"));
+    assert!(!xml.contains("<ipxact:value></ipxact:value>"));
 }

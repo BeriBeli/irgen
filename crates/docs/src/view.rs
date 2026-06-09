@@ -1,7 +1,6 @@
-use irgen_model::base::{Block as BaseBlock, Component, Field, Register, RegisterFile};
-
 use crate::anchor::anchor_id;
 use crate::error::Error;
+use crate::model::{Block as BaseBlock, Component, Field, Register, RegisterFile};
 
 #[derive(Debug, Clone)]
 pub(crate) struct DocumentView<'a> {
