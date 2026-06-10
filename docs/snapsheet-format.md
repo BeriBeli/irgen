@@ -119,31 +119,25 @@ This creates a register-file array with `dim = end - start` and byte stride
 
 ## TOML Shape
 
-The root `snapsheet.toml` is the current reference. Important settings:
+Config files only need to contain overrides; omitted settings use built-in
+defaults. The root `snapsheet.toml` keeps just the options needed by
+`examples/example.xlsx`:
 
 ```toml
-[columns.register]
-address = "ADDR"
-register = "REG"
-field = "FIELD"
-bit = "BIT"
-access = "ATTR"
-reset = "RESET"
-path = "PATH"
-
 [register]
-bus_bytes = "0x4"
-backdoor = false
 inherit_address = true
 inherit_register = true
-register_size = "infer_from_fields"
-require_byte_aligned = true
 blank_field_name = "register_name"
+
+[register.array]
+enabled = true
 
 [reserved]
 enabled = true
-patterns = ["^reserved[0-9]+$", "^rsvd[0-9]+$"]
 ```
+
+Add `[columns.*]` or `[workbook.sheets]` entries only when a workbook uses
+different sheet or column names from the defaults shown above.
 
 Reserved field names must match `reserved[0-9]+` or `rsvd[0-9]+` when reserved
 validation is enabled.

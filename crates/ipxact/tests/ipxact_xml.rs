@@ -272,5 +272,48 @@ fn emits_testable_and_reserved_field_access_policy() {
 
     assert!(xml.contains("<ipxact:testable>false</ipxact:testable>"));
     assert!(xml.contains("<ipxact:reserved>true</ipxact:reserved>"));
+    assert!(xml.contains("<ipxact:value>0</ipxact:value>"));
+    assert!(xml.contains("<ipxact:mask>0</ipxact:mask>"));
     assert!(!xml.contains("<ipxact:value></ipxact:value>"));
+}
+
+#[test]
+fn undefined_field_reset_emits_zero_value_and_zero_mask_without_testable() {
+    let component = Component::new(
+        "example.com".into(),
+        "ip".into(),
+        "example".into(),
+        "1.0".into(),
+        vec![Block::new(
+            "regs".into(),
+            "0x0".into(),
+            "0x4".into(),
+            "32".into(),
+            vec![Register::new(
+                "status".into(),
+                "0x0".into(),
+                "32".into(),
+                vec![Field::new_with_options(FieldOptions {
+                    name: "reserved0".into(),
+                    offset: "0".into(),
+                    width: "1".into(),
+                    attr: "RO".into(),
+                    reset: String::new(),
+                    desc: String::new(),
+                    hdl_path: None,
+                    testable: None,
+                    reserved: true,
+                })],
+            )],
+        )],
+    );
+
+    let xml = ip_xact::serialize(&component).expect("component should serialize");
+    let compact = compact_xml(&xml);
+
+    assert!(compact.contains(
+        "<ipxact:resets><ipxact:reset><ipxact:value>0</ipxact:value><ipxact:mask>0</ipxact:mask></ipxact:reset></ipxact:resets>"
+    ));
+    assert!(xml.contains("<ipxact:reserved>true</ipxact:reserved>"));
+    assert!(!xml.contains("<ipxact:testable>"));
 }

@@ -45,8 +45,8 @@ fn loads_workspace_example_with_root_snapsheet_toml() {
     assert_eq!(loaded.compo.blks().len(), 2);
     assert_eq!(loaded.compo.blks()[0].regs().len(), 6);
     assert_eq!(loaded.compo.blks()[0].register_files().len(), 0);
-    assert_eq!(loaded.compo.blks()[1].regs().len(), 10);
-    assert_eq!(loaded.compo.blks()[1].register_files().len(), 0);
+    assert_eq!(loaded.compo.blks()[1].regs().len(), 8);
+    assert_eq!(loaded.compo.blks()[1].register_files().len(), 1);
 }
 
 #[test]

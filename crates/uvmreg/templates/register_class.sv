@@ -39,7 +39,17 @@ class {{ reg.class_name }} extends uvm_reg;
     virtual function void build();
 {%- for field in reg.fields %}
       {{ field.var_name }} = uvm_reg_field::type_id::create({{ field.create_name }});
-      {{ field.var_name }}.configure(this, {{ field.width }}, {{ field.lsb }}, {{ field.access }}, {{ field.volatile }}, {{ field.reset_literal }}, {{ field.has_reset }}, {{ field.is_rand }}, 1);
+      {{ field.var_name }}.configure(
+        .parent(this),
+        .size({{ field.width }}),
+        .lsb_pos({{ field.lsb }}),
+        .access({{ field.access }}),
+        .volatile({{ field.volatile }}),
+        .reset({{ field.reset_literal }}),
+        .has_reset({{ field.has_reset }}),
+        .is_rand({{ field.is_rand }}),
+        .individually_accessible(1)
+      );
 {%- if field.compare_needs_set %}
       {{ field.var_name }}.set_compare({{ field.compare_check }});
 {%- endif %}

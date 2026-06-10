@@ -14,19 +14,36 @@ pub(crate) fn bytes_from_bits(name: &str, value: &str) -> Result<u64, Error> {
 
 pub(crate) fn rdl_number(kind: &'static str, value: &str) -> Result<Expression, Error> {
     let trimmed = value.trim();
+    if trimmed
+        .strip_prefix("0x")
+        .or_else(|| trimmed.strip_prefix("0X"))
+        .is_some()
+    {
+        return Ok(rdl_hex_number(parse_unsigned_literal(kind, value)?));
+    }
+
+    Ok(Expression::Number(
+        parse_unsigned(kind, trimmed)?.to_string(),
+    ))
+}
+
+pub(crate) fn rdl_hex_number(value: u64) -> Expression {
+    Expression::Number(format!("0x{value:x}"))
+}
+
+pub(crate) fn parse_unsigned_literal(kind: &'static str, value: &str) -> Result<u64, Error> {
+    let trimmed = value.trim();
     if let Some(hex) = trimmed
         .strip_prefix("0x")
         .or_else(|| trimmed.strip_prefix("0X"))
     {
-        let number = u64::from_str_radix(hex, 16).map_err(|_| Error::InvalidNumber {
+        return u64::from_str_radix(hex, 16).map_err(|_| Error::InvalidNumber {
             kind,
             value: value.into(),
-        })?;
-        return Ok(Expression::Number(format!("0x{number:x}")));
+        });
     }
 
-    let number = parse_unsigned(kind, trimmed)?;
-    Ok(Expression::Number(number.to_string()))
+    parse_unsigned(kind, trimmed)
 }
 
 pub(crate) fn access_properties(attr: &str) -> Result<Vec<PropertyAssignment>, Error> {

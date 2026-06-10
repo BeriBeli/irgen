@@ -49,6 +49,7 @@ Generate UVM RAL from IP-XACT:
 ```sh
 ./target/release/irgen ip-xact path/to/component.xml
 ./target/release/irgen ip-xact path/to/component.xml --coverage
+./target/release/irgen ip-xact path/to/component.xml --file-type header
 ./target/release/irgen ip-xact path/to/component.xml --file-layout blocks -o ral_component
 ```
 
@@ -65,7 +66,8 @@ first, then run `irgen ip-xact --format html` if documentation is needed.
 
 Workbook input may be `.xlsx`, `.xlsm`, `.xls`, `.xlsb`, or `.ods`.
 
-Default parsing works with `examples/example_simple.xlsx`. Use
+Default parsing works with `examples/example_simple.xlsx`. Config files only
+need to contain overrides; omitted settings use built-in defaults. Use
 `--config snapsheet.toml` for custom sheet/column names, inherited cells,
 register arrays, reserved-field checks, and optional backdoor paths:
 
@@ -92,9 +94,14 @@ When `-o/--output` is omitted:
 - `snapsheet --format ralf` writes `<component>.ralf`
 - `snapsheet --format systemrdl` writes `<component>.rdl`
 - `snapsheet --format all` writes `<component>/`
-- `ip-xact` writes `ral_<component>.sv`
-- `ip-xact --file-layout blocks` writes `ral_<component>/`
-- `ip-xact --format html` writes `<component>.html/`
+- `ip-xact` writes `ral_<component>_pkg.sv`
+- `ip-xact --file-type header` writes `ral_<component>.sv`
+- `ip-xact --file-layout blocks` writes `ral_<component>_pkg/`
+- `ip-xact --file-layout blocks --file-type header` writes `ral_<component>/`
+- `ip-xact --format html` writes `<component>-html/`
+
+UVM RAL defaults to a SystemVerilog package named `ral_<component>_pkg`. Use
+`ip-xact --file-type header` for include-guarded header output.
 
 ## Documentation
 

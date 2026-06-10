@@ -166,16 +166,76 @@ fn converts_register_file_arrays() {
             vec![BaseRegisterFile::new(
                 "lane".into(),
                 "0x10".into(),
-                "0x20".into(),
+                "0x100".into(),
+                "4".into(),
+                vec![
+                    BaseRegister::new(
+                        "control".into(),
+                        "0x0".into(),
+                        "32".into(),
+                        vec![BaseField::new(
+                            "enable".into(),
+                            "0".into(),
+                            "1".into(),
+                            "RW".into(),
+                            "0".into(),
+                            "".into(),
+                        )],
+                    ),
+                    BaseRegister::new(
+                        "tail".into(),
+                        "0xec".into(),
+                        "32".into(),
+                        vec![BaseField::new(
+                            "done".into(),
+                            "0".into(),
+                            "1".into(),
+                            "RO".into(),
+                            "0".into(),
+                            "".into(),
+                        )],
+                    ),
+                ],
+            )],
+        )],
+    );
+
+    let rdl = serialize_systemrdl(&component).unwrap();
+
+    assert!(rdl.contains("regfile lane {"));
+    assert!(rdl.contains("lane[4] @ 0x0 += 0x100;"));
+    assert!(!rdl.contains("lane[4] @ 0x10 += 0x100;"));
+    assert!(!rdl.contains("lane_last"));
+    assert!(rdl.contains("control @ 0x10;"));
+    assert!(rdl.contains("tail @ 0xfc;"));
+}
+
+#[test]
+fn preserves_absolute_register_file_array_offsets_when_stride_is_before_base() {
+    let component = BaseComponent::new(
+        "example.com".into(),
+        "IP".into(),
+        "example".into(),
+        "1.0".into(),
+        vec![BaseBlock::new_with_register_files(
+            "regs".into(),
+            "0x0".into(),
+            "0x10000".into(),
+            "32".into(),
+            vec![],
+            vec![BaseRegisterFile::new(
+                "table".into(),
+                "0x8000".into(),
+                "0x10".into(),
                 "4".into(),
                 vec![BaseRegister::new(
-                    "control".into(),
+                    "entry".into(),
                     "0x0".into(),
                     "32".into(),
                     vec![BaseField::new(
-                        "enable".into(),
+                        "value".into(),
                         "0".into(),
-                        "1".into(),
+                        "32".into(),
                         "RW".into(),
                         "0".into(),
                         "".into(),
@@ -187,8 +247,8 @@ fn converts_register_file_arrays() {
 
     let rdl = serialize_systemrdl(&component).unwrap();
 
-    assert!(rdl.contains("regfile lane {"));
-    assert!(rdl.contains("lane[4] @ 0x10 += 0x20;"));
-    assert!(!rdl.contains("lane_last"));
-    assert!(rdl.contains("control @ 0x0;"));
+    assert!(rdl.contains("table[4] @ 0x8000 += 0x10;"));
+    assert!(rdl.contains("entry @ 0x0;"));
+    assert!(!rdl.contains("table[4] @ 0x0 += 0x10;"));
+    assert!(!rdl.contains("entry @ 0x8000;"));
 }

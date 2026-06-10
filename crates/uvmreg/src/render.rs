@@ -13,6 +13,9 @@ use crate::{Error, Result};
 #[template(path = "package.sv", escape = "none")]
 struct PackageTemplate<'a> {
     guard: &'a str,
+    package_name: &'a str,
+    is_package: bool,
+    include_uvm: bool,
     includes: &'a [String],
     register_classes: &'a [RegisterClass],
     memory_classes: &'a [MemoryClass],
@@ -164,7 +167,6 @@ struct RegisterInstance {
     var_name: String,
     class_name: String,
     create_name: String,
-    configure_args: String,
     map_var_name: String,
     offset_literal: String,
     rights: String,
@@ -210,8 +212,16 @@ pub fn serialize_uvm_reg(component: &Component) -> Result<String> {
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum FileType {
+    #[default]
+    Package,
+    Header,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct RenderOptions {
     pub coverage: bool,
+    pub file_type: FileType,
 }
 
 pub fn serialize_uvm_reg_with_options(
@@ -220,7 +230,13 @@ pub fn serialize_uvm_reg_with_options(
 ) -> Result<String> {
     let classes = class_set(component, options)?;
     validate_unique_class_names(&classes)?;
-    render_class_set(&single_file_guard(component), &[], &classes)
+    render_root_class_set(
+        component,
+        &single_file_guard(component, options.file_type),
+        &[],
+        &classes,
+        options,
+    )
 }
 
 pub fn serialize_uvm_reg_by_block_with_options(
@@ -253,6 +269,10 @@ pub fn serialize_uvm_reg_by_block_with_options(
     }
 
     files.push(top_file(component, top_includes, options)?);
+    if options.file_type == FileType::Package {
+        let includes = files.iter().map(|file| file.path.clone()).collect();
+        files.push(package_file(component, includes)?);
+    }
     Ok(files)
 }
 
@@ -269,9 +289,44 @@ fn class_set(component: &Component, options: RenderOptions) -> Result<ClassSet> 
     })
 }
 
-fn render_class_set(guard: &str, includes: &[String], classes: &ClassSet) -> Result<String> {
+fn render_root_class_set(
+    component: &Component,
+    guard: &str,
+    includes: &[String],
+    classes: &ClassSet,
+    options: RenderOptions,
+) -> Result<String> {
+    render_class_set(
+        guard,
+        &package_name(component),
+        options.file_type == FileType::Package,
+        true,
+        includes,
+        classes,
+    )
+}
+
+fn render_include_class_set(
+    guard: &str,
+    includes: &[String],
+    classes: &ClassSet,
+) -> Result<String> {
+    render_class_set(guard, "", false, false, includes, classes)
+}
+
+fn render_class_set(
+    guard: &str,
+    package_name: &str,
+    is_package: bool,
+    include_uvm: bool,
+    includes: &[String],
+    classes: &ClassSet,
+) -> Result<String> {
     let rendered = PackageTemplate {
         guard,
+        package_name,
+        is_package,
+        include_uvm,
         includes,
         register_classes: &classes.register_classes,
         memory_classes: &classes.memory_classes,
@@ -319,6 +374,9 @@ fn normalize_spacing(mut sv: String) -> String {
     while sv.contains(".sv\"\n\n`include ") {
         sv = sv.replace(".sv\"\n\n`include ", ".sv\"\n`include ");
     }
+    if !sv.ends_with('\n') {
+        sv.push('\n');
+    }
     sv
 }
 
@@ -357,7 +415,7 @@ fn address_block_file(
         include_component,
         options,
     )?);
-    render_file(class_file_name(&class_name), Vec::new(), classes)
+    render_include_file(class_file_name(&class_name), Vec::new(), classes)
 }
 
 fn address_space_file(
@@ -370,7 +428,12 @@ fn address_space_file(
     classes
         .block_classes
         .push(block_class(component, true, false, options)?);
-    render_file(class_file_name(&class_name), includes, classes)
+    let includes = if options.file_type == FileType::Package {
+        Vec::new()
+    } else {
+        includes
+    };
+    render_include_file(class_file_name(&class_name), includes, classes)
 }
 
 fn top_file(
@@ -402,17 +465,63 @@ fn top_file(
     classes
         .block_classes
         .push(block_class(component, false, true, options)?);
-    render_file(top_file_name(component), includes, classes)
+    if options.file_type == FileType::Package {
+        render_include_file(top_file_name(component), Vec::new(), classes)
+    } else {
+        render_root_file(
+            component,
+            top_file_name(component),
+            includes,
+            classes,
+            options,
+        )
+    }
 }
 
-fn render_file(path: String, includes: Vec<String>, classes: ClassSet) -> Result<RenderedFile> {
+fn package_file(component: &Component, includes: Vec<String>) -> Result<RenderedFile> {
+    render_root_file(
+        component,
+        package_file_name(component),
+        includes,
+        ClassSet::default(),
+        RenderOptions {
+            file_type: FileType::Package,
+            ..RenderOptions::default()
+        },
+    )
+}
+
+fn render_root_file(
+    component: &Component,
+    path: String,
+    includes: Vec<String>,
+    classes: ClassSet,
+    options: RenderOptions,
+) -> Result<RenderedFile> {
     let guard = file_guard(&path);
-    let content = render_class_set(&guard, &includes, &classes)?;
+    let content = render_root_class_set(component, &guard, &includes, &classes, options)?;
     Ok(RenderedFile { path, content })
 }
 
-fn single_file_guard(component: &Component) -> String {
-    format!("RAL_{}_SV", ident(&component.name).to_ascii_uppercase())
+fn render_include_file(
+    path: String,
+    includes: Vec<String>,
+    classes: ClassSet,
+) -> Result<RenderedFile> {
+    let guard = file_guard(&path);
+    let content = render_include_class_set(&guard, &includes, &classes)?;
+    Ok(RenderedFile { path, content })
+}
+
+fn single_file_guard(component: &Component, file_type: FileType) -> String {
+    match file_type {
+        FileType::Package => file_guard(&package_file_name(component)),
+        FileType::Header => file_guard(&top_file_name(component)),
+    }
+}
+
+fn package_name(component: &Component) -> String {
+    format!("ral_{}_pkg", ident(&component.name))
 }
 
 fn file_guard(path: &str) -> String {
@@ -421,6 +530,10 @@ fn file_guard(path: &str) -> String {
 
 fn top_file_name(component: &Component) -> String {
     format!("ral_{}.sv", ident(&component.name))
+}
+
+fn package_file_name(component: &Component) -> String {
+    format!("ral_{}_pkg.sv", ident(&component.name))
 }
 
 fn class_file_name(class_name: &str) -> String {
@@ -869,7 +982,12 @@ fn field_view(
         access: sv_string(&access),
         volatile: sv_bool_literal(inherited_volatile(block, register_volatile, field)),
         reset_literal: format!("{width}'h{reset_value:x}"),
-        has_reset: sv_bool_literal(default_reset_index.is_some()),
+        has_reset: sv_bool_literal(
+            default_reset_index
+                .map(|index| reset_has_defined_bits(&field.resets[index]))
+                .transpose()?
+                .unwrap_or(false),
+        ),
         is_rand: sv_bool_literal(is_writable_access(&access)),
         compare_check: field_compare_check(field),
         compare_needs_set: field_compare_check(field) != "UVM_CHECK",
@@ -919,11 +1037,15 @@ fn extra_reset_views(
         .enumerate()
         .filter(|(index, _)| Some(*index) != default_reset_index)
         .map(|(_, reset)| {
-            Ok(ResetView {
+            if !reset_has_defined_bits(reset)? {
+                return Ok(None);
+            }
+            Ok(Some(ResetView {
                 value_literal: format!("{width}'h{:x}", effective_reset_value(reset)?),
                 kind: sv_string(reset.reset_type.as_deref().unwrap_or("HARD")),
-            })
+            }))
         })
+        .filter_map(|reset| reset.transpose())
         .collect()
 }
 
@@ -934,6 +1056,14 @@ fn effective_reset_value(reset: &Reset) -> Result<u64> {
         .as_deref()
         .map(|mask| parse_u64("field reset mask", mask).map(|mask| value & mask))
         .unwrap_or(Ok(value))
+}
+
+fn reset_has_defined_bits(reset: &Reset) -> Result<bool> {
+    reset
+        .mask
+        .as_deref()
+        .map(|mask| parse_u64("field reset mask", mask).map(|mask| mask != 0))
+        .unwrap_or(Ok(true))
 }
 
 fn enum_value_views(
@@ -2124,7 +2254,7 @@ fn map_layouts(component: &Component, maps: &[MapInstance]) -> BTreeMap<String, 
                     var_name: map.var_name.clone(),
                     layout: MapLayout {
                         n_bytes: map.n_bytes,
-                        byte_addressing: map.byte_addressing == "1'b1",
+                        byte_addressing: map.byte_addressing == "1",
                     },
                 },
             )
@@ -2357,11 +2487,23 @@ fn register_file_build_code(
                 "      {var_name} = {class_name}::type_id::create({});",
                 sv_string(create_name)
             ),
-            format!("      {var_name}.configure(this, null, {hdl_path_expr});"),
+            sv_named_call(
+                "      ",
+                &format!("{var_name}.configure"),
+                &[
+                    ("blk_parent", "this".into()),
+                    ("regfile_parent", "null".into()),
+                    ("hdl_path", hdl_path_expr.into()),
+                ],
+            ),
             format!("      {var_name}.build();"),
-            format!(
-                "      {var_name}.map({map_var_name}, {});",
-                addr_literal(base_offset)
+            sv_named_call(
+                "      ",
+                &format!("{var_name}.map"),
+                &[
+                    ("mp", map_var_name.into()),
+                    ("offset", addr_literal(base_offset)),
+                ],
             ),
         ]
         .join("\n");
@@ -2383,14 +2525,30 @@ fn register_file_build_code(
     lines.push(format!(
         "{body_indent}{element_ref} = {class_name}::type_id::create($sformatf({create_format}, {create_args}));"
     ));
-    lines.push(format!(
-        "{body_indent}{element_ref}.configure(this, null, {hdl_path_expr});"
+    lines.push(sv_named_call(
+        &body_indent,
+        &format!("{element_ref}.configure"),
+        &[
+            ("blk_parent", "this".into()),
+            ("regfile_parent", "null".into()),
+            ("hdl_path", hdl_path_expr.into()),
+        ],
     ));
     lines.push(format!("{body_indent}{element_ref}.build();"));
-    lines.push(format!(
-        "{body_indent}{element_ref}.map({map_var_name}, {} + {linear_index} * {});",
-        addr_literal(base_offset),
-        addr_literal(stride)
+    lines.push(sv_named_call(
+        &body_indent,
+        &format!("{element_ref}.map"),
+        &[
+            ("mp", map_var_name.into()),
+            (
+                "offset",
+                format!(
+                    "{} + {linear_index} * {}",
+                    addr_literal(base_offset),
+                    addr_literal(stride)
+                ),
+            ),
+        ],
     ));
     for level in (0..indices.len()).rev() {
         lines.push(format!("{}end", indent(level)));
@@ -2412,12 +2570,25 @@ fn register_file_member_build_lines(
             "      {var_name} = {class_name}::type_id::create({});",
             sv_string(create_name)
         ));
-        lines.push(format!("      {var_name}.configure(get_block(), this);"));
+        lines.push(sv_named_call(
+            "      ",
+            &format!("{var_name}.configure"),
+            &[
+                ("blk_parent", "get_block()".into()),
+                ("regfile_parent", "this".into()),
+            ],
+        ));
         lines.push(format!("      {var_name}.build();"));
         for slice in hdl_slices {
-            lines.push(format!(
-                "      {var_name}.add_hdl_path_slice({}, {}, {}, {});",
-                slice.path_expr, slice.offset, slice.size, slice.first
+            lines.push(sv_named_call(
+                "      ",
+                &format!("{var_name}.add_hdl_path_slice"),
+                &[
+                    ("name", slice.path_expr.clone()),
+                    ("offset", slice.offset.to_string()),
+                    ("size", slice.size.to_string()),
+                    ("first", slice.first.into()),
+                ],
             ));
         }
         return lines;
@@ -2436,14 +2607,25 @@ fn register_file_member_build_lines(
     lines.push(format!(
         "{body_indent}{element_ref} = {class_name}::type_id::create($sformatf({create_format}, {create_args}));"
     ));
-    lines.push(format!(
-        "{body_indent}{element_ref}.configure(get_block(), this);"
+    lines.push(sv_named_call(
+        &body_indent,
+        &format!("{element_ref}.configure"),
+        &[
+            ("blk_parent", "get_block()".into()),
+            ("regfile_parent", "this".into()),
+        ],
     ));
     lines.push(format!("{body_indent}{element_ref}.build();"));
     for slice in hdl_slices {
-        lines.push(format!(
-            "{body_indent}{element_ref}.add_hdl_path_slice({}, {}, {}, {});",
-            slice.path_expr, slice.offset, slice.size, slice.first
+        lines.push(sv_named_call(
+            &body_indent,
+            &format!("{element_ref}.add_hdl_path_slice"),
+            &[
+                ("name", slice.path_expr.clone()),
+                ("offset", slice.offset.to_string()),
+                ("size", slice.size.to_string()),
+                ("first", slice.first.into()),
+            ],
         ));
     }
     for level in (0..indices.len()).rev() {
@@ -2460,10 +2642,14 @@ fn register_file_member_map_lines(
     rights: &str,
 ) -> Vec<String> {
     if dims.is_empty() {
-        return vec![format!(
-            "      mp.add_reg({var_name}, offset + {}, {});",
-            addr_literal(base_offset),
-            sv_string(rights)
+        return vec![sv_named_call(
+            "      ",
+            "mp.add_reg",
+            &[
+                ("rg", var_name.into()),
+                ("offset", format!("offset + {}", addr_literal(base_offset))),
+                ("rights", sv_string(rights)),
+            ],
         )];
     }
 
@@ -2478,10 +2664,17 @@ fn register_file_member_map_lines(
         ));
     }
     let body_indent = indent(indices.len());
-    lines.push(format!(
-        "{body_indent}mp.add_reg({element_ref}, offset + {} + {offset_expr}, {});",
-        addr_literal(base_offset),
-        sv_string(rights)
+    lines.push(sv_named_call(
+        &body_indent,
+        "mp.add_reg",
+        &[
+            ("rg", element_ref),
+            (
+                "offset",
+                format!("offset + {} + {offset_expr}", addr_literal(base_offset)),
+            ),
+            ("rights", sv_string(rights)),
+        ],
     ));
     for level in (0..indices.len()).rev() {
         lines.push(format!("{}end", indent(level)));
@@ -2509,7 +2702,6 @@ fn register_instance(
         var_name: unique_ident(&instance_name, used_names),
         class_name: register_class_name(component, block, register, None, include_component),
         create_name: sv_string(&instance_name),
-        configure_args: "this".into(),
         map_var_name: map_var_name.into(),
         offset_literal: addr_literal(offset),
         rights: sv_string(&register_rights(block, register)),
@@ -2547,7 +2739,6 @@ fn alternate_register_instance(
             include_component,
         ),
         create_name: sv_string(&instance_name),
-        configure_args: "this".into(),
         map_var_name: map_var_name.into(),
         offset_literal: addr_literal(offset),
         rights: sv_string(&register_rights_from_fields(
@@ -2725,15 +2916,22 @@ fn array_build_code(spec: ArrayBuildSpec<'_>) -> String {
         "{body_indent}{element_ref} = {}::type_id::create($sformatf({create_format}, {create_args}));",
         spec.class_name
     ));
-    lines.push(format!(
-        "{body_indent}{element_ref}.configure({});",
-        array_configure_args(spec.regfile_parent, &indices)
+    lines.push(sv_named_call(
+        &body_indent,
+        &format!("{element_ref}.configure"),
+        &array_configure_args(spec.regfile_parent, &indices),
     ));
     lines.push(format!("{body_indent}{element_ref}.build();"));
     for slice in spec.hdl_slices {
-        lines.push(format!(
-            "{body_indent}{element_ref}.add_hdl_path_slice({}, {}, {}, {});",
-            slice.path_expr, slice.offset, slice.size, slice.first
+        lines.push(sv_named_call(
+            &body_indent,
+            &format!("{element_ref}.add_hdl_path_slice"),
+            &[
+                ("name", slice.path_expr.clone()),
+                ("offset", slice.offset.to_string()),
+                ("size", slice.size.to_string()),
+                ("first", slice.first.into()),
+            ],
         ));
     }
     for indexed in spec.indexed_hdl_slices {
@@ -2742,22 +2940,31 @@ fn array_build_code(spec: ArrayBuildSpec<'_>) -> String {
             index_condition(&indices, &indexed.indices)
         ));
         for slice in &indexed.slices {
-            lines.push(format!(
-                "{}{element_ref}.add_hdl_path_slice({}, {}, {}, {});",
-                indent(indices.len() + 1),
-                slice.path_expr,
-                slice.offset,
-                slice.size,
-                slice.first
+            let branch_indent = indent(indices.len() + 1);
+            lines.push(sv_named_call(
+                &branch_indent,
+                &format!("{element_ref}.add_hdl_path_slice"),
+                &[
+                    ("name", slice.path_expr.clone()),
+                    ("offset", slice.offset.to_string()),
+                    ("size", slice.size.to_string()),
+                    ("first", slice.first.into()),
+                ],
             ));
         }
         lines.push(format!("{body_indent}end"));
     }
-    lines.push(format!(
-        "{body_indent}{}.add_reg({element_ref}, {} + {offset_expr}, {});",
-        spec.map_var_name,
-        addr_literal(spec.base_offset),
-        sv_string(spec.rights)
+    lines.push(sv_named_call(
+        &body_indent,
+        &format!("{}.add_reg", spec.map_var_name),
+        &[
+            ("rg", element_ref),
+            (
+                "offset",
+                format!("{} + {offset_expr}", addr_literal(spec.base_offset)),
+            ),
+            ("rights", sv_string(spec.rights)),
+        ],
     ));
 
     for level in (0..indices.len()).rev() {
@@ -2789,13 +2996,19 @@ fn create_name_format(create_name: &str, index_count: usize) -> String {
     sv_string(&format!("{create_name}_{suffix}"))
 }
 
-fn array_configure_args(regfile_parent: Option<ArrayParentSpec<'_>>, indices: &[String]) -> String {
+fn array_configure_args(
+    regfile_parent: Option<ArrayParentSpec<'_>>,
+    indices: &[String],
+) -> Vec<(&'static str, String)> {
     match regfile_parent {
         Some(parent) => {
             let parent_ref = array_parent_ref(parent, indices);
-            format!("this, {parent_ref}")
+            vec![
+                ("blk_parent", "get_block()".into()),
+                ("regfile_parent", parent_ref),
+            ]
         }
-        None => "this".into(),
+        None => vec![("blk_parent", "this".into())],
     }
 }
 
@@ -3274,7 +3487,7 @@ fn is_truthy_sv_bool(value: &str) -> bool {
 }
 
 fn sv_bool_literal(value: bool) -> &'static str {
-    if value { "1'b1" } else { "1'b0" }
+    if value { "1" } else { "0" }
 }
 
 fn parse_u64(field: &'static str, value: &str) -> Result<u64> {
@@ -3299,6 +3512,40 @@ fn sv_string(value: &str) -> String {
         }
     }
     out.push('"');
+    out
+}
+
+fn sv_named_call(indent: &str, callee: &str, args: &[(&str, String)]) -> String {
+    let mut out = String::new();
+    out.push_str(indent);
+    out.push_str(callee);
+    out.push('(');
+    if args.len() <= 3 {
+        for (index, (_, value)) in args.iter().enumerate() {
+            if index > 0 {
+                out.push_str(", ");
+            }
+            out.push_str(value);
+        }
+        out.push_str(");");
+        return out;
+    }
+
+    for (index, (name, value)) in args.iter().enumerate() {
+        out.push('\n');
+        out.push_str(indent);
+        out.push_str("  .");
+        out.push_str(name);
+        out.push('(');
+        out.push_str(value);
+        out.push(')');
+        if index + 1 != args.len() {
+            out.push(',');
+        }
+    }
+    out.push('\n');
+    out.push_str(indent);
+    out.push_str(");");
     out
 }
 

@@ -44,7 +44,7 @@ impl ArraySpec {
     }
 
     fn has_same_layout(&self, other: &Self) -> bool {
-        self.start == other.start && self.end == other.end && self.stride == other.stride
+        self.dim() == other.dim() && self.stride == other.stride
     }
 }
 
@@ -138,6 +138,12 @@ impl RegisterFileGroup {
             .max()
             .unwrap_or(0)
     }
+}
+
+#[derive(Debug)]
+struct ArrayRegisterGroup {
+    group: RegisterGroup,
+    array: ArraySpec,
 }
 
 pub(crate) fn parse_registers(
@@ -269,7 +275,7 @@ pub(crate) fn parse_registers(
     }
 
     let mut registers = Vec::new();
-    let mut register_file_groups = Vec::<RegisterFileGroup>::new();
+    let mut array_groups = Vec::<ArrayRegisterGroup>::new();
     let mut names = HashMap::<String, usize>::new();
     let mut occupied_registers = Vec::<(u64, u64, String, usize)>::new();
 
@@ -308,54 +314,25 @@ pub(crate) fn parse_registers(
                         "register byte width overflows u64",
                     )
                 })?;
-            let file_index = register_file_groups
-                .iter()
-                .position(|file| file.array.has_same_layout(&array) && file.contains(group.offset));
-
-            let file_index = match file_index {
-                Some(file_index) => file_index,
-                None => {
-                    if array.stride < byte_width {
-                        collect_validation(
-                            &mut issues,
-                            Error::validation(
-                                table.sheet(),
-                                Some(group.source_row),
-                                Some(&columns.register),
-                                Some(block),
-                                Some(&group.spec),
-                                format!(
-                                    "register file range {} is smaller than register byte width {}",
-                                    format_address(array.stride),
-                                    format_address(byte_width)
-                                ),
-                            ),
-                        )?;
-                        continue;
-                    }
-
-                    register_file_groups.push(RegisterFileGroup {
-                        ordinal: register_file_groups.len(),
-                        source_row: group.source_row,
-                        spec: group.spec.clone(),
-                        offset: group.offset,
-                        array: array.clone(),
-                        registers: Vec::new(),
-                        ranges: Vec::new(),
-                    });
-                    register_file_groups.len() - 1
-                }
-            };
-
-            if let Err(error) = add_register_to_file(
-                config,
-                table,
-                block,
-                &mut register_file_groups[file_index],
-                &group,
-            ) {
-                collect_validation(&mut issues, error)?;
+            if array.stride < byte_width {
+                collect_validation(
+                    &mut issues,
+                    Error::validation(
+                        table.sheet(),
+                        Some(group.source_row),
+                        Some(&columns.register),
+                        Some(block),
+                        Some(&group.spec),
+                        format!(
+                            "register file range {} is smaller than register byte width {}",
+                            format_address(array.stride),
+                            format_address(byte_width)
+                        ),
+                    ),
+                )?;
+                continue;
             }
+            array_groups.push(ArrayRegisterGroup { group, array });
         } else {
             let name = group.spec.clone();
             if let Some(previous_row) =
@@ -455,12 +432,55 @@ pub(crate) fn parse_registers(
         }
     }
 
+    array_groups.sort_by(|left, right| {
+        left.group
+            .offset
+            .cmp(&right.group.offset)
+            .then_with(|| left.group.source_row.cmp(&right.group.source_row))
+    });
+
+    let mut register_file_groups = Vec::<RegisterFileGroup>::new();
+    for array_group in array_groups {
+        let group = array_group.group;
+        let array = array_group.array;
+        let file_index = register_file_groups
+            .iter()
+            .position(|file| file.array.has_same_layout(&array) && file.contains(group.offset));
+
+        let file_index = match file_index {
+            Some(file_index) => file_index,
+            None => {
+                register_file_groups.push(RegisterFileGroup {
+                    ordinal: register_file_groups.len(),
+                    source_row: group.source_row,
+                    spec: group.spec.clone(),
+                    offset: group.offset,
+                    array: array.clone(),
+                    registers: Vec::new(),
+                    ranges: Vec::new(),
+                });
+                register_file_groups.len() - 1
+            }
+        };
+
+        if let Err(error) = add_register_to_file(
+            config,
+            table,
+            block,
+            &mut register_file_groups[file_index],
+            &group,
+        ) {
+            collect_validation(&mut issues, error)?;
+        }
+    }
+
     let mut occupied = occupied_registers;
     let mut register_files = Vec::new();
 
     for file in register_file_groups {
-        let emit_as_register_array = file.ranges.len() == 1;
-        let file_name = register_file_name(&file);
+        // A single physical child is one repeated register; multiple children form one repeated structure.
+        let emit_as_register_array = file.ranges.len() == 1 && file.registers.len() == 1;
+        let file_name = register_file_name(&file, block, &names);
         let range_owner = if emit_as_register_array {
             file.registers
                 .first()
@@ -664,8 +684,92 @@ pub(crate) fn parse_registers(
     Ok((registers, register_files))
 }
 
-fn register_file_name(file: &RegisterFileGroup) -> String {
-    format!("regfile_{}", file.ordinal)
+fn register_file_name(
+    file: &RegisterFileGroup,
+    block: &str,
+    names: &HashMap<String, usize>,
+) -> String {
+    if let Some(base) = common_register_file_base(file) {
+        return unique_register_file_name(&base, file.ordinal, names);
+    }
+
+    let block = identifier_from(block, "block");
+    unique_name(format!("{block}_group_{}", file.ordinal), names)
+}
+
+fn common_register_file_base(file: &RegisterFileGroup) -> Option<String> {
+    let mut registers = file.registers.iter();
+    let first = registers.next()?;
+    let mut common = first
+        .name()
+        .split('_')
+        .filter(|token| !token.is_empty())
+        .map(str::to_owned)
+        .collect::<Vec<_>>();
+
+    for register in registers {
+        let tokens = register.name().split('_').filter(|token| !token.is_empty());
+        common = common
+            .into_iter()
+            .zip(tokens)
+            .take_while(|(left, right)| left == right)
+            .map(|(left, _)| left)
+            .collect();
+        if common.is_empty() {
+            return None;
+        }
+    }
+
+    let base = common.join("_");
+    (base.len() >= 3 && is_field_identifier(&base)).then_some(base)
+}
+
+fn unique_register_file_name(base: &str, ordinal: usize, names: &HashMap<String, usize>) -> String {
+    if !names.contains_key(base) {
+        return base.into();
+    }
+
+    unique_name(format!("{base}_group_{ordinal}"), names)
+}
+
+fn unique_name(base: String, names: &HashMap<String, usize>) -> String {
+    if !names.contains_key(&base) {
+        return base;
+    }
+
+    for index in 1.. {
+        let candidate = format!("{base}_{index}");
+        if !names.contains_key(&candidate) {
+            return candidate;
+        }
+    }
+
+    unreachable!("unbounded suffix search must find a unique name")
+}
+
+fn identifier_from(value: &str, fallback: &str) -> String {
+    let mut identifier = value
+        .chars()
+        .map(|ch| {
+            if ch == '_' || ch.is_ascii_alphanumeric() {
+                ch
+            } else {
+                '_'
+            }
+        })
+        .collect::<String>()
+        .trim_matches('_')
+        .to_owned();
+
+    if identifier.is_empty() {
+        identifier = fallback.into();
+    }
+
+    if is_field_identifier(&identifier) {
+        identifier
+    } else {
+        format!("{fallback}_{identifier}")
+    }
 }
 
 fn duplicate_name_row(
@@ -1087,9 +1191,9 @@ fn parse_field(
     }
     let bit = table.require(row, &columns.bit, Some(block), Some(register))?;
     let attribute = table.require(row, &columns.access, Some(block), Some(register))?;
-    let reset = table.require(row, &columns.reset, Some(block), Some(register))?;
-    let reset_disables_compare = reset.trim() == "-";
-    let reset_value = if reset_disables_compare { "" } else { reset };
+    let reset = row.get(&columns.reset).unwrap_or_default();
+    let reset_undefined = reset.trim().is_empty() || reset.trim() == "-";
+    let reset_value = if reset_undefined { "" } else { reset };
     let description = row
         .get(&columns.description)
         .unwrap_or(&config.register.default_description);
@@ -1151,7 +1255,7 @@ fn parse_field(
         )
     })?;
 
-    if config.validation.check_reset_fits_width && !reset_disables_compare {
+    if config.validation.check_reset_fits_width && !reset_undefined {
         let reset_fits = literal_fits_bits(reset_value, width).map_err(|message| {
             Error::validation(
                 table.sheet(),
@@ -1184,7 +1288,7 @@ fn parse_field(
             reset: reset_value.into(),
             desc: description.into(),
             hdl_path,
-            testable: reset_disables_compare.then_some(false),
+            testable: None,
             reserved: config.reserved.is_reserved_field_name(name),
         }),
         uses_register_name,
@@ -1584,6 +1688,29 @@ mod tests {
     }
 
     #[test]
+    fn keeps_single_repeated_register_as_register_array() {
+        let table = table(&[&[
+            "0x100",
+            "QUEUE_HEAD{n}, n=range(0,8,0x10)",
+            "value",
+            "[31:0]",
+            "32",
+            "RW",
+            "0",
+            "",
+        ]]);
+
+        let (registers, register_files) = parse_registers(&table, "regs", 0x200).unwrap();
+
+        assert!(register_files.is_empty());
+        assert_eq!(registers.len(), 1);
+        assert_eq!(registers[0].name(), "QUEUE_HEAD");
+        assert_eq!(registers[0].offset(), "0x100");
+        assert_eq!(registers[0].array().unwrap().dims(), &["8".to_string()]);
+        assert_eq!(registers[0].array().unwrap().stride(), Some("0x10"));
+    }
+
+    #[test]
     fn groups_matching_array_registers_into_one_register_file() {
         let table = table(&[
             &[
@@ -1612,7 +1739,7 @@ mod tests {
 
         assert!(registers.is_empty());
         assert_eq!(register_files.len(), 1);
-        assert_eq!(register_files[0].name(), "regfile_0");
+        assert_eq!(register_files[0].name(), "MATRIX");
         assert_eq!(register_files[0].offset(), "0xD00");
         assert_eq!(register_files[0].range(), "0x10");
         assert_eq!(register_files[0].dim(), "10");
@@ -1620,6 +1747,102 @@ mod tests {
         assert_eq!(register_files[0].regs()[0].offset(), "0x0");
         assert_eq!(register_files[0].regs()[1].name(), "MATRIX_INFO0_ADDR");
         assert_eq!(register_files[0].regs()[1].offset(), "0x4");
+    }
+
+    #[test]
+    fn groups_interleaved_repeated_structure_as_register_file_array() {
+        let table = table(&[
+            &[
+                "0x4",
+                "VF_MSIX_TABLE_1{n}, n=range(0,2048,0x10)",
+                "addr_hi",
+                "[31:0]",
+                "32",
+                "RW",
+                "0",
+                "",
+            ],
+            &[
+                "0x0",
+                "VF_MSIX_TABLE_0{n}, n=range(0,2048,0x10)",
+                "addr_lo",
+                "[31:0]",
+                "32",
+                "RW",
+                "0",
+                "",
+            ],
+            &[
+                "0xC",
+                "VF_MSIX_TABLE_3{n}, n=range(0,2048,0x10)",
+                "vector_ctrl",
+                "[31:0]",
+                "32",
+                "RW",
+                "0",
+                "",
+            ],
+            &[
+                "0x8",
+                "VF_MSIX_TABLE_2{n}, n=range(0,2048,0x10)",
+                "data",
+                "[31:0]",
+                "32",
+                "RW",
+                "0",
+                "",
+            ],
+        ]);
+
+        let (registers, register_files) = parse_registers(&table, "msix", 0x8000).unwrap();
+
+        assert!(registers.is_empty());
+        assert_eq!(register_files.len(), 1);
+        assert_eq!(register_files[0].name(), "VF_MSIX_TABLE");
+        assert_eq!(register_files[0].offset(), "0x0");
+        assert_eq!(register_files[0].range(), "0x10");
+        assert_eq!(register_files[0].dim(), "2048");
+        assert_eq!(register_files[0].regs().len(), 4);
+        assert_eq!(register_files[0].regs()[0].name(), "VF_MSIX_TABLE_0");
+        assert_eq!(register_files[0].regs()[0].offset(), "0x0");
+        assert_eq!(register_files[0].regs()[1].name(), "VF_MSIX_TABLE_1");
+        assert_eq!(register_files[0].regs()[1].offset(), "0x4");
+        assert_eq!(register_files[0].regs()[2].name(), "VF_MSIX_TABLE_2");
+        assert_eq!(register_files[0].regs()[2].offset(), "0x8");
+        assert_eq!(register_files[0].regs()[3].name(), "VF_MSIX_TABLE_3");
+        assert_eq!(register_files[0].regs()[3].offset(), "0xC");
+    }
+
+    #[test]
+    fn groups_split_wide_repeated_register_as_register_file_array() {
+        let table = table(&[&[
+            "0x0",
+            "VF_MSIX_TABLE{n}, n=range(0,2048,0x10)",
+            "entry",
+            "[127:0]",
+            "128",
+            "RW",
+            "0",
+            "",
+        ]]);
+
+        let (registers, register_files) = parse_registers(&table, "msix", 0x8000).unwrap();
+
+        assert!(registers.is_empty());
+        assert_eq!(register_files.len(), 1);
+        assert_eq!(register_files[0].name(), "VF_MSIX_TABLE");
+        assert_eq!(register_files[0].offset(), "0x0");
+        assert_eq!(register_files[0].range(), "0x10");
+        assert_eq!(register_files[0].dim(), "2048");
+        assert_eq!(register_files[0].regs().len(), 4);
+        assert_eq!(register_files[0].regs()[0].name(), "VF_MSIX_TABLE_0");
+        assert_eq!(register_files[0].regs()[0].offset(), "0x0");
+        assert_eq!(register_files[0].regs()[1].name(), "VF_MSIX_TABLE_1");
+        assert_eq!(register_files[0].regs()[1].offset(), "0x4");
+        assert_eq!(register_files[0].regs()[2].name(), "VF_MSIX_TABLE_2");
+        assert_eq!(register_files[0].regs()[2].offset(), "0x8");
+        assert_eq!(register_files[0].regs()[3].name(), "VF_MSIX_TABLE_3");
+        assert_eq!(register_files[0].regs()[3].offset(), "0xC");
     }
 
     #[test]
@@ -1651,7 +1874,7 @@ mod tests {
 
         assert!(registers.is_empty());
         assert_eq!(register_files.len(), 1);
-        assert_eq!(register_files[0].name(), "regfile_0");
+        assert_eq!(register_files[0].name(), "regs_group_0");
         assert_eq!(register_files[0].regs()[0].name(), "CTRL");
         assert_eq!(register_files[0].regs()[1].name(), "STATUS");
     }
@@ -1885,7 +2108,7 @@ mod tests {
     }
 
     #[test]
-    fn reset_dash_marks_field_not_testable_without_reset() {
+    fn reset_dash_marks_field_with_undefined_reset() {
         let table = table(&[&["0", "reg", "value", "[31:0]", "32", "RW", "-", ""]]);
 
         let (registers, register_files) = parse_registers(&table, "regs", 4).unwrap();
@@ -1893,7 +2116,19 @@ mod tests {
         assert!(register_files.is_empty());
         let field = &registers[0].fields()[0];
         assert_eq!(field.reset(), "");
-        assert_eq!(field.testable(), Some(false));
+        assert_eq!(field.testable(), None);
+    }
+
+    #[test]
+    fn blank_reset_marks_field_with_undefined_reset() {
+        let table = table(&[&["0", "reg", "value", "[31:0]", "32", "RW", "", ""]]);
+
+        let (registers, register_files) = parse_registers(&table, "regs", 4).unwrap();
+
+        assert!(register_files.is_empty());
+        let field = &registers[0].fields()[0];
+        assert_eq!(field.reset(), "");
+        assert_eq!(field.testable(), None);
     }
 
     #[test]

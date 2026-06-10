@@ -30,13 +30,25 @@ class {{ block.class_name }} extends uvm_reg_block;
 
     virtual function void build();
 {%- for map in block.maps %}
-      {{ map.var_name }} = create_map({{ map.create_name }}, 0, {{ map.n_bytes }}, UVM_LITTLE_ENDIAN, {{ map.byte_addressing }});
+      {{ map.var_name }} = create_map(
+        .name({{ map.create_name }}),
+        .base_addr(0),
+        .n_bytes({{ map.n_bytes }}),
+        .endian(UVM_LITTLE_ENDIAN),
+        .byte_addressing({{ map.byte_addressing }})
+      );
 {%- endfor %}
 {%- for mem in block.memories %}
 {%- if mem.coverage_enabled %}
       {{ mem.var_name }} = new({{ mem.create_name }});
 {%- else %}
-      {{ mem.var_name }} = new({{ mem.create_name }}, {{ mem.size_words }}, {{ mem.width_bits }}, {{ mem.rights }}, UVM_NO_COVERAGE);
+      {{ mem.var_name }} = new(
+        .name({{ mem.create_name }}),
+        .size({{ mem.size_words }}),
+        .n_bits({{ mem.width_bits }}),
+        .access({{ mem.rights }}),
+        .has_coverage(UVM_NO_COVERAGE)
+      );
 {%- endif %}
       {{ mem.var_name }}.configure(this, {{ mem.hdl_path_expr }});
       {{ mem.map_var_name }}.add_mem({{ mem.var_name }}, {{ mem.offset_literal }}, {{ mem.rights }});
@@ -46,10 +58,15 @@ class {{ block.class_name }} extends uvm_reg_block;
 {%- endfor %}
 {%- for inst in block.instances %}
       {{ inst.var_name }} = {{ inst.class_name }}::type_id::create({{ inst.create_name }});
-      {{ inst.var_name }}.configure({{ inst.configure_args }});
+      {{ inst.var_name }}.configure(this);
       {{ inst.var_name }}.build();
 {%- for slice in inst.hdl_slices %}
-      {{ inst.var_name }}.add_hdl_path_slice({{ slice.path_expr }}, {{ slice.offset }}, {{ slice.size }}, {{ slice.first }});
+      {{ inst.var_name }}.add_hdl_path_slice(
+        .name({{ slice.path_expr }}),
+        .offset({{ slice.offset }}),
+        .size({{ slice.size }}),
+        .first({{ slice.first }})
+      );
 {%- endfor %}
       {{ inst.map_var_name }}.add_reg({{ inst.var_name }}, {{ inst.offset_literal }}, {{ inst.rights }});
 {%- endfor %}

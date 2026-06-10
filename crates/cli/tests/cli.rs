@@ -43,6 +43,15 @@ fn assert_contains_before(haystack: &str, needle: &str, marker: &str) {
     );
 }
 
+fn assert_contains_all(haystack: &str, needles: &[&str]) {
+    for needle in needles {
+        assert!(
+            haystack.contains(needle),
+            "expected output to contain {needle:?}"
+        );
+    }
+}
+
 fn assert_parse_error_contains(values: &[&str], needles: &[&str]) {
     let error = parse_args(args(values)).unwrap_err();
     for needle in needles {
@@ -65,15 +74,12 @@ fn assert_snapsheet_parse_error_contains(values: &[&str], needles: &[&str]) {
 
 #[test]
 fn rejects_missing_subcommand() {
-    assert_parse_error_contains(&[], &["subcommand is required", "snapsheet", "ip-xact"]);
+    assert_parse_error_contains(&[], &["requires a subcommand", "snapsheet", "ip-xact"]);
 }
 
 #[test]
 fn rejects_bare_input_without_subcommand() {
-    assert_parse_error_contains(
-        &["input.xlsx"],
-        &["unknown command", "input.xlsx", "snapsheet"],
-    );
+    assert_parse_error_contains(&["input.xlsx"], &["unrecognized subcommand", "input.xlsx"]);
 }
 
 #[test]
@@ -190,6 +196,7 @@ fn accepts_ipxact_subcommand() {
             output: Some(PathBuf::from("nested/uvmreg_demo.sv")),
             format: IpxactOutputFormat::UvmReg,
             file_layout: irgen_cli::IpxactFileLayout::Single,
+            file_type: irgen_cli::IpxactFileType::Package,
             coverage: false,
             view: None,
             mode: None,
@@ -213,6 +220,7 @@ fn accepts_ipxact_coverage_option() {
             output: None,
             format: IpxactOutputFormat::UvmReg,
             file_layout: irgen_cli::IpxactFileLayout::Single,
+            file_type: irgen_cli::IpxactFileType::Package,
             coverage: true,
             view: None,
             mode: None,
@@ -236,6 +244,7 @@ fn accepts_ipxact_view_option() {
             output: None,
             format: IpxactOutputFormat::UvmReg,
             file_layout: irgen_cli::IpxactFileLayout::Single,
+            file_type: irgen_cli::IpxactFileType::Package,
             coverage: false,
             view: Some("gate".into()),
             mode: None,
@@ -263,6 +272,7 @@ fn accepts_ipxact_mode_option() {
             output: None,
             format: IpxactOutputFormat::UvmReg,
             file_layout: irgen_cli::IpxactFileLayout::Single,
+            file_type: irgen_cli::IpxactFileType::Package,
             coverage: false,
             view: None,
             mode: Some("diagnostic".into()),
@@ -292,6 +302,7 @@ fn accepts_ipxact_library_path_option() {
             output: None,
             format: IpxactOutputFormat::UvmReg,
             file_layout: irgen_cli::IpxactFileLayout::Single,
+            file_type: irgen_cli::IpxactFileType::Package,
             coverage: false,
             view: None,
             mode: None,
@@ -313,6 +324,21 @@ fn accepts_ipxact_file_layout_option() {
     };
 
     assert_eq!(parsed.file_layout, irgen_cli::IpxactFileLayout::Blocks);
+}
+
+#[test]
+fn accepts_ipxact_file_type_option() {
+    let Command::Ipxact(parsed) = parse_args(args(&[
+        "ip-xact",
+        "nested/input.xml",
+        "--file-type",
+        "header",
+    ]))
+    .unwrap() else {
+        panic!("expected ip-xact command");
+    };
+
+    assert_eq!(parsed.file_type, irgen_cli::IpxactFileType::Header);
 }
 
 #[test]
@@ -576,14 +602,23 @@ fn generates_uvm_reg_from_ipxact_subcommand() {
 
     assert_eq!(result.as_deref(), Some(output.as_path()));
     let sv = fs::read_to_string(&output).unwrap();
-    assert!(sv.contains("`ifndef RAL_DEMO_SV"));
+    assert!(sv.contains("`ifndef RAL_DEMO_PKG_SV"));
     assert!(sv.contains("class ral_sys_demo extends uvm_reg_block;"));
     assert!(sv.contains("class ral_block_regs extends uvm_reg_block;"));
     assert!(sv.contains("class ral_reg_regs_status extends uvm_reg;"));
     assert!(!sv.contains("build_coverage(UVM_CVR_REG_BITS)"));
-    assert!(sv.contains("status.add_hdl_path_slice(\"rtl.status.done_q\", 0, 1, 1'b1);"));
-    assert!(sv.contains("default_map.add_reg(status, `UVM_REG_ADDR_WIDTH'h0, \"RO\");"));
-    assert!(sv.contains("default_map.add_submap(regs.default_map, `UVM_REG_ADDR_WIDTH'h0);"));
+    assert_contains_all(
+        &sv,
+        &[
+            "status.add_hdl_path_slice(",
+            ".name(\"rtl.status.done_q\")",
+            ".offset(0)",
+            ".size(1)",
+            ".first(1)",
+            "default_map.add_reg(status, `UVM_REG_ADDR_WIDTH'h0, \"RO\");",
+            "default_map.add_submap(regs.default_map, `UVM_REG_ADDR_WIDTH'h0);",
+        ],
+    );
 
     let view_output = std::env::temp_dir().join(format!(
         "irgen-cli-test-{}-uvmreg-view.sv",
@@ -602,7 +637,16 @@ fn generates_uvm_reg_from_ipxact_subcommand() {
 
     assert_eq!(result.as_deref(), Some(view_output.as_path()));
     let sv = fs::read_to_string(&view_output).unwrap();
-    assert!(sv.contains("status.add_hdl_path_slice(\"gate.status.gate_done\", 0, 1, 1'b1);"));
+    assert_contains_all(
+        &sv,
+        &[
+            "status.add_hdl_path_slice(",
+            ".name(\"gate.status.gate_done\")",
+            ".offset(0)",
+            ".size(1)",
+            ".first(1)",
+        ],
+    );
 
     let mode_output = std::env::temp_dir().join(format!(
         "irgen-cli-test-{}-uvmreg-mode.sv",
@@ -621,8 +665,17 @@ fn generates_uvm_reg_from_ipxact_subcommand() {
 
     assert_eq!(result.as_deref(), Some(mode_output.as_path()));
     let sv = fs::read_to_string(&mode_output).unwrap();
-    assert!(sv.contains("done.configure(this, 1, 0, \"WO\""));
-    assert!(sv.contains("default_map.add_reg(status, `UVM_REG_ADDR_WIDTH'h0, \"WO\");"));
+    assert_contains_all(
+        &sv,
+        &[
+            "done.configure(",
+            ".parent(this)",
+            ".size(1)",
+            ".lsb_pos(0)",
+            ".access(\"WO\")",
+            "default_map.add_reg(status, `UVM_REG_ADDR_WIDTH'h0, \"WO\");",
+        ],
+    );
 
     let coverage_output = std::env::temp_dir().join(format!(
         "irgen-cli-test-{}-uvmreg-cov.sv",
@@ -641,14 +694,40 @@ fn generates_uvm_reg_from_ipxact_subcommand() {
     assert_eq!(result.as_deref(), Some(coverage_output.as_path()));
     let sv = fs::read_to_string(&coverage_output).unwrap();
     assert!(sv.contains("covergroup cg_bits();"));
-    assert!(sv.contains("super.new(name, 32, build_coverage(UVM_CVR_REG_BITS));"));
-    assert!(sv.contains("add_coverage(build_coverage(UVM_CVR_REG_BITS));"));
-    assert!(sv.contains("virtual function void sample(uvm_reg_data_t data,"));
+    assert_contains_all(
+        &sv,
+        &[
+            "super.new(name, 32, build_coverage(UVM_CVR_REG_BITS));",
+            "add_coverage(build_coverage(UVM_CVR_REG_BITS));",
+            "virtual function void sample(uvm_reg_data_t data,",
+        ],
+    );
+    let package_output = std::env::temp_dir().join(format!(
+        "irgen-cli-test-{}-uvmreg-package.sv",
+        std::process::id()
+    ));
+    let result = run([
+        OsString::from("ip-xact"),
+        OsString::from(&input),
+        OsString::from("--file-type"),
+        OsString::from("package"),
+        OsString::from("-o"),
+        OsString::from(&package_output),
+    ]
+    .into_iter())
+    .unwrap();
+
+    assert_eq!(result.as_deref(), Some(package_output.as_path()));
+    let sv = fs::read_to_string(&package_output).unwrap();
+    assert_contains_before(&sv, "package ral_demo_pkg;", "import uvm_pkg::*;");
+    assert_contains_before(&sv, "endpackage", "`endif");
+
     let _ = fs::remove_file(input);
     let _ = fs::remove_file(output);
     let _ = fs::remove_file(view_output);
     let _ = fs::remove_file(mode_output);
     let _ = fs::remove_file(coverage_output);
+    let _ = fs::remove_file(package_output);
 }
 
 #[test]
@@ -726,32 +805,42 @@ fn generates_uvm_reg_by_block_from_ipxact_subcommand() {
     .unwrap();
 
     assert_eq!(result.as_deref(), Some(output.as_path()));
+    let package = normalize_newlines(fs::read_to_string(output.join("ral_demo_pkg.sv")).unwrap());
     let top = normalize_newlines(fs::read_to_string(output.join("ral_demo.sv")).unwrap());
     let cfg = normalize_newlines(fs::read_to_string(output.join("ral_block_cfg.sv")).unwrap());
     let stat = normalize_newlines(fs::read_to_string(output.join("ral_block_stat.sv")).unwrap());
     assert_contains_before(
-        &top,
+        &package,
         "`include \"uvm_macros.svh\"",
-        "class ral_sys_demo extends uvm_reg_block;",
-    );
-    assert_contains_before(
-        &top,
         "`include \"ral_block_cfg.sv\"",
-        "class ral_sys_demo extends uvm_reg_block;",
     );
     assert_contains_before(
-        &top,
+        &package,
+        "`include \"ral_block_cfg.sv\"",
         "`include \"ral_block_stat.sv\"",
-        "class ral_sys_demo extends uvm_reg_block;",
     );
+    assert_contains_before(
+        &package,
+        "`include \"ral_block_stat.sv\"",
+        "`include \"ral_demo.sv\"",
+    );
+    assert_contains_before(&package, "package ral_demo_pkg;", "import uvm_pkg::*;");
+    assert_contains_before(&package, "`include \"ral_demo.sv\"", "endpackage");
     assert!(top.contains("class ral_sys_demo extends uvm_reg_block;"));
+    assert!(!top.contains("import uvm_pkg::*;"));
+    assert!(!top.contains("`include \"uvm_macros.svh\""));
+    assert!(!top.contains("`include \"ral_block_cfg.sv\""));
     assert!(!top.contains("\n\n\n"));
     assert!(cfg.contains("class ral_block_cfg extends uvm_reg_block;"));
     assert!(cfg.contains("class ral_reg_cfg_ctrl extends uvm_reg;"));
     assert!(!cfg.contains("class ral_block_stat extends uvm_reg_block;"));
+    assert!(!cfg.contains("import uvm_pkg::*;"));
+    assert!(!cfg.contains("`include \"uvm_macros.svh\""));
     assert!(!cfg.contains("\n\n\n"));
     assert!(stat.contains("class ral_block_stat extends uvm_reg_block;"));
     assert!(stat.contains("class ral_reg_stat_done extends uvm_reg;"));
+    assert!(!stat.contains("import uvm_pkg::*;"));
+    assert!(!stat.contains("`include \"uvm_macros.svh\""));
     assert!(!stat.contains("\n\n\n"));
 
     let _ = fs::remove_file(input);
@@ -839,11 +928,16 @@ fn ipxact_subcommand_resolves_external_type_definitions_from_input_directory() {
 
     assert_eq!(result.as_deref(), Some(output.as_path()));
     let sv = fs::read_to_string(&output).unwrap();
-    assert!(sv.contains("`ifndef RAL_EXTERNAL_TOP_SV"));
+    assert!(sv.contains("`ifndef RAL_EXTERNAL_TOP_PKG_SV"));
     assert!(sv.contains("class ral_sys_external_top extends uvm_reg_block;"));
     assert!(!sv.contains("localparam"));
-    assert!(sv.contains("default_map.add_reg(status, `UVM_REG_ADDR_WIDTH'h4, \"RO\");"));
-    assert!(sv.contains("default_map.add_submap(cfg.default_map, `UVM_REG_ADDR_WIDTH'h80);"));
+    assert_contains_all(
+        &sv,
+        &[
+            "default_map.add_reg(status, `UVM_REG_ADDR_WIDTH'h4, \"RO\");",
+            "default_map.add_submap(cfg.default_map, `UVM_REG_ADDR_WIDTH'h80);",
+        ],
+    );
     let _ = fs::remove_dir_all(dir);
 }
 
@@ -951,8 +1045,13 @@ fn ipxact_subcommand_resolves_external_type_definitions_from_catalog_library_pat
     assert_eq!(result.as_deref(), Some(output.as_path()));
     let sv = fs::read_to_string(&output).unwrap();
     assert!(sv.contains("class ral_sys_catalog_top extends uvm_reg_block;"));
-    assert!(sv.contains("default_map.add_reg(mode, `UVM_REG_ADDR_WIDTH'h8, \"RW\");"));
-    assert!(sv.contains("default_map.add_submap(cfg.default_map, `UVM_REG_ADDR_WIDTH'h40);"));
+    assert_contains_all(
+        &sv,
+        &[
+            "default_map.add_reg(mode, `UVM_REG_ADDR_WIDTH'h8, \"RW\");",
+            "default_map.add_submap(cfg.default_map, `UVM_REG_ADDR_WIDTH'h40);",
+        ],
+    );
     let _ = fs::remove_dir_all(dir);
 }
 
@@ -1123,6 +1222,7 @@ fn generates_html_output() {
     assert!(register_page.contains("href=\"../index.html\""));
     assert!(!register_page.contains("href=\"../../index.html\""));
     assert!(register_page.contains("Fields for Register: status"));
+    assert!(register_page.contains("ready flag"));
     assert!(register_page.contains("<strong>Value After Reset:</strong> 0"));
     assert!(output_dir.join("assets/register_reference.css").is_file());
     assert!(output_dir.join("assets/register_reference.js").is_file());

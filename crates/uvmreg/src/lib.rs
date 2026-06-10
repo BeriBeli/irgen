@@ -10,7 +10,7 @@ pub use parse::{
     parse_ipxact_with_resolver,
 };
 pub use render::{
-    RenderOptions, RenderedFile, serialize_uvm_reg, serialize_uvm_reg_by_block,
+    FileType, RenderOptions, RenderedFile, serialize_uvm_reg, serialize_uvm_reg_by_block,
     serialize_uvm_reg_by_block_with_options, serialize_uvm_reg_with_options,
 };
 

@@ -3,7 +3,16 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command as ProcessCommand;
 
-use clap::{Parser, ValueEnum, error::ErrorKind};
+use clap::{Args, Parser, Subcommand, ValueEnum, builder::styling, error::ErrorKind};
+
+const CLI_STYLES: styling::Styles = styling::Styles::styled()
+    .header(styling::AnsiColor::Cyan.on_default().bold())
+    .usage(styling::AnsiColor::Cyan.on_default().bold())
+    .literal(styling::AnsiColor::Green.on_default().bold())
+    .placeholder(styling::AnsiColor::Yellow.on_default())
+    .error(styling::AnsiColor::Red.on_default().bold())
+    .valid(styling::AnsiColor::Green.on_default())
+    .invalid(styling::AnsiColor::Yellow.on_default());
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum OutputFormat {
@@ -43,6 +52,14 @@ pub enum IpxactFileLayout {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum IpxactFileType {
+    #[value(name = "package")]
+    Package,
+    #[value(name = "header")]
+    Header,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum IpxactOutputFormat {
     #[value(name = "uvm-reg")]
     UvmReg,
@@ -68,6 +85,7 @@ pub struct IpxactArgs {
     pub output: Option<PathBuf>,
     pub format: IpxactOutputFormat,
     pub file_layout: IpxactFileLayout,
+    pub file_type: IpxactFileType,
     pub coverage: bool,
     pub view: Option<String>,
     pub mode: Option<String>,
@@ -167,22 +185,26 @@ fn run_ipxact(args: IpxactArgs) -> Result<Option<PathBuf>, CliError> {
     let xml = fs::read_to_string(&args.input).map_err(|error| {
         CliError::Runtime(format!("failed to read {}: {error}", args.input.display()))
     })?;
-    let component = parse_ipxact_with_directory_resolver(
-        &args.input,
-        &xml,
-        args.view.clone(),
-        args.mode.clone(),
-        &args.library_paths,
-    )?;
     let render_options = irgen_uvmreg::RenderOptions {
         coverage: args.coverage,
+        file_type: match args.file_type {
+            IpxactFileType::Package => irgen_uvmreg::FileType::Package,
+            IpxactFileType::Header => irgen_uvmreg::FileType::Header,
+        },
     };
     match args.format {
         IpxactOutputFormat::UvmReg => match args.file_layout {
             IpxactFileLayout::Single => {
+                let component = parse_ipxact_with_directory_resolver(
+                    &args.input,
+                    &xml,
+                    args.view.clone(),
+                    args.mode.clone(),
+                    &args.library_paths,
+                )?;
                 let output_path = args
                     .output
-                    .unwrap_or_else(|| default_ipxact_output_path(&component.name));
+                    .unwrap_or_else(|| default_ipxact_output_path(&component.name, args.file_type));
                 let content =
                     irgen_uvmreg::serialize_uvm_reg_with_options(&component, render_options)
                         .map_err(|error| CliError::Runtime(error.to_string()))?;
@@ -190,9 +212,16 @@ fn run_ipxact(args: IpxactArgs) -> Result<Option<PathBuf>, CliError> {
                 Ok(Some(output_path))
             }
             IpxactFileLayout::Blocks => {
-                let output_path = args
-                    .output
-                    .unwrap_or_else(|| default_ipxact_blocks_output_path(&component.name));
+                let component = parse_ipxact_with_directory_resolver(
+                    &args.input,
+                    &xml,
+                    args.view.clone(),
+                    args.mode.clone(),
+                    &args.library_paths,
+                )?;
+                let output_path = args.output.unwrap_or_else(|| {
+                    default_ipxact_blocks_output_path(&component.name, args.file_type)
+                });
                 let files = irgen_uvmreg::serialize_uvm_reg_by_block_with_options(
                     &component,
                     render_options,
@@ -203,10 +232,11 @@ fn run_ipxact(args: IpxactArgs) -> Result<Option<PathBuf>, CliError> {
             }
         },
         IpxactOutputFormat::Html => {
+            let docs_component = irgen_docs::parse_ipxact(&xml)
+                .map_err(|error| CliError::Runtime(error.to_string()))?;
             let output_path = args
                 .output
-                .unwrap_or_else(|| default_ipxact_html_output_path(&component.name));
-            let docs_component = docs_component_from_ipxact(&component);
+                .unwrap_or_else(|| default_ipxact_html_output_path(docs_component.name()));
             write_html_output(&docs_component, &output_path)?;
             Ok(Some(output_path))
         }
@@ -434,16 +464,24 @@ fn component_file_stem(component: &irgen_snapsheet::model::Component) -> String 
     file_stem_from_name(component.name())
 }
 
-fn default_ipxact_output_path(component_name: &str) -> PathBuf {
-    PathBuf::from(format!("ral_{}.sv", file_stem_from_name(component_name)))
+fn default_ipxact_output_path(component_name: &str, file_type: IpxactFileType) -> PathBuf {
+    let stem = file_stem_from_name(component_name);
+    match file_type {
+        IpxactFileType::Package => PathBuf::from(format!("ral_{stem}_pkg.sv")),
+        IpxactFileType::Header => PathBuf::from(format!("ral_{stem}.sv")),
+    }
 }
 
-fn default_ipxact_blocks_output_path(component_name: &str) -> PathBuf {
-    PathBuf::from(format!("ral_{}", file_stem_from_name(component_name)))
+fn default_ipxact_blocks_output_path(component_name: &str, file_type: IpxactFileType) -> PathBuf {
+    let stem = file_stem_from_name(component_name);
+    match file_type {
+        IpxactFileType::Package => PathBuf::from(format!("ral_{stem}_pkg")),
+        IpxactFileType::Header => PathBuf::from(format!("ral_{stem}")),
+    }
 }
 
 fn default_ipxact_html_output_path(component_name: &str) -> PathBuf {
-    PathBuf::from(file_stem_from_name(component_name)).with_extension("html")
+    PathBuf::from(format!("{}-html", file_stem_from_name(component_name)))
 }
 
 fn file_stem_from_name(name: &str) -> String {
@@ -459,94 +497,6 @@ fn file_stem_from_name(name: &str) -> String {
         "component".into()
     } else {
         stem
-    }
-}
-
-fn docs_component_from_ipxact(component: &irgen_uvmreg::Component) -> irgen_docs::model::Component {
-    irgen_docs::model::Component::new(
-        component.vendor.clone(),
-        component.library.clone(),
-        component.name.clone(),
-        component.version.clone(),
-        component
-            .blocks
-            .iter()
-            .map(docs_block_from_ipxact)
-            .collect(),
-    )
-}
-
-fn docs_block_from_ipxact(block: &irgen_uvmreg::AddressBlock) -> irgen_docs::model::Block {
-    irgen_docs::model::Block::new_with_register_files(
-        block.name.clone(),
-        block.base_address.clone(),
-        block.range.clone(),
-        block.width.clone(),
-        block
-            .registers
-            .iter()
-            .map(docs_register_from_ipxact)
-            .collect(),
-        block
-            .register_files
-            .iter()
-            .map(docs_register_file_from_ipxact)
-            .collect(),
-    )
-}
-
-fn docs_register_file_from_ipxact(
-    register_file: &irgen_uvmreg::RegisterFile,
-) -> irgen_docs::model::RegisterFile {
-    irgen_docs::model::RegisterFile::new(
-        register_file.name.clone(),
-        register_file.address_offset.clone(),
-        register_file.range.clone(),
-        register_file.dim.clone(),
-        register_file
-            .registers
-            .iter()
-            .map(docs_register_from_ipxact)
-            .collect(),
-    )
-}
-
-fn docs_register_from_ipxact(register: &irgen_uvmreg::Register) -> irgen_docs::model::Register {
-    irgen_docs::model::Register::new(
-        register.name.clone(),
-        register.address_offset.clone(),
-        register.size.clone(),
-        register.fields.iter().map(docs_field_from_ipxact).collect(),
-    )
-}
-
-fn docs_field_from_ipxact(field: &irgen_uvmreg::Field) -> irgen_docs::model::Field {
-    irgen_docs::model::Field::new_with_options(irgen_docs::model::FieldOptions {
-        name: field.name.clone(),
-        offset: field.bit_offset.clone(),
-        width: field.bit_width.clone(),
-        attr: field.access.clone().unwrap_or_default(),
-        reset: field
-            .reset
-            .clone()
-            .or_else(|| field.resets.first().map(|reset| reset.value.clone()))
-            .unwrap_or_default(),
-        desc: String::new(),
-        hdl_path: field.hdl_path.clone(),
-        testable: field.testable.as_deref().and_then(parse_ipxact_bool),
-        reserved: field
-            .reserved
-            .as_deref()
-            .and_then(parse_ipxact_bool)
-            .unwrap_or(false),
-    })
-}
-
-fn parse_ipxact_bool(value: &str) -> Option<bool> {
-    match value.trim() {
-        "1" | "true" => Some(true),
-        "0" | "false" => Some(false),
-        _ => None,
     }
 }
 
@@ -604,8 +554,34 @@ fn validate_ipxact_xml(schema: &Path, output: &Path) -> Result<(), String> {
 #[command(
     name = "irgen",
     version,
-    about = "Convert a register spreadsheet into an output path."
+    propagate_version = true,
+    subcommand_required = true,
+    arg_required_else_help = false,
+    disable_help_subcommand = true,
+    about = "Convert register descriptions between supported file formats.",
+    after_help = "Run `irgen snapsheet --help` or `irgen ip-xact --help` for command-specific options.",
+    styles = CLI_STYLES
 )]
+struct RawCli {
+    #[command(subcommand)]
+    command: RawCommand,
+}
+
+#[derive(Debug, Subcommand)]
+enum RawCommand {
+    #[command(
+        name = "snapsheet",
+        about = "Convert a register spreadsheet into IP-XACT, RALF, SystemRDL, or all outputs."
+    )]
+    Snapsheet(RawSnapsheetArgs),
+    #[command(
+        name = "ip-xact",
+        about = "Generate UVM register model SystemVerilog or HTML docs from an IP-XACT component XML file."
+    )]
+    Ipxact(RawIpxactArgs),
+}
+
+#[derive(Debug, Args)]
 struct RawSnapsheetArgs {
     #[arg(value_name = "input.xlsx")]
     input: PathBuf,
@@ -638,12 +614,7 @@ struct RawSnapsheetArgs {
     backdoor: bool,
 }
 
-#[derive(Debug, Parser)]
-#[command(
-    name = "irgen ip-xact",
-    version,
-    about = "Generate UVM register model SystemVerilog or HTML docs from an IP-XACT component XML file."
-)]
+#[derive(Debug, Args)]
 struct RawIpxactArgs {
     #[arg(value_name = "input.xml")]
     input: PathBuf,
@@ -669,6 +640,14 @@ struct RawIpxactArgs {
     )]
     file_layout: IpxactFileLayout,
 
+    #[arg(
+        long = "file-type",
+        value_enum,
+        default_value = "package",
+        value_name = "type"
+    )]
+    file_type: IpxactFileType,
+
     #[arg(long = "coverage")]
     coverage: bool,
 
@@ -683,103 +662,28 @@ struct RawIpxactArgs {
 }
 
 pub fn parse_args(args: impl Iterator<Item = OsString>) -> Result<Command, String> {
-    let args = args.collect::<Vec<_>>();
-    match args.first().and_then(|value| value.to_str()) {
-        Some("--help") | Some("-h") => Ok(Command::Help(root_help())),
-        Some("--version") | Some("-V") => parse_snapsheet_args("irgen", args.into_iter()),
-        Some("ip-xact") => parse_ipxact_args(args.into_iter().skip(1)),
-        Some("snapsheet") => parse_snapsheet_args("irgen snapsheet", args.into_iter().skip(1)),
-        Some(command) if command.starts_with('-') => Err(format!(
-            "unexpected argument '{command}'\n\n{}",
-            root_command_hint()
-        )),
-        Some(command) => Err(format!(
-            "unknown command '{command}'\n\n{}",
-            root_command_hint()
-        )),
-        None => Err(format!(
-            "a subcommand is required\n\n{}",
-            root_command_hint()
-        )),
-    }
-}
-
-fn root_help() -> String {
-    concat!(
-        "irgen\n",
-        "\n",
-        "Convert register descriptions between supported file formats.\n",
-        "\n",
-        "Usage:\n",
-        "  irgen <COMMAND> [OPTIONS]\n",
-        "\n",
-        "Commands:\n",
-        "  snapsheet  Convert a register spreadsheet into IP-XACT, RALF, SystemRDL, or all outputs\n",
-        "  ip-xact    Generate UVM register model SystemVerilog or HTML docs from an IP-XACT component XML file\n",
-        "\n",
-        "Options:\n",
-        "  -h, --help     Print help\n",
-        "  -V, --version  Print version\n",
-        "\n",
-        "Run `irgen snapsheet --help` or `irgen ip-xact --help` for command-specific options.\n",
-    )
-    .into()
-}
-
-fn root_command_hint() -> &'static str {
-    concat!(
-        "Usage:\n",
-        "  irgen <COMMAND> [OPTIONS]\n",
-        "\n",
-        "Commands:\n",
-        "  snapsheet  Convert a register spreadsheet into IP-XACT, RALF, SystemRDL, or all outputs\n",
-        "  ip-xact    Generate UVM register model SystemVerilog or HTML docs from an IP-XACT component XML file\n",
-        "\n",
-        "Run `irgen --help` for more information.\n",
-    )
-}
-
-fn parse_snapsheet_args(
-    command_name: &'static str,
-    args: impl Iterator<Item = OsString>,
-) -> Result<Command, String> {
-    match RawSnapsheetArgs::try_parse_from(
-        std::iter::once(OsString::from(command_name)).chain(args),
-    ) {
-        Ok(raw) => convert_raw_args(raw),
+    match RawCli::try_parse_from(std::iter::once(OsString::from("irgen")).chain(args)) {
+        Ok(raw) => match raw.command {
+            RawCommand::Snapsheet(raw) => convert_raw_args(raw),
+            RawCommand::Ipxact(raw) => Ok(Command::Ipxact(IpxactArgs {
+                input: raw.input,
+                output: raw.output,
+                format: raw.format,
+                file_layout: raw.file_layout,
+                file_type: raw.file_type,
+                coverage: raw.coverage,
+                view: raw.view,
+                mode: raw.mode,
+                library_paths: raw.library_paths,
+            })),
+        },
         Err(error)
             if matches!(
                 error.kind(),
                 ErrorKind::DisplayHelp | ErrorKind::DisplayVersion
             ) =>
         {
-            Ok(Command::Help(error.to_string()))
-        }
-        Err(error) => Err(error.to_string()),
-    }
-}
-
-fn parse_ipxact_args(args: impl Iterator<Item = OsString>) -> Result<Command, String> {
-    match RawIpxactArgs::try_parse_from(
-        std::iter::once(OsString::from("irgen ip-xact")).chain(args),
-    ) {
-        Ok(raw) => Ok(Command::Ipxact(IpxactArgs {
-            input: raw.input,
-            output: raw.output,
-            format: raw.format,
-            file_layout: raw.file_layout,
-            coverage: raw.coverage,
-            view: raw.view,
-            mode: raw.mode,
-            library_paths: raw.library_paths,
-        })),
-        Err(error)
-            if matches!(
-                error.kind(),
-                ErrorKind::DisplayHelp | ErrorKind::DisplayVersion
-            ) =>
-        {
-            Ok(Command::Help(error.to_string()))
+            Ok(Command::Help(format!("{}", error.render().ansi())))
         }
         Err(error) => Err(error.to_string()),
     }
@@ -874,8 +778,28 @@ mod tests {
     #[test]
     fn ipxact_default_output_uses_ral_prefix() {
         assert_eq!(
-            default_ipxact_output_path("soc/regs"),
+            default_ipxact_output_path("soc/regs", IpxactFileType::Package),
+            PathBuf::from("ral_soc_regs_pkg.sv")
+        );
+        assert_eq!(
+            default_ipxact_output_path("soc/regs", IpxactFileType::Header),
             PathBuf::from("ral_soc_regs.sv")
+        );
+        assert_eq!(
+            default_ipxact_blocks_output_path("soc/regs", IpxactFileType::Package),
+            PathBuf::from("ral_soc_regs_pkg")
+        );
+        assert_eq!(
+            default_ipxact_blocks_output_path("soc/regs", IpxactFileType::Header),
+            PathBuf::from("ral_soc_regs")
+        );
+    }
+
+    #[test]
+    fn ipxact_html_default_output_uses_component_name_without_extension() {
+        assert_eq!(
+            default_ipxact_html_output_path("soc/regs"),
+            PathBuf::from("soc_regs-html")
         );
     }
 }

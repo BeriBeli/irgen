@@ -565,6 +565,50 @@ mod tests {
     }
 
     #[test]
+    fn sorts_blocks_and_registers_by_numeric_offset() {
+        let component = Component::new(
+            "demo".into(),
+            "regs".into(),
+            "example".into(),
+            "1.0".into(),
+            vec![
+                Block::new(
+                    "high".into(),
+                    "0x100".into(),
+                    "0x100".into(),
+                    "32".into(),
+                    vec![Register::new(
+                        "LATE".into(),
+                        "0x20".into(),
+                        "32".into(),
+                        vec![],
+                    )],
+                ),
+                Block::new(
+                    "low".into(),
+                    "0x0".into(),
+                    "0x100".into(),
+                    "32".into(),
+                    vec![
+                        Register::new("AFTER".into(), "0x10".into(), "32".into(), vec![]),
+                        Register::new("FIRST".into(), "0x0".into(), "32".into(), vec![]),
+                    ],
+                ),
+            ],
+        );
+
+        let site = serialize_html_site(&component, "example_files", "example.html").unwrap();
+        let index = &site.index;
+        assert_contains_before(index, "block-low.html", "block-high.html");
+        assert_eq!(site.pages[2].filename, "block-low.html");
+        assert_eq!(site.pages[3].filename, "block-high.html");
+
+        let low_page = &site.pages[2].content;
+        assert_contains_before(low_page, ">FIRST</a>", ">AFTER</a>");
+        assert_contains_before(low_page, "\"name\":\"FIRST\"", "\"name\":\"AFTER\"");
+    }
+
+    #[test]
     fn keeps_register_files_unexpanded_in_register_docs() {
         let component = Component::new(
             "demo".into(),
@@ -649,5 +693,18 @@ mod tests {
 
     fn compact_html(html: &str) -> String {
         html.split_whitespace().collect::<String>()
+    }
+
+    fn assert_contains_before(haystack: &str, needle: &str, marker: &str) {
+        let needle_index = haystack
+            .find(needle)
+            .unwrap_or_else(|| panic!("expected output to contain {needle:?}"));
+        let marker_index = haystack
+            .find(marker)
+            .unwrap_or_else(|| panic!("expected output to contain {marker:?}"));
+        assert!(
+            needle_index < marker_index,
+            "expected {needle:?} to appear before {marker:?}"
+        );
     }
 }

@@ -15,6 +15,7 @@ Generate UVM RAL:
 cargo run -p irgen-cli -- ip-xact path/to/component.xml
 cargo run -p irgen-cli -- ip-xact path/to/component.xml -o ral_component.sv
 cargo run -p irgen-cli -- ip-xact path/to/component.xml --coverage
+cargo run -p irgen-cli -- ip-xact path/to/component.xml --file-type header
 cargo run -p irgen-cli -- ip-xact path/to/component.xml --file-layout blocks -o ral_component
 ```
 
@@ -32,9 +33,15 @@ cargo run -p irgen-cli -- ip-xact path/to/component.xml --mode diagnostic
 cargo run -p irgen-cli -- ip-xact path/to/component.xml --library-path path/to/ipxact/library
 ```
 
-`--format uvm-reg` is the default. `--file-layout single` writes one
-SystemVerilog file. `--file-layout blocks` writes a directory containing a
-top-level file plus one file per address block.
+`--format uvm-reg` is the default. `--file-type package` is the default and
+wraps generated RAL in a SystemVerilog package named `ral_<component>_pkg`.
+`--file-type header` writes include-guarded SystemVerilog without a package.
+`--file-layout single` writes one SystemVerilog file. `--file-layout blocks`
+writes a directory containing a top-level file plus one file per address block.
+In package blocks layout, `ral_<component>_pkg.sv` imports `uvm_pkg`, includes
+`uvm_macros.svh`, and includes all generated class files. In header blocks
+layout, only the top-level file imports `uvm_pkg` and includes `uvm_macros.svh`;
+per-block files are include headers consumed by the top-level file.
 
 For IEEE 1685-2022 `externalTypeDefinitions`, the CLI scans the input file's
 directory and any `--library-path` directories. It matches XML files by VLNV
@@ -90,6 +97,7 @@ HTML generation is available only from `irgen ip-xact`, not directly from
 ```text
 cargo test -p irgen-uvmreg -p irgen-cli
 cargo run -q -p irgen-cli -- ip-xact path/to/component.xml -o ral_component.sv
+cargo run -q -p irgen-cli -- ip-xact path/to/component.xml --file-type header -o ral_component.sv
 cargo run -q -p irgen-cli -- ip-xact path/to/component.xml --file-layout blocks -o ral_component
 cargo run -q -p irgen-cli -- ip-xact path/to/component.xml --format html -o docs-html
 ```

@@ -1,9 +1,15 @@
 `ifndef {{ guard }}
 `define {{ guard }}
 
+{% if is_package %}
+package {{ package_name }};
+
+{% endif %}
+{% if include_uvm %}
 import uvm_pkg::*;
 `include "uvm_macros.svh"
 
+{% endif %}
 {% for include in includes %}
 `include "{{ include }}"
 
@@ -24,4 +30,8 @@ import uvm_pkg::*;
 {% include "block_class.sv" %}
 
 {% endfor %}
+{% if is_package %}
+endpackage
+
+{% endif %}
 `endif

@@ -11,7 +11,13 @@ class {{ mem.class_name }} extends uvm_mem;
     endgroup
 
     function new(string name = "{{ mem.default_name }}");
-      super.new(name, {{ mem.size_words }}, {{ mem.width_bits }}, {{ mem.rights }}, {{ mem.coverage_model }});
+      super.new(
+        .name(name),
+        .size({{ mem.size_words }}),
+        .n_bits({{ mem.width_bits }}),
+        .access({{ mem.rights }}),
+        .has_coverage({{ mem.coverage_model }})
+      );
       add_coverage(build_coverage(UVM_CVR_ADDR_MAP));
       if (has_coverage(UVM_CVR_ADDR_MAP)) begin
         cg_addr = new();

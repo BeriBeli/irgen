@@ -174,11 +174,13 @@ fn write_field(xml: &mut String, field: &Field, options: ExportOptions) -> Resul
 }
 
 fn write_resets(xml: &mut String, reset: &str) {
-    if reset.is_empty() || reset.trim() == "-" {
-        return;
-    }
     xml.push_str("<ipxact:resets><ipxact:reset>");
-    element(xml, "value", reset);
+    if reset.trim().is_empty() || reset.trim() == "-" {
+        element(xml, "value", "0");
+        element(xml, "mask", "0");
+    } else {
+        element(xml, "value", reset);
+    }
     xml.push_str("</ipxact:reset></ipxact:resets>");
 }
 

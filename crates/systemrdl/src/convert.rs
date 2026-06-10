@@ -3,7 +3,10 @@ use irgen_snapsheet::model as snapsheet_model;
 use crate::ast::*;
 use crate::error::Error;
 use crate::serialize::serialize_document;
-use crate::util::{access_properties, bytes_from_bits, rdl_number, sanitize_string};
+use crate::util::{
+    access_properties, bytes_from_bits, parse_unsigned_literal, rdl_hex_number, rdl_number,
+    sanitize_string,
+};
 
 pub fn serialize_systemrdl(component: &snapsheet_model::Component) -> Result<String, Error> {
     Ok(serialize_document(&component_to_document(component)?))
@@ -43,8 +46,18 @@ fn block_to_addrmap(block: &snapsheet_model::Block) -> Result<Component, Error> 
 
     for register_file in block.register_files() {
         let mut regfile = Component::new(ComponentKind::RegFile, register_file.name());
+        let register_file_offset =
+            parse_unsigned_literal("register file offset", register_file.offset())?;
+        let register_file_stride =
+            parse_unsigned_literal("register file stride", register_file.range())?;
+        let move_offset_into_element = register_file_offset < register_file_stride;
         for register in register_file.regs() {
-            regfile.instances.push(register_instance(register)?);
+            let register = if move_offset_into_element {
+                register_instance_with_base_offset(register, register_file_offset)?
+            } else {
+                register_instance(register)?
+            };
+            regfile.instances.push(register);
         }
         let mut instance = Instance::new(regfile, register_file.name());
         instance.array = Some(Array {
@@ -52,7 +65,11 @@ fn block_to_addrmap(block: &snapsheet_model::Block) -> Result<Component, Error> 
                 register_file.dim().into(),
             ))],
         });
-        instance.address = Some(rdl_number("register file offset", register_file.offset())?);
+        instance.address = Some(if move_offset_into_element {
+            rdl_hex_number(0)
+        } else {
+            rdl_number("register file offset", register_file.offset())?
+        });
         instance.stride = Some(rdl_number("register file stride", register_file.range())?);
         addrmap.instances.push(instance);
     }
@@ -61,6 +78,20 @@ fn block_to_addrmap(block: &snapsheet_model::Block) -> Result<Component, Error> 
 }
 
 fn register_instance(register: &snapsheet_model::Register) -> Result<Instance, Error> {
+    register_instance_with_optional_base_offset(register, None)
+}
+
+fn register_instance_with_base_offset(
+    register: &snapsheet_model::Register,
+    base_offset: u64,
+) -> Result<Instance, Error> {
+    register_instance_with_optional_base_offset(register, Some(base_offset))
+}
+
+fn register_instance_with_optional_base_offset(
+    register: &snapsheet_model::Register,
+    base_offset: Option<u64>,
+) -> Result<Instance, Error> {
     let mut reg = Component::new(ComponentKind::Reg, register.name());
     reg.properties.push(PropertyAssignment::value(
         "regwidth",
@@ -93,7 +124,18 @@ fn register_instance(register: &snapsheet_model::Register) -> Result<Instance, E
             .map(|stride| rdl_number("register stride", stride))
             .transpose()?;
     }
-    instance.address = Some(rdl_number("register offset", register.offset())?);
+    instance.address = Some(match base_offset {
+        Some(base_offset) => {
+            let offset = parse_unsigned_literal("register offset", register.offset())?;
+            let offset = base_offset
+                .checked_add(offset)
+                .ok_or(Error::AddressOverflow {
+                    kind: "register offset",
+                })?;
+            rdl_hex_number(offset)
+        }
+        None => rdl_number("register offset", register.offset())?,
+    });
     Ok(instance)
 }
 

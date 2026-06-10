@@ -50,6 +50,14 @@ impl<'a> DocumentView<'a> {
         for block in component.blks() {
             blocks.push(BlockView::new(block)?);
         }
+        for block in &blocks {
+            let _ = parse_literal("block offset", block.block.offset())?;
+        }
+        blocks.sort_by(|left, right| {
+            block_offset(left)
+                .cmp(&block_offset(right))
+                .then_with(|| left.block.name().cmp(right.block.name()))
+        });
         Ok(Self { component, blocks })
     }
 }
@@ -65,6 +73,14 @@ impl<'a> BlockView<'a> {
         for register_file in block.register_files() {
             registers.extend(expand_register_file(block.name(), register_file)?);
         }
+        for register in &registers {
+            let _ = parse_literal("register offset", &register.display_offset)?;
+        }
+        registers.sort_by(|left, right| {
+            register_offset(left)
+                .cmp(&register_offset(right))
+                .then_with(|| left.display_name.cmp(&right.display_name))
+        });
 
         Ok(Self {
             block,
@@ -238,4 +254,14 @@ fn parse_literal(kind: &'static str, value: &str) -> Result<u64, Error> {
 
 fn format_hex(value: u64) -> String {
     format!("0x{value:X}")
+}
+
+fn block_offset(block: &BlockView<'_>) -> u64 {
+    parse_literal("block offset", block.block.offset())
+        .expect("BlockView construction should validate block offsets")
+}
+
+fn register_offset(register: &RegisterView<'_>) -> u64 {
+    parse_literal("register offset", &register.display_offset)
+        .expect("RegisterView construction should validate register offsets")
 }

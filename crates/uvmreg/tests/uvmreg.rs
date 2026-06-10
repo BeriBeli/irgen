@@ -1,6 +1,6 @@
 use irgen_uvmreg::{
-    ParseOptions, RenderOptions, ipxact_to_uvm_reg, parse_ipxact, parse_ipxact_with_options,
-    parse_ipxact_with_resolver, serialize_uvm_reg_by_block_with_options,
+    FileType, ParseOptions, RenderOptions, ipxact_to_uvm_reg, parse_ipxact,
+    parse_ipxact_with_options, parse_ipxact_with_resolver, serialize_uvm_reg_by_block_with_options,
     serialize_uvm_reg_with_options,
 };
 
@@ -541,17 +541,84 @@ fn generated_uvm_systemverilog_passes_structural_gate() {
     let component = parse_ipxact(IPXACT_2022).unwrap();
     let sv = serialize_uvm_reg_with_options(&component, RenderOptions::default()).unwrap();
     assert_generated_sv_structural_gate("single-file", &sv);
+    assert_contains_before(&sv, "package ral_demo_pkg;", "import uvm_pkg::*;");
+    assert_contains_before(&sv, "endpackage", "`endif");
 
-    let sv = serialize_uvm_reg_with_options(&component, RenderOptions { coverage: true }).unwrap();
+    let sv = serialize_uvm_reg_with_options(
+        &component,
+        RenderOptions {
+            coverage: true,
+            ..RenderOptions::default()
+        },
+    )
+    .unwrap();
     assert_generated_sv_structural_gate("coverage", &sv);
 
-    let files =
-        serialize_uvm_reg_by_block_with_options(&component, RenderOptions { coverage: true })
-            .unwrap();
+    let sv = serialize_uvm_reg_with_options(
+        &component,
+        RenderOptions {
+            file_type: FileType::Header,
+            ..RenderOptions::default()
+        },
+    )
+    .unwrap();
+    assert_generated_sv_structural_gate("single-file-header", &sv);
+    assert!(
+        !sv.contains("package ral_demo_pkg;"),
+        "header file type should not wrap classes in a package"
+    );
+
+    let files = serialize_uvm_reg_by_block_with_options(
+        &component,
+        RenderOptions {
+            coverage: true,
+            ..RenderOptions::default()
+        },
+    )
+    .unwrap();
     assert!(files.len() > 1);
-    for file in files {
-        assert_generated_sv_structural_gate(&file.path, &file.content);
+    for file in &files {
+        if file.path == "ral_demo_pkg.sv" {
+            assert!(file.content.contains("package ral_demo_pkg;"));
+            assert_contains_before(&file.content, "import uvm_pkg::*;", "`include \"ral_block_");
+            assert_contains_before(&file.content, "`include \"ral_demo.sv\"", "endpackage");
+        } else {
+            assert_generated_include_sv_structural_gate(&file.path, &file.content);
+            assert!(
+                !file.content.contains("import uvm_pkg::*;"),
+                "{}: package member files should not import uvm_pkg",
+                file.path
+            );
+            assert!(
+                !file.content.contains("`include \"uvm_macros.svh\""),
+                "{}: package member files should not include uvm_macros",
+                file.path
+            );
+        }
     }
+
+    let files = serialize_uvm_reg_by_block_with_options(
+        &component,
+        RenderOptions {
+            file_type: FileType::Header,
+            ..RenderOptions::default()
+        },
+    )
+    .unwrap();
+    let top = files
+        .iter()
+        .find(|file| file.path == "ral_demo.sv")
+        .expect("missing top RAL file");
+    assert_contains_before(
+        &top.content,
+        "`include \"uvm_macros.svh\"",
+        "`include \"ral_block_",
+    );
+    assert_contains_before(&top.content, "`include \"ral_block_", "class ral_sys_demo");
+    assert!(
+        !files.iter().any(|file| file.path == "ral_demo_pkg.sv"),
+        "header block layout should not emit a package wrapper"
+    );
 }
 
 #[test]
@@ -622,12 +689,19 @@ fn avoids_generated_systemverilog_member_name_collisions() {
 </ipxact:component>"#;
 
     let component = parse_ipxact(xml).unwrap();
-    let sv = serialize_uvm_reg_with_options(&component, RenderOptions { coverage: true }).unwrap();
+    let sv = serialize_uvm_reg_with_options(
+        &component,
+        RenderOptions {
+            coverage: true,
+            ..RenderOptions::default()
+        },
+    )
+    .unwrap();
 
     assert!(sv.contains("uvm_reg_map default_map_1;"));
     assert!(!sv.contains("uvm_reg_map default_map;\n"));
-    assert!(!sv.contains("default_map = create_map(\"default\", 0, 4, UVM_LITTLE_ENDIAN, 1'b1);"));
-    assert!(sv.contains("default_map_1 = create_map(\"default\", 0, 4, UVM_LITTLE_ENDIAN, 1'b1);"));
+    assert!(!sv.contains("default_map = create_map(\"default\", 0, 4, UVM_LITTLE_ENDIAN, 1);"));
+    assert_create_map(&sv, "default_map_1", "\"default\"", "4", "1");
     assert!(sv.contains("rand ral_block_build build_1;"));
     assert!(sv.contains("rand ral_block_default_map default_map_2;"));
     assert!(sv.contains("rand ral_reg_build_default_map default_map_1;"));
@@ -727,8 +801,8 @@ fn prefers_generic_access_handle_over_view_specific_paths() {
     );
 
     let sv = ipxact_to_uvm_reg(xml).unwrap();
-    assert!(sv.contains("status.add_hdl_path_slice(\"rtl.status.ready_q\", 0, 1, 1'b1);"));
-    assert!(sv.contains("fallback.add_hdl_path_slice(\"rtl.fallback\", -1, -1, 1'b1);"));
+    assert_hdl_path_slice(&sv, "status", "\"rtl.status.ready_q\"", "0", "1", "1");
+    assert_hdl_path_slice(&sv, "fallback", "\"rtl.fallback\"", "-1", "-1", "1");
     assert!(!sv.contains("gate.status"));
     assert!(!sv.contains("gate_ready"));
 
@@ -753,8 +827,15 @@ fn prefers_generic_access_handle_over_view_specific_paths() {
 
     let gate_sv =
         serialize_uvm_reg_with_options(&gate_component, RenderOptions::default()).unwrap();
-    assert!(gate_sv.contains("status.add_hdl_path_slice(\"gate.status.gate_ready\", 0, 1, 1'b1);"));
-    assert!(gate_sv.contains("fallback.add_hdl_path_slice(\"rtl.fallback\", -1, -1, 1'b1);"));
+    assert_hdl_path_slice(
+        &gate_sv,
+        "status",
+        "\"gate.status.gate_ready\"",
+        "0",
+        "1",
+        "1",
+    );
+    assert_hdl_path_slice(&gate_sv, "fallback", "\"rtl.fallback\"", "-1", "-1", "1");
     assert!(!gate_sv.contains("rtl_only.fallback"));
 }
 
@@ -844,11 +925,16 @@ fn skips_selected_access_handles_without_paths_when_later_handle_has_path() {
     );
 
     let sv = ipxact_to_uvm_reg(xml).unwrap();
-    assert!(sv.contains("status.add_hdl_path_slice(\"rtl.status.ready_q\", 0, 1, 1'b1);"));
+    assert_hdl_path_slice(&sv, "status", "\"rtl.status.ready_q\"", "0", "1", "1");
     let gate_sv =
         serialize_uvm_reg_with_options(&gate_component, RenderOptions::default()).unwrap();
-    assert!(
-        gate_sv.contains("status.add_hdl_path_slice(\"rtl.status.gate_ready_q\", 0, 1, 1'b1);")
+    assert_hdl_path_slice(
+        &gate_sv,
+        "status",
+        "\"rtl.status.gate_ready_q\"",
+        "0",
+        "1",
+        "1",
     );
 }
 
@@ -1014,14 +1100,26 @@ fn renders_multiple_hdl_slices_for_split_fields() {
     assert_eq!(field.hdl_path_slices[1].right.as_deref(), Some("0"));
 
     let sv = ipxact_to_uvm_reg(xml).unwrap();
-    assert!(sv.contains(
-        "status.add_hdl_path_slice(\"top.u_regs.status.payload_hi[3:0]\", 12, 4, 1'b1);"
+    assert!(contains_named_call(
+        &sv,
+        "status.add_hdl_path_slice",
+        &[
+            ("name", "\"top.u_regs.status.payload_hi[3:0]\""),
+            ("offset", "12"),
+            ("size", "4"),
+            ("first", "1"),
+        ],
     ));
-    assert!(
-        sv.contains(
-            "status.add_hdl_path_slice(\"top.u_regs.status.payload_lo[3:0]\", 8, 4, 1'b0);"
-        )
-    );
+    assert!(contains_named_call(
+        &sv,
+        "status.add_hdl_path_slice",
+        &[
+            ("name", "\"top.u_regs.status.payload_lo[3:0]\""),
+            ("offset", "8"),
+            ("size", "4"),
+            ("first", "0"),
+        ],
+    ));
 }
 
 #[test]
@@ -1213,9 +1311,15 @@ fn selects_mode_specific_access_policies_when_requested() {
     assert_eq!(register.fields[0].access.as_deref(), Some("read-only"));
 
     let sv = ipxact_to_uvm_reg(xml).unwrap();
-    assert!(sv.contains("flag.configure(this, 1, 0, \"RO\""));
-    assert!(sv.contains("value.configure(this, 3, 1, \"RO\""));
-    assert!(sv.contains("default_map.add_reg(status, `UVM_REG_ADDR_WIDTH'h0, \"RO\");"));
+    assert!(sv.contains(&field_configure_access("flag", "1", "0", "RO")));
+    assert!(sv.contains(&field_configure_access("value", "3", "1", "RO")));
+    assert_add_reg(
+        &sv,
+        "default_map",
+        "status",
+        "`UVM_REG_ADDR_WIDTH'h0",
+        "\"RO\"",
+    );
 
     let diagnostic = parse_ipxact_with_options(
         xml,
@@ -1231,9 +1335,15 @@ fn selects_mode_specific_access_policies_when_requested() {
     assert_eq!(register.fields[0].access.as_deref(), Some("write-only"));
 
     let sv = serialize_uvm_reg_with_options(&diagnostic, RenderOptions::default()).unwrap();
-    assert!(sv.contains("flag.configure(this, 1, 0, \"WO\""));
-    assert!(sv.contains("value.configure(this, 3, 1, \"RW\""));
-    assert!(sv.contains("default_map.add_reg(status, `UVM_REG_ADDR_WIDTH'h0, \"RW\");"));
+    assert!(sv.contains(&field_configure_access("flag", "1", "0", "WO")));
+    assert!(sv.contains(&field_configure_access("value", "3", "1", "RW")));
+    assert_add_reg(
+        &sv,
+        "default_map",
+        "status",
+        "`UVM_REG_ADDR_WIDTH'h0",
+        "\"RW\"",
+    );
 }
 
 #[test]
@@ -1322,9 +1432,15 @@ fn selects_lowest_priority_mode_access_policy() {
     assert_eq!(register.fields[0].access.as_deref(), Some("write-only"));
 
     let sv = serialize_uvm_reg_with_options(&diagnostic, RenderOptions::default()).unwrap();
-    assert!(sv.contains("flag.configure(this, 1, 0, \"WO\""));
-    assert!(sv.contains("value.configure(this, 3, 1, \"RW\""));
-    assert!(sv.contains("default_map.add_reg(status, `UVM_REG_ADDR_WIDTH'h0, \"RW\");"));
+    assert!(sv.contains(&field_configure_access("flag", "1", "0", "WO")));
+    assert!(sv.contains(&field_configure_access("value", "3", "1", "RW")));
+    assert_add_reg(
+        &sv,
+        "default_map",
+        "status",
+        "`UVM_REG_ADDR_WIDTH'h0",
+        "\"RW\"",
+    );
 }
 
 #[test]
@@ -1495,12 +1611,26 @@ fn reports_requested_field_access_policy_mode_without_matching_or_generic_policy
 #[test]
 fn optionally_renders_register_bit_coverage() {
     let component = parse_ipxact(IPXACT_COMMON).unwrap();
-    let sv = serialize_uvm_reg_with_options(&component, RenderOptions { coverage: true }).unwrap();
+    let sv = serialize_uvm_reg_with_options(
+        &component,
+        RenderOptions {
+            coverage: true,
+            ..RenderOptions::default()
+        },
+    )
+    .unwrap();
 
     assert!(sv.contains("local uvm_reg_data_t m_data;"));
     assert!(sv.contains("covergroup cg_bits();"));
     assert!(sv.contains("done_bits: coverpoint {m_data[0:0], m_is_read} iff (m_be);"));
-    assert!(sv.contains("super.new(name, 32, build_coverage(UVM_CVR_REG_BITS));"));
+    assert_super_new(
+        &sv,
+        &[
+            ("name", "name"),
+            ("n_bits", "32"),
+            ("has_coverage", "build_coverage(UVM_CVR_REG_BITS)"),
+        ],
+    );
     assert!(sv.contains("add_coverage(build_coverage(UVM_CVR_REG_BITS));"));
     assert!(sv.contains("if (get_coverage(UVM_CVR_REG_BITS)) begin"));
     assert!(sv.contains("cg_bits.sample();"));
@@ -1522,11 +1652,17 @@ fn renders_ipxact_2022_field_access_policies() {
 
     let sv = ipxact_to_uvm_reg(IPXACT_2022).unwrap();
 
-    assert!(sv.contains("clear.configure(this, 1, 0, \"W1C\", 1'b0, 1'h0, 1'b1, 1'b1, 1);"));
-    assert!(sv.contains("clear.set_reset(1'h1, \"SOFT\");"));
+    assert!(sv.contains(&field_configure_call(
+        "clear",
+        "1",
+        "0",
+        "W1C",
+        field_args("0", "1'h0", "1", "1")
+    )));
+    assert_set_reset(&sv, "clear", "1'h1", "\"SOFT\"");
     assert!(!sv.contains("clear.set_compare"));
     assert!(sv.contains("state.set_compare(UVM_NO_CHECK);"));
-    assert!(sv.contains("irq.add_hdl_path_slice({`IRQ_HDL_PATH, \".clear_q\"}, 0, 1, 1'b1);"));
+    assert_hdl_path_slice(&sv, "irq", "{`IRQ_HDL_PATH, \".clear_q\"}", "0", "1", "1");
 }
 
 #[test]
@@ -1564,6 +1700,21 @@ fn applies_ipxact_reset_masks_to_generated_uvm_resets() {
               </ipxact:reset>
             </ipxact:resets>
           </ipxact:field>
+          <ipxact:field>
+            <ipxact:name>undefined</ipxact:name>
+            <ipxact:bitOffset>4</ipxact:bitOffset>
+            <ipxact:bitWidth>4</ipxact:bitWidth>
+            <ipxact:resets>
+              <ipxact:reset>
+                <ipxact:value>4'hf</ipxact:value>
+                <ipxact:mask>4'h0</ipxact:mask>
+              </ipxact:reset>
+              <ipxact:reset resetTypeRef="SOFT">
+                <ipxact:value>4'ha</ipxact:value>
+                <ipxact:mask>4'h0</ipxact:mask>
+              </ipxact:reset>
+            </ipxact:resets>
+          </ipxact:field>
         </ipxact:register>
       </ipxact:addressBlock>
     </ipxact:memoryMap>
@@ -1579,8 +1730,22 @@ fn applies_ipxact_reset_masks_to_generated_uvm_resets() {
     assert_eq!(field.resets[1].mask.as_deref(), Some("4'h3"));
 
     let sv = ipxact_to_uvm_reg(xml).unwrap();
-    assert!(sv.contains("mode.configure(this, 4, 0, \"RW\", 1'b0, 4'h5, 1'b1, 1'b1, 1);"));
-    assert!(sv.contains("mode.set_reset(4'h2, \"SOFT\");"));
+    assert!(sv.contains(&field_configure_call(
+        "mode",
+        "4",
+        "0",
+        "RW",
+        field_args("0", "4'h5", "1", "1")
+    )));
+    assert_set_reset(&sv, "mode", "4'h2", "\"SOFT\"");
+    assert!(sv.contains(&field_configure_call(
+        "undefined",
+        "4",
+        "4",
+        "RW",
+        field_args("0", "4'h0", "0", "1")
+    )));
+    assert!(!sv.contains("undefined.set_reset"));
 }
 
 #[test]
@@ -1704,23 +1869,35 @@ fn maps_ipxact_read_write_side_effects_to_ieee_1800_2_access_strings() {
 
     let sv = ipxact_to_uvm_reg(xml).unwrap();
 
-    assert!(sv.contains("rw_clear.configure(this, 1, 0, \"WRC\""));
-    assert!(sv.contains("rw_set.configure(this, 1, 1, \"WRS\""));
-    assert!(sv.contains("rw_once.configure(this, 1, 2, \"W1\""));
-    assert!(sv.contains("wo_once.configure(this, 1, 3, \"WO1\""));
-    assert!(sv.contains("w_set_r_clear.configure(this, 1, 4, \"WSRC\""));
-    assert!(sv.contains("w_clear_r_set.configure(this, 1, 5, \"WCRS\""));
-    assert!(sv.contains("disabled.configure(this, 1, 6, \"NOACCESS\""));
-    assert!(sv.contains("woc.configure(this, 1, 0, \"WOC\""));
-    assert!(sv.contains("wos.configure(this, 1, 1, \"WOS\""));
-    assert!(sv.contains("w1src.configure(this, 1, 2, \"W1SRC\""));
-    assert!(sv.contains("w1crs.configure(this, 1, 3, \"W1CRS\""));
-    assert!(sv.contains("w0src.configure(this, 1, 4, \"W0SRC\""));
-    assert!(sv.contains("w0crs.configure(this, 1, 5, \"W0CRS\""));
-    assert!(sv.contains("default_map.add_reg(effects, `UVM_REG_ADDR_WIDTH'h0, \"RW\");"));
-    assert!(
-        sv.contains("default_map.add_reg(write_only_effects, `UVM_REG_ADDR_WIDTH'h4, \"RW\");")
+    assert!(sv.contains(&field_configure_access("rw_clear", "1", "0", "WRC")));
+    assert!(sv.contains(&field_configure_access("rw_set", "1", "1", "WRS")));
+    assert!(sv.contains(&field_configure_access("rw_once", "1", "2", "W1")));
+    assert!(sv.contains(&field_configure_access("wo_once", "1", "3", "WO1")));
+    assert!(sv.contains(&field_configure_access("w_set_r_clear", "1", "4", "WSRC")));
+    assert!(sv.contains(&field_configure_access("w_clear_r_set", "1", "5", "WCRS")));
+    assert!(sv.contains(&field_configure_access("disabled", "1", "6", "NOACCESS")));
+    assert!(sv.contains(&field_configure_access("woc", "1", "0", "WOC")));
+    assert!(sv.contains(&field_configure_access("wos", "1", "1", "WOS")));
+    assert!(sv.contains(&field_configure_access("w1src", "1", "2", "W1SRC")));
+    assert!(sv.contains(&field_configure_access("w1crs", "1", "3", "W1CRS")));
+    assert!(sv.contains(&field_configure_access("w0src", "1", "4", "W0SRC")));
+    assert!(sv.contains(&field_configure_access("w0crs", "1", "5", "W0CRS")));
+    assert_add_reg(
+        &sv,
+        "default_map",
+        "effects",
+        "`UVM_REG_ADDR_WIDTH'h0",
+        "\"RW\"",
     );
+    assert!(contains_sv_call(
+        &sv,
+        "default_map.add_reg",
+        &[
+            ("rg", "write_only_effects"),
+            ("offset", "`UVM_REG_ADDR_WIDTH'h4"),
+            ("rights", "\"RW\""),
+        ],
+    ));
 }
 
 #[test]
@@ -1968,9 +2145,21 @@ fn renders_ipxact_alternate_registers() {
 
     let sv = ipxact_to_uvm_reg(IPXACT_2022).unwrap();
     assert!(sv.contains("class ral_reg_regs_irq_debug_irq extends uvm_reg;"));
-    assert!(sv.contains("raw.configure(this, 8, 0, \"RO\", 1'b0, 8'h0, 1'b0, 1'b0, 1);"));
+    assert!(sv.contains(&field_configure_call(
+        "raw",
+        "8",
+        "0",
+        "RO",
+        field_args("0", "8'h0", "0", "0")
+    )));
     assert!(sv.contains("rand ral_reg_regs_irq_debug_irq debug_irq;"));
-    assert!(sv.contains("default_map.add_reg(debug_irq, `UVM_REG_ADDR_WIDTH'h0, \"RO\");"));
+    assert_add_reg(
+        &sv,
+        "default_map",
+        "debug_irq",
+        "`UVM_REG_ADDR_WIDTH'h0",
+        "\"RO\"",
+    );
 }
 
 #[test]
@@ -1987,14 +2176,38 @@ fn inherits_block_and_register_access_policies() {
     assert_eq!(gate.fields[0].access.as_deref(), None);
 
     let sv = ipxact_to_uvm_reg(IPXACT_2022).unwrap();
-    assert!(sv.contains("state.configure(this, 4, 0, \"RO\", 1'b0, 4'h0, 1'b0, 1'b0, 1);"));
+    assert!(sv.contains(&field_configure_call(
+        "state",
+        "4",
+        "0",
+        "RO",
+        field_args("0", "4'h0", "0", "0")
+    )));
     assert!(sv.contains("typedef enum bit [3:0] {"));
     assert!(sv.contains("STATE_IDLE = 4'h0,"));
     assert!(sv.contains("STATE_BUSY = 4'h1"));
     assert!(sv.contains("} state_e;"));
-    assert!(sv.contains("default_map.add_reg(block_status, `UVM_REG_ADDR_WIDTH'h4, \"RO\");"));
-    assert!(sv.contains("doorbell.configure(this, 1, 0, \"WO\", 1'b0, 1'h0, 1'b0, 1'b1, 1);"));
-    assert!(sv.contains("default_map.add_reg(gate, `UVM_REG_ADDR_WIDTH'h20, \"WO\");"));
+    assert_add_reg(
+        &sv,
+        "default_map",
+        "block_status",
+        "`UVM_REG_ADDR_WIDTH'h4",
+        "\"RO\"",
+    );
+    assert!(sv.contains(&field_configure_call(
+        "doorbell",
+        "1",
+        "0",
+        "WO",
+        field_args("0", "1'h0", "0", "1")
+    )));
+    assert_add_reg(
+        &sv,
+        "default_map",
+        "gate",
+        "`UVM_REG_ADDR_WIDTH'h20",
+        "\"WO\"",
+    );
 }
 
 #[test]
@@ -2009,11 +2222,34 @@ fn renders_ipxact_memory_blocks_as_uvm_mem() {
 
     let sv = ipxact_to_uvm_reg(IPXACT_2022).unwrap();
     assert!(sv.contains("uvm_mem packet_mem;"));
-    assert!(sv.contains("packet_mem = new(\"packet_mem\", 64, 32, \"RO\", UVM_NO_COVERAGE);"));
-    assert!(sv.contains("packet_mem.configure(this, `PKT_MEM_HDL_PATH);"));
-    assert!(sv.contains("default_map.add_mem(packet_mem, `UVM_REG_ADDR_WIDTH'h0, \"RO\");"));
-    assert!(
-        sv.contains("default_map.add_submap(packet_mem.default_map, `UVM_REG_ADDR_WIDTH'h2000);")
+    assert_new(
+        &sv,
+        "packet_mem",
+        &[
+            ("name", "\"packet_mem\""),
+            ("size", "64"),
+            ("n_bits", "32"),
+            ("access", "\"RO\""),
+            ("has_coverage", "UVM_NO_COVERAGE"),
+        ],
+    );
+    assert_configure(
+        &sv,
+        "packet_mem",
+        &[("parent", "this"), ("hdl_path", "`PKT_MEM_HDL_PATH")],
+    );
+    assert_add_mem(
+        &sv,
+        "default_map",
+        "packet_mem",
+        "`UVM_REG_ADDR_WIDTH'h0",
+        "\"RO\"",
+    );
+    assert_add_submap(
+        &sv,
+        "default_map",
+        "packet_mem.default_map",
+        "`UVM_REG_ADDR_WIDTH'h2000",
     );
 }
 
@@ -2042,8 +2278,24 @@ fn renders_read_write_ipxact_memory_blocks_as_rw_uvm_mem() {
 
     let sv = ipxact_to_uvm_reg(xml).unwrap();
 
-    assert!(sv.contains("buffer = new(\"buffer\", 8, 32, \"RW\", UVM_NO_COVERAGE);"));
-    assert!(sv.contains("default_map.add_mem(buffer, `UVM_REG_ADDR_WIDTH'h0, \"RW\");"));
+    assert_new(
+        &sv,
+        "buffer",
+        &[
+            ("name", "\"buffer\""),
+            ("size", "8"),
+            ("n_bits", "32"),
+            ("access", "\"RW\""),
+            ("has_coverage", "UVM_NO_COVERAGE"),
+        ],
+    );
+    assert_add_mem(
+        &sv,
+        "default_map",
+        "buffer",
+        "`UVM_REG_ADDR_WIDTH'h0",
+        "\"RW\"",
+    );
 }
 
 #[test]
@@ -2179,19 +2431,35 @@ fn reports_zero_memory_map_address_unit_bits() {
 #[test]
 fn optionally_renders_memory_address_coverage() {
     let component = parse_ipxact(IPXACT_2022).unwrap();
-    let sv = serialize_uvm_reg_with_options(&component, RenderOptions { coverage: true }).unwrap();
+    let sv = serialize_uvm_reg_with_options(
+        &component,
+        RenderOptions {
+            coverage: true,
+            ..RenderOptions::default()
+        },
+    )
+    .unwrap();
 
     assert!(sv.contains("class ral_mem_packet_mem extends uvm_mem;"));
     assert!(sv.contains("`uvm_object_utils(ral_mem_packet_mem)"));
     assert!(sv.contains("covergroup cg_addr();"));
     assert!(sv.contains("offset: coverpoint m_offset;"));
     assert!(sv.contains("access: coverpoint m_is_read;"));
-    assert!(sv.contains("super.new(name, 64, 32, \"RO\", build_coverage(UVM_CVR_ADDR_MAP));"));
+    assert_super_new(
+        &sv,
+        &[
+            ("name", "name"),
+            ("size", "64"),
+            ("n_bits", "32"),
+            ("access", "\"RO\""),
+            ("has_coverage", "build_coverage(UVM_CVR_ADDR_MAP)"),
+        ],
+    );
     assert!(sv.contains("add_coverage(build_coverage(UVM_CVR_ADDR_MAP));"));
     assert!(sv.contains("if (get_coverage(UVM_CVR_ADDR_MAP)) begin"));
     assert!(sv.contains("cg_addr.sample();"));
     assert!(sv.contains("ral_mem_packet_mem packet_mem;"));
-    assert!(sv.contains("packet_mem = new(\"packet_mem\");"));
+    assert_new(&sv, "packet_mem", &[("name", "\"packet_mem\"")]);
     assert!(!sv.contains("packet_mem = new(\"packet_mem\", 64, 32, \"RO\", UVM_NO_COVERAGE);"));
 }
 
@@ -2218,11 +2486,26 @@ fn expands_local_address_block_and_register_definitions() {
     assert!(sv.contains("class ral_reg_from_definition_status_from_def extends uvm_reg;"));
     assert!(sv.contains("READY_NOT_READY = 2'h0,"));
     assert!(sv.contains("READY_READY = 2'h1"));
-    assert!(sv.contains("ready.configure(this, 2, 0, \"RC\", 1'b1, 2'h1, 1'b1, 1'b0, 1);"));
-    assert!(sv.contains("default_map.add_reg(status_from_def, `UVM_REG_ADDR_WIDTH'h0, \"RO\");"));
-    assert!(sv.contains(
-        "default_map.add_submap(from_definition.default_map, `UVM_REG_ADDR_WIDTH'h2400);"
-    ));
+    assert!(sv.contains(&field_configure_call(
+        "ready",
+        "2",
+        "0",
+        "RC",
+        field_args("1", "2'h1", "1", "0")
+    )));
+    assert_add_reg(
+        &sv,
+        "default_map",
+        "status_from_def",
+        "`UVM_REG_ADDR_WIDTH'h0",
+        "\"RO\"",
+    );
+    assert_add_submap(
+        &sv,
+        "default_map",
+        "from_definition.default_map",
+        "`UVM_REG_ADDR_WIDTH'h2400",
+    );
 }
 
 #[test]
@@ -2239,13 +2522,31 @@ fn flattens_serial_banks_into_address_blocks() {
 
     let sv = ipxact_to_uvm_reg(IPXACT_2022).unwrap();
     assert!(sv.contains("class ral_reg_banked_ctl_mode extends uvm_reg;"));
-    assert!(sv.contains("default_map.add_reg(mode, `UVM_REG_ADDR_WIDTH'h0, \"RW\");"));
-    assert!(sv.contains("default_map.add_reg(value, `UVM_REG_ADDR_WIDTH'h4, \"RO\");"));
-    assert!(
-        sv.contains("default_map.add_submap(banked_ctl.default_map, `UVM_REG_ADDR_WIDTH'h3000);")
+    assert_add_reg(
+        &sv,
+        "default_map",
+        "mode",
+        "`UVM_REG_ADDR_WIDTH'h0",
+        "\"RW\"",
     );
-    assert!(
-        sv.contains("default_map.add_submap(banked_stat.default_map, `UVM_REG_ADDR_WIDTH'h3010);")
+    assert_add_reg(
+        &sv,
+        "default_map",
+        "value",
+        "`UVM_REG_ADDR_WIDTH'h4",
+        "\"RO\"",
+    );
+    assert_add_submap(
+        &sv,
+        "default_map",
+        "banked_ctl.default_map",
+        "`UVM_REG_ADDR_WIDTH'h3000",
+    );
+    assert_add_submap(
+        &sv,
+        "default_map",
+        "banked_stat.default_map",
+        "`UVM_REG_ADDR_WIDTH'h3010",
     );
 }
 
@@ -2274,9 +2575,13 @@ fn preserves_memory_remaps_and_generates_their_registers() {
     let sv = ipxact_to_uvm_reg(IPXACT_2022).unwrap();
     assert!(sv.contains("class ral_reg_low_power_lp_regs_wake extends uvm_reg;"));
     assert!(sv.contains("rand ral_reg_low_power_lp_regs_wake low_power_lp_regs_wake;"));
-    assert!(sv.contains(
-        "default_map.add_reg(low_power_lp_regs_wake, `UVM_REG_ADDR_WIDTH'h4000, \"RO\");"
-    ));
+    assert_add_reg(
+        &sv,
+        "default_map",
+        "low_power_lp_regs_wake",
+        "`UVM_REG_ADDR_WIDTH'h4000",
+        "\"RO\"",
+    );
 }
 
 #[test]
@@ -2376,13 +2681,19 @@ fn filters_memory_remaps_by_requested_mode() {
     assert_eq!(debug_component.memory_remaps[1].name, "common");
 
     let sv = serialize_uvm_reg_with_options(&debug_component, RenderOptions::default()).unwrap();
-    assert!(
-        sv.contains("default_map.add_reg(debug_dbg_regs_ctrl, `UVM_REG_ADDR_WIDTH'h4, \"RW\");")
+    assert_add_reg(
+        &sv,
+        "default_map",
+        "debug_dbg_regs_ctrl",
+        "`UVM_REG_ADDR_WIDTH'h4",
+        "\"RW\"",
     );
-    assert!(
-        sv.contains(
-            "default_map.add_reg(common_common_regs_ctrl, `UVM_REG_ADDR_WIDTH'hc, \"RW\");"
-        )
+    assert_add_reg(
+        &sv,
+        "default_map",
+        "common_common_regs_ctrl",
+        "`UVM_REG_ADDR_WIDTH'hc",
+        "\"RW\"",
     );
     assert!(!sv.contains("sleep_sleep_regs_ctrl"));
 }
@@ -2399,15 +2710,23 @@ fn renders_ipxact_register_arrays() {
     assert_eq!(counter.volatile.as_deref(), Some("true"));
 
     let sv = ipxact_to_uvm_reg(IPXACT_2022).unwrap();
-    assert!(sv.contains("value.configure(this, 32, 0, \"RW\", 1'b1, 32'h0, 1'b0, 1'b1, 1);"));
+    assert!(sv.contains(&field_configure_call(
+        "value",
+        "32",
+        "0",
+        "RW",
+        field_args("1", "32'h0", "0", "1")
+    )));
     assert!(sv.contains("rand ral_reg_regs_counter counter[2][1];"));
     assert!(sv.contains("for (int unsigned i0 = 0; i0 < 2; i0++) begin"));
     assert!(sv.contains("for (int unsigned i1 = 0; i1 < 1; i1++) begin"));
     assert!(sv.contains("counter[i0][i1] = ral_reg_regs_counter::type_id::create($sformatf(\"counter_%0d_%0d\", i0, i1));"));
-    assert!(
-        sv.contains(
-            "default_map.add_reg(counter[i0][i1], `UVM_REG_ADDR_WIDTH'h10 + (i0 * 1 + i1) * `UVM_REG_ADDR_WIDTH'h8, \"RW\");"
-        )
+    assert_add_reg(
+        &sv,
+        "default_map",
+        "counter[i0][i1]",
+        "`UVM_REG_ADDR_WIDTH'h10 + (i0 * 1 + i1) * `UVM_REG_ADDR_WIDTH'h8",
+        "\"RW\"",
     );
 }
 
@@ -2549,9 +2868,23 @@ fn renders_indexed_access_handles_for_register_arrays() {
 
     let sv = ipxact_to_uvm_reg(xml).unwrap();
     assert!(sv.contains("if (i == 0) begin"));
-    assert!(sv.contains("counter[i].add_hdl_path_slice(\"top.u_regs.counter0\", -1, -1, 1'b1);"));
+    assert_hdl_path_slice(
+        &sv,
+        "counter[i]",
+        "\"top.u_regs.counter0\"",
+        "-1",
+        "-1",
+        "1",
+    );
     assert!(sv.contains("if (i == 1) begin"));
-    assert!(sv.contains("counter[i].add_hdl_path_slice(\"top.u_regs.counter1\", -1, -1, 1'b1);"));
+    assert_hdl_path_slice(
+        &sv,
+        "counter[i]",
+        "\"top.u_regs.counter1\"",
+        "-1",
+        "-1",
+        "1",
+    );
 }
 
 #[test]
@@ -2631,11 +2964,11 @@ fn renders_indexed_field_access_handles_for_register_arrays() {
 
     let sv = ipxact_to_uvm_reg(xml).unwrap();
     assert!(sv.contains("if (i == 0) begin"));
-    assert!(sv.contains("status[i].add_hdl_path_slice(\"top.u0.ready_q\", 0, 1, 1'b1);"));
-    assert!(sv.contains("status[i].add_hdl_path_slice(\"top.u0.error_q\", 1, 1, 1'b0);"));
+    assert_hdl_path_slice(&sv, "status[i]", "\"top.u0.ready_q\"", "0", "1", "1");
+    assert_hdl_path_slice(&sv, "status[i]", "\"top.u0.error_q\"", "1", "1", "0");
     assert!(sv.contains("if (i == 1) begin"));
-    assert!(sv.contains("status[i].add_hdl_path_slice(\"top.u1.ready_q\", 0, 1, 1'b1);"));
-    assert!(sv.contains("status[i].add_hdl_path_slice(\"top.u1.error_q\", 1, 1, 1'b0);"));
+    assert_hdl_path_slice(&sv, "status[i]", "\"top.u1.ready_q\"", "0", "1", "1");
+    assert_hdl_path_slice(&sv, "status[i]", "\"top.u1.error_q\"", "1", "1", "0");
 }
 
 #[test]
@@ -3080,14 +3413,44 @@ fn respects_memory_map_address_unit_bits() {
     assert_eq!(component.blocks[0].address_unit_bits, "32");
 
     let sv = ipxact_to_uvm_reg(xml).unwrap();
-    assert!(
-        sv.contains("default_map = create_map(\"default_map\", 0, 4, UVM_LITTLE_ENDIAN, 1'b0);")
+    assert_create_map(&sv, "default_map", "\"default_map\"", "4", "0");
+    assert_add_reg(
+        &sv,
+        "default_map",
+        "ctrl",
+        "`UVM_REG_ADDR_WIDTH'h2",
+        "\"RW\"",
     );
-    assert!(sv.contains("default_map.add_reg(ctrl, `UVM_REG_ADDR_WIDTH'h2, \"RW\");"));
-    assert!(sv.contains("default_map.add_submap(cfg.default_map, `UVM_REG_ADDR_WIDTH'h20);"));
-    assert!(sv.contains("ram = new(\"ram\", 4, 32, \"RW\", UVM_NO_COVERAGE);"));
-    assert!(sv.contains("default_map.add_mem(ram, `UVM_REG_ADDR_WIDTH'h0, \"RW\");"));
-    assert!(sv.contains("default_map.add_submap(ram.default_map, `UVM_REG_ADDR_WIDTH'h40);"));
+    assert_add_submap(
+        &sv,
+        "default_map",
+        "cfg.default_map",
+        "`UVM_REG_ADDR_WIDTH'h20",
+    );
+    assert_new(
+        &sv,
+        "ram",
+        &[
+            ("name", "\"ram\""),
+            ("size", "4"),
+            ("n_bits", "32"),
+            ("access", "\"RW\""),
+            ("has_coverage", "UVM_NO_COVERAGE"),
+        ],
+    );
+    assert_add_mem(
+        &sv,
+        "default_map",
+        "ram",
+        "`UVM_REG_ADDR_WIDTH'h0",
+        "\"RW\"",
+    );
+    assert_add_submap(
+        &sv,
+        "default_map",
+        "ram.default_map",
+        "`UVM_REG_ADDR_WIDTH'h40",
+    );
 }
 
 #[test]
@@ -3150,10 +3513,27 @@ fn evaluates_common_ipxact_constant_expressions() {
     assert!(sv.contains("class ral_reg_cfg_sample extends uvm_reg;"));
     assert!(sv.contains("typedef enum bit [2:0] {"));
     assert!(sv.contains("MODE_MAX = 3'h7"));
-    assert!(sv.contains("mode.configure(this, 3, 2, \"RW\", 1'b0, 3'h3, 1'b1, 1'b1, 1);"));
+    assert!(sv.contains(&field_configure_call(
+        "mode",
+        "3",
+        "2",
+        "RW",
+        field_args("0", "3'h3", "1", "1")
+    )));
     assert!(sv.contains("rand ral_reg_cfg_sample sample[2];"));
-    assert!(sv.contains("default_map.add_reg(sample[i], `UVM_REG_ADDR_WIDTH'h4 + i * `UVM_REG_ADDR_WIDTH'h4, \"RW\");"));
-    assert!(sv.contains("default_map.add_submap(cfg.default_map, `UVM_REG_ADDR_WIDTH'h110);"));
+    assert_add_reg(
+        &sv,
+        "default_map",
+        "sample[i]",
+        "`UVM_REG_ADDR_WIDTH'h4 + i * `UVM_REG_ADDR_WIDTH'h4",
+        "\"RW\"",
+    );
+    assert_add_submap(
+        &sv,
+        "default_map",
+        "cfg.default_map",
+        "`UVM_REG_ADDR_WIDTH'h110",
+    );
 }
 
 #[test]
@@ -3261,10 +3641,27 @@ fn evaluates_ipxact_parameters_and_configurable_values() {
 
     let sv = ipxact_to_uvm_reg(xml).unwrap();
     assert!(sv.contains("MODE_BUSY = 2'h3"));
-    assert!(sv.contains("mode.configure(this, 2, 2, \"RW\", 1'b0, 2'h1, 1'b1, 1'b1, 1);"));
+    assert!(sv.contains(&field_configure_call(
+        "mode",
+        "2",
+        "2",
+        "RW",
+        field_args("0", "2'h1", "1", "1")
+    )));
     assert!(sv.contains("rand ral_reg_cfg_sample sample[2];"));
-    assert!(sv.contains("default_map.add_reg(sample[i], `UVM_REG_ADDR_WIDTH'h4 + i * `UVM_REG_ADDR_WIDTH'h4, \"RW\");"));
-    assert!(sv.contains("default_map.add_submap(cfg.default_map, `UVM_REG_ADDR_WIDTH'h90);"));
+    assert_add_reg(
+        &sv,
+        "default_map",
+        "sample[i]",
+        "`UVM_REG_ADDR_WIDTH'h4 + i * `UVM_REG_ADDR_WIDTH'h4",
+        "\"RW\"",
+    );
+    assert_add_submap(
+        &sv,
+        "default_map",
+        "cfg.default_map",
+        "`UVM_REG_ADDR_WIDTH'h90",
+    );
 }
 
 #[test]
@@ -3340,9 +3737,21 @@ fn evaluates_parameterized_ipxact_boolean_metadata() {
     assert_eq!(register.fields[1].reserved.as_deref(), Some("true"));
 
     let sv = ipxact_to_uvm_reg(xml).unwrap();
-    assert!(sv.contains("ready.configure(this, 1, 0, \"RW\", 1'b1, 1'h0, 1'b0, 1'b1, 1);"));
+    assert!(sv.contains(&field_configure_call(
+        "ready",
+        "1",
+        "0",
+        "RW",
+        field_args("1", "1'h0", "0", "1")
+    )));
     assert!(sv.contains("ready.set_compare(UVM_NO_CHECK);"));
-    assert!(sv.contains("reserved_bit.configure(this, 1, 1, \"RW\", 1'b1, 1'h0, 1'b0, 1'b1, 1);"));
+    assert!(sv.contains(&field_configure_call(
+        "reserved_bit",
+        "1",
+        "1",
+        "RW",
+        field_args("1", "1'h0", "0", "1")
+    )));
     assert!(sv.contains("reserved_bit.set_compare(UVM_NO_CHECK);"));
 }
 
@@ -3585,13 +3994,35 @@ fn applies_ipxact_definition_instance_parameter_overrides() {
     assert_eq!(field.reset.as_deref(), Some("10"));
 
     let sv = ipxact_to_uvm_reg(xml).unwrap();
-    assert!(
-        sv.contains("default_map = create_map(\"default_map\", 0, 8, UVM_LITTLE_ENDIAN, 1'b1);")
+    assert_create_map(&sv, "default_map", "\"default_map\"", "8", "1");
+    assert_super_new(
+        &sv,
+        &[
+            ("name", "name"),
+            ("n_bits", "64"),
+            ("has_coverage", "UVM_NO_COVERAGE"),
+        ],
     );
-    assert!(sv.contains("super.new(name, 64, UVM_NO_COVERAGE);"));
-    assert!(sv.contains("ready.configure(this, 4, 0, \"RW\", 1'b0, 4'ha, 1'b1, 1'b1, 1);"));
-    assert!(sv.contains("default_map.add_reg(status, `UVM_REG_ADDR_WIDTH'h8, \"RW\");"));
-    assert!(sv.contains("default_map.add_submap(cfg.default_map, `UVM_REG_ADDR_WIDTH'h100);"));
+    assert!(sv.contains(&field_configure_call(
+        "ready",
+        "4",
+        "0",
+        "RW",
+        field_args("0", "4'ha", "1", "1")
+    )));
+    assert_add_reg(
+        &sv,
+        "default_map",
+        "status",
+        "`UVM_REG_ADDR_WIDTH'h8",
+        "\"RW\"",
+    );
+    assert_add_submap(
+        &sv,
+        "default_map",
+        "cfg.default_map",
+        "`UVM_REG_ADDR_WIDTH'h100",
+    );
 }
 
 #[test]
@@ -3795,7 +4226,7 @@ fn evaluates_static_ipxact_is_present_boolean_expressions() {
     let sv = ipxact_to_uvm_reg(xml).unwrap();
     assert!(sv.contains("class ral_reg_cfg_visible extends uvm_reg;"));
     assert!(sv.contains("ENABLED_SUPPORTED = 1'h1"));
-    assert!(sv.contains("masked.configure(this, 1, 2"));
+    assert!(sv.contains(&field_configure_access("masked", "1", "2", "RW")));
     assert!(!sv.contains("hidden"));
     assert!(!sv.contains("disabled"));
     assert!(!sv.contains("future"));
@@ -3945,14 +4376,34 @@ fn renders_multiple_memory_maps() {
 
     let sv = ipxact_to_uvm_reg(xml).unwrap();
     assert!(sv.contains("uvm_reg_map status_map;"));
-    assert!(
-        sv.contains("default_map = create_map(\"default_map\", 0, 4, UVM_LITTLE_ENDIAN, 1'b1);")
+    assert_create_map(&sv, "default_map", "\"default_map\"", "4", "1");
+    assert_create_map(&sv, "status_map", "\"status\"", "4", "0");
+    assert_add_reg(
+        &sv,
+        "default_map",
+        "enable",
+        "`UVM_REG_ADDR_WIDTH'h0",
+        "\"RW\"",
     );
-    assert!(sv.contains("status_map = create_map(\"status\", 0, 4, UVM_LITTLE_ENDIAN, 1'b0);"));
-    assert!(sv.contains("default_map.add_reg(enable, `UVM_REG_ADDR_WIDTH'h0, \"RW\");"));
-    assert!(sv.contains("default_map.add_reg(count, `UVM_REG_ADDR_WIDTH'h2, \"RO\");"));
-    assert!(sv.contains("default_map.add_submap(ctrls.default_map, `UVM_REG_ADDR_WIDTH'h100);"));
-    assert!(sv.contains("status_map.add_submap(stats.default_map, `UVM_REG_ADDR_WIDTH'h10);"));
+    assert_add_reg(
+        &sv,
+        "default_map",
+        "count",
+        "`UVM_REG_ADDR_WIDTH'h2",
+        "\"RO\"",
+    );
+    assert_add_submap(
+        &sv,
+        "default_map",
+        "ctrls.default_map",
+        "`UVM_REG_ADDR_WIDTH'h100",
+    );
+    assert_add_submap(
+        &sv,
+        "status_map",
+        "stats.default_map",
+        "`UVM_REG_ADDR_WIDTH'h10",
+    );
     assert!(!sv.contains("default_map.add_submap(stats.default_map"));
 }
 
@@ -4664,13 +5115,37 @@ fn renders_scalar_register_files_without_array_loop() {
     assert!(sv.contains("class ral_regfile_cfg_local extends uvm_reg_file;"));
     assert!(sv.contains("ral_regfile_cfg_local local;"));
     assert!(sv.contains("local = ral_regfile_cfg_local::type_id::create(\"local\");"));
-    assert!(sv.contains("local.configure(this, null, \"\");"));
+    assert_configure(
+        &sv,
+        "local",
+        &[
+            ("blk_parent", "this"),
+            ("regfile_parent", "null"),
+            ("hdl_path", "\"\""),
+        ],
+    );
     assert!(sv.contains("rand ral_reg_cfg_local_status status;"));
     assert!(sv.contains("status = ral_reg_cfg_local_status::type_id::create(\"status\");"));
-    assert!(sv.contains("status.configure(get_block(), this);"));
-    assert!(sv.contains("mp.add_reg(status, offset + `UVM_REG_ADDR_WIDTH'h4, \"RO\");"));
+    assert_configure(
+        &sv,
+        "status",
+        &[("blk_parent", "get_block()"), ("regfile_parent", "this")],
+    );
+    assert_add_reg(
+        &sv,
+        "mp",
+        "status",
+        "offset + `UVM_REG_ADDR_WIDTH'h4",
+        "\"RO\"",
+    );
     assert!(sv.contains("rand ral_reg_cfg_local_status_shadow shadow;"));
-    assert!(sv.contains("mp.add_reg(shadow, offset + `UVM_REG_ADDR_WIDTH'h4, \"RW\");"));
+    assert_add_reg(
+        &sv,
+        "mp",
+        "shadow",
+        "offset + `UVM_REG_ADDR_WIDTH'h4",
+        "\"RW\"",
+    );
     assert!(!sv.contains("status[1]"));
     assert!(!sv.contains("$sformatf(\"status_%0d\""));
 }
@@ -4747,19 +5222,47 @@ fn renders_register_arrays_inside_register_files() {
     assert!(sv.contains(
         "counter[i] = ral_reg_cfg_local_counter::type_id::create($sformatf(\"counter_%0d\", i));"
     ));
-    assert!(sv.contains("counter[i].configure(get_block(), this);"));
-    assert!(sv.contains("mp.add_reg(counter[i], offset + `UVM_REG_ADDR_WIDTH'h4 + i * `UVM_REG_ADDR_WIDTH'h4, \"RW\");"));
+    assert_configure(
+        &sv,
+        "counter[i]",
+        &[("blk_parent", "get_block()"), ("regfile_parent", "this")],
+    );
+    assert_add_reg(
+        &sv,
+        "mp",
+        "counter[i]",
+        "offset + `UVM_REG_ADDR_WIDTH'h4 + i * `UVM_REG_ADDR_WIDTH'h4",
+        "\"RW\"",
+    );
     assert!(sv.contains("ral_regfile_cfg_lane lane[2];"));
     assert!(
         sv.contains("lane[i] = ral_regfile_cfg_lane::type_id::create($sformatf(\"lane_%0d\", i));")
     );
-    assert!(sv.contains("lane[i].configure(this, null, \"\");"));
+    assert_configure(
+        &sv,
+        "lane[i]",
+        &[
+            ("blk_parent", "this"),
+            ("regfile_parent", "null"),
+            ("hdl_path", "\"\""),
+        ],
+    );
     assert!(sv.contains("rand ral_reg_cfg_lane_sample sample[3];"));
     assert!(sv.contains(
         "sample[i] = ral_reg_cfg_lane_sample::type_id::create($sformatf(\"sample_%0d\", i));"
     ));
-    assert!(sv.contains("sample[i].configure(get_block(), this);"));
-    assert!(sv.contains("mp.add_reg(sample[i], offset + `UVM_REG_ADDR_WIDTH'h8 + i * `UVM_REG_ADDR_WIDTH'h4, \"RW\");"));
+    assert_configure(
+        &sv,
+        "sample[i]",
+        &[("blk_parent", "get_block()"), ("regfile_parent", "this")],
+    );
+    assert_add_reg(
+        &sv,
+        "mp",
+        "sample[i]",
+        "offset + `UVM_REG_ADDR_WIDTH'h8 + i * `UVM_REG_ADDR_WIDTH'h4",
+        "\"RW\"",
+    );
 }
 
 #[test]
@@ -5054,8 +5557,20 @@ with "quotes"</ipxact:description>
 
     let sv = ipxact_to_uvm_reg(xml).unwrap();
     assert!(!sv.contains("localparam"));
-    assert!(sv.contains("ready.configure(this, 1, 0, \"RO\", 1'b0, 1'h0, 1'b0, 1'b0, 1);"));
-    assert!(sv.contains("raw.configure(this, 8, 0, \"RW\", 1'b0, 8'h0, 1'b0, 1'b1, 1);"));
+    assert!(sv.contains(&field_configure_call(
+        "ready",
+        "1",
+        "0",
+        "RO",
+        field_args("0", "1'h0", "0", "0")
+    )));
+    assert!(sv.contains(&field_configure_call(
+        "raw",
+        "8",
+        "0",
+        "RW",
+        field_args("0", "8'h0", "0", "1")
+    )));
 }
 
 #[test]
@@ -5199,7 +5714,13 @@ fn resolves_definition_refs_by_type_definitions_scope() {
 
     let sv = ipxact_to_uvm_reg(xml).unwrap();
     assert!(sv.contains("STATE_B_VALUE = 2'h3"));
-    assert!(sv.contains("state.configure(this, 2, 0, \"RW\", 1'b0, 2'h0, 1'b0, 1'b1, 1);"));
+    assert!(sv.contains(&field_configure_call(
+        "state",
+        "2",
+        "0",
+        "RW",
+        field_args("0", "2'h0", "0", "1")
+    )));
     assert!(!sv.contains("A block"));
     assert!(!sv.contains("A register"));
     assert!(!sv.contains("A field"));
@@ -5276,8 +5797,19 @@ fn resolves_external_type_definitions_with_resolver() {
 
     let sv = irgen_uvmreg::serialize_uvm_reg(&component).unwrap();
     assert!(!sv.contains("localparam"));
-    assert!(sv.contains("default_map.add_reg(status, `UVM_REG_ADDR_WIDTH'h4, \"RO\");"));
-    assert!(sv.contains("default_map.add_submap(cfg.default_map, `UVM_REG_ADDR_WIDTH'h40);"));
+    assert_add_reg(
+        &sv,
+        "default_map",
+        "status",
+        "`UVM_REG_ADDR_WIDTH'h4",
+        "\"RO\"",
+    );
+    assert_add_submap(
+        &sv,
+        "default_map",
+        "cfg.default_map",
+        "`UVM_REG_ADDR_WIDTH'h40",
+    );
 }
 
 #[test]
@@ -5385,13 +5917,29 @@ fn renders_address_space_local_memory_map_as_uvm_submap() {
     assert!(sv.contains("class ral_sys_bridge_dma_space extends uvm_reg_block;"));
     assert!(sv.contains("class ral_sys_bridge extends uvm_reg_block;"));
     assert!(sv.contains("rand ral_reg_bridge_dma_space_dma_regs_doorbell doorbell;"));
-    assert!(sv.contains("default_map.add_reg(doorbell, `UVM_REG_ADDR_WIDTH'h4, \"WO\");"));
-    assert!(sv.contains("default_map.add_submap(dma_regs.default_map, `UVM_REG_ADDR_WIDTH'h20);"));
+    assert_add_reg(
+        &sv,
+        "default_map",
+        "doorbell",
+        "`UVM_REG_ADDR_WIDTH'h4",
+        "\"WO\"",
+    );
+    assert_add_submap(
+        &sv,
+        "default_map",
+        "dma_regs.default_map",
+        "`UVM_REG_ADDR_WIDTH'h20",
+    );
     assert!(sv.contains("rand ral_sys_bridge_dma_space dma_window;"));
     assert!(sv.contains("dma_window = ral_sys_bridge_dma_space::type_id::create(\"dma_window\");"));
-    assert!(
-        sv.contains("default_map.add_submap(dma_window.default_map, `UVM_REG_ADDR_WIDTH'hfe0);")
-    );
+    assert!(contains_sv_call(
+        &sv,
+        "default_map.add_submap",
+        &[
+            ("child_map", "dma_window.default_map"),
+            ("offset", "`UVM_REG_ADDR_WIDTH'hfe0"),
+        ],
+    ));
 }
 
 #[test]
@@ -5645,14 +6193,29 @@ fn expands_scoped_memory_map_definitions() {
     assert_eq!(component.memory_remaps[0].blocks[0].address_unit_bits, "32");
 
     let sv = ipxact_to_uvm_reg(xml).unwrap();
-    assert!(
-        sv.contains("default_map = create_map(\"default_map\", 0, 4, UVM_LITTLE_ENDIAN, 1'b0);")
+    assert_create_map(&sv, "default_map", "\"default_map\"", "4", "0");
+    assert_add_reg(
+        &sv,
+        "default_map",
+        "status",
+        "`UVM_REG_ADDR_WIDTH'h1",
+        "\"RO\"",
     );
-    assert!(sv.contains("default_map.add_reg(status, `UVM_REG_ADDR_WIDTH'h1, \"RO\");"));
-    assert!(sv.contains("default_map.add_submap(b_regs.default_map, `UVM_REG_ADDR_WIDTH'h2);"));
-    assert!(
-        sv.contains("default_map.add_reg(debug_dbg_regs_ctrl, `UVM_REG_ADDR_WIDTH'h8, \"RW\");")
+    assert_add_submap(
+        &sv,
+        "default_map",
+        "b_regs.default_map",
+        "`UVM_REG_ADDR_WIDTH'h2",
     );
+    assert!(contains_sv_call(
+        &sv,
+        "default_map.add_reg",
+        &[
+            ("rg", "debug_dbg_regs_ctrl"),
+            ("offset", "`UVM_REG_ADDR_WIDTH'h8"),
+            ("rights", "\"RW\""),
+        ],
+    ));
     assert!(!sv.contains("a_regs"));
 }
 
@@ -5767,14 +6330,25 @@ fn expands_scoped_bank_and_memory_remap_definitions() {
     assert_eq!(component.memory_remaps[0].blocks[0].base_address, "0x200");
 
     let sv = ipxact_to_uvm_reg(xml).unwrap();
-    assert!(sv.contains("default_map.add_reg(status, `UVM_REG_ADDR_WIDTH'h4, \"RO\");"));
-    assert!(sv.contains(
-        "default_map.add_submap(banked_def_regs.default_map, `UVM_REG_ADDR_WIDTH'h100);"
-    ));
-    assert!(
-        sv.contains(
-            "default_map.add_reg(lowpower_lp_regs_ctrl, `UVM_REG_ADDR_WIDTH'h200, \"RW\");"
-        )
+    assert_add_reg(
+        &sv,
+        "default_map",
+        "status",
+        "`UVM_REG_ADDR_WIDTH'h4",
+        "\"RO\"",
+    );
+    assert_add_submap(
+        &sv,
+        "default_map",
+        "banked_def_regs.default_map",
+        "`UVM_REG_ADDR_WIDTH'h100",
+    );
+    assert_add_reg(
+        &sv,
+        "default_map",
+        "lowpower_lp_regs_ctrl",
+        "`UVM_REG_ADDR_WIDTH'h200",
+        "\"RW\"",
     );
     assert!(!sv.contains("a_bank_block"));
     assert!(!sv.contains("a_remap_block"));
@@ -5782,21 +6356,13 @@ fn expands_scoped_bank_and_memory_remap_definitions() {
 
 fn assert_demo_uvm_golden_patterns(label: &str, sv: &str) {
     let patterns = [
-        "`ifndef RAL_DEMO_SV",
+        "`ifndef RAL_DEMO_PKG_SV",
         "class ral_reg_regs_status extends uvm_reg;",
         "class ral_regfile_regs_lane extends uvm_reg_file;",
         "class ral_block_regs extends uvm_reg_block;",
         "class ral_sys_demo extends uvm_reg_block;",
         "rand ral_block_regs regs;",
-        "default_map = create_map(\"default_map\", 0, 4, UVM_LITTLE_ENDIAN, 1'b1);",
-        "done.configure(this, 1, 0, \"RO\", 1'b0, 1'h1, 1'b1, 1'b0, 1);",
-        "status.add_hdl_path_slice({`REGS_HDL_PATH, \".done_q\"}, 0, 1, 1'b1);",
-        "default_map.add_reg(status, `UVM_REG_ADDR_WIDTH'h4, \"RO\");",
-        "default_map.add_submap(regs.default_map, `UVM_REG_ADDR_WIDTH'h1000);",
         "rand ral_reg_regs_lane_ctrl ctrl;",
-        "ctrl.add_hdl_path_slice(\"top.u_regs.lane.enable_q\", 0, 1, 1'b1);",
-        "mp.add_reg(ctrl, offset + `UVM_REG_ADDR_WIDTH'h0, \"RW\");",
-        "lane[i].map(default_map, `UVM_REG_ADDR_WIDTH'h20 + i * `UVM_REG_ADDR_WIDTH'h10);",
     ];
 
     for pattern in patterns {
@@ -5805,6 +6371,268 @@ fn assert_demo_uvm_golden_patterns(label: &str, sv: &str) {
             "{label}: missing generated UVM golden pattern `{pattern}`"
         );
     }
+    let done_configure =
+        field_configure_call("done", "1", "0", "RO", field_args("0", "1'h1", "1", "0"));
+    assert!(
+        sv.contains(&done_configure),
+        "{label}: missing generated UVM golden pattern `{done_configure}`"
+    );
+    assert_create_map(sv, "default_map", "\"default_map\"", "4", "1");
+    assert_hdl_path_slice(sv, "status", "{`REGS_HDL_PATH, \".done_q\"}", "0", "1", "1");
+    assert_add_reg(
+        sv,
+        "default_map",
+        "status",
+        "`UVM_REG_ADDR_WIDTH'h4",
+        "\"RO\"",
+    );
+    assert_add_submap(
+        sv,
+        "default_map",
+        "regs.default_map",
+        "`UVM_REG_ADDR_WIDTH'h1000",
+    );
+    assert_hdl_path_slice(sv, "ctrl", "\"top.u_regs.lane.enable_q\"", "0", "1", "1");
+    assert_add_reg(
+        sv,
+        "mp",
+        "ctrl",
+        "offset + `UVM_REG_ADDR_WIDTH'h0",
+        "\"RW\"",
+    );
+    assert_sv_call(
+        sv,
+        "lane[i].map",
+        &[
+            ("mp", "default_map"),
+            (
+                "offset",
+                "`UVM_REG_ADDR_WIDTH'h20 + i * `UVM_REG_ADDR_WIDTH'h10",
+            ),
+        ],
+    );
+}
+
+fn field_configure_access(name: &str, width: &str, lsb: &str, access: &str) -> String {
+    format!(
+        "{name}.configure(\n        .parent(this),\n        .size({width}),\n        .lsb_pos({lsb}),\n        .access(\"{access}\")"
+    )
+}
+
+#[derive(Clone, Copy)]
+struct FieldConfigureArgs<'a> {
+    volatile: &'a str,
+    reset: &'a str,
+    has_reset: &'a str,
+    is_rand: &'a str,
+}
+
+fn field_args<'a>(
+    volatile: &'a str,
+    reset: &'a str,
+    has_reset: &'a str,
+    is_rand: &'a str,
+) -> FieldConfigureArgs<'a> {
+    FieldConfigureArgs {
+        volatile,
+        reset,
+        has_reset,
+        is_rand,
+    }
+}
+
+fn field_configure_call(
+    name: &str,
+    width: &str,
+    lsb: &str,
+    access: &str,
+    args: FieldConfigureArgs<'_>,
+) -> String {
+    let FieldConfigureArgs {
+        volatile,
+        reset,
+        has_reset,
+        is_rand,
+    } = args;
+    format!(
+        "{name}.configure(\n        .parent(this),\n        .size({width}),\n        .lsb_pos({lsb}),\n        .access(\"{access}\"),\n        .volatile({volatile}),\n        .reset({reset}),\n        .has_reset({has_reset}),\n        .is_rand({is_rand}),\n        .individually_accessible(1)\n      );"
+    )
+}
+
+fn contains_named_call(sv: &str, callee: &str, args: &[(&str, &str)]) -> bool {
+    let mut search_from = 0;
+    while let Some(relative_start) = sv[search_from..].find(callee) {
+        let start = search_from + relative_start;
+        let after_callee = start + callee.len();
+        if sv[after_callee..].starts_with('(') {
+            let open = after_callee;
+            if let Some(args_text) = call_args_text(sv, open) {
+                let actual = compact_sv_text(args_text);
+                if args.iter().all(|(name, value)| {
+                    let expected = compact_sv_text(&format!(".{name}({value})"));
+                    actual.contains(&expected)
+                }) {
+                    return true;
+                }
+            }
+        }
+        search_from = after_callee;
+    }
+    false
+}
+
+fn contains_positional_call(sv: &str, callee: &str, args: &[(&str, &str)]) -> bool {
+    let expected = compact_sv_text(
+        &args
+            .iter()
+            .map(|(_, value)| *value)
+            .collect::<Vec<_>>()
+            .join(", "),
+    );
+    let mut search_from = 0;
+    while let Some(relative_start) = sv[search_from..].find(callee) {
+        let start = search_from + relative_start;
+        let after_callee = start + callee.len();
+        if sv[after_callee..].starts_with('(') {
+            let open = after_callee;
+            if let Some(args_text) = call_args_text(sv, open)
+                && compact_sv_text(args_text) == expected
+            {
+                return true;
+            }
+        }
+        search_from = after_callee;
+    }
+    false
+}
+
+fn contains_sv_call(sv: &str, callee: &str, args: &[(&str, &str)]) -> bool {
+    if args.len() <= 3 {
+        contains_positional_call(sv, callee, args)
+    } else {
+        contains_named_call(sv, callee, args)
+    }
+}
+
+fn assert_sv_call(sv: &str, callee: &str, args: &[(&str, &str)]) {
+    assert!(
+        contains_sv_call(sv, callee, args),
+        "missing SystemVerilog call `{callee}` with args {args:?}"
+    );
+}
+
+fn assert_named_call(sv: &str, callee: &str, args: &[(&str, &str)]) {
+    assert!(
+        contains_named_call(sv, callee, args),
+        "missing named call `{callee}` with args {args:?}"
+    );
+}
+
+fn assert_create_map(sv: &str, var_name: &str, name: &str, n_bytes: &str, byte_addressing: &str) {
+    assert_named_call(
+        sv,
+        &format!("{var_name} = create_map"),
+        &[
+            ("name", name),
+            ("base_addr", "0"),
+            ("n_bytes", n_bytes),
+            ("endian", "UVM_LITTLE_ENDIAN"),
+            ("byte_addressing", byte_addressing),
+        ],
+    );
+}
+
+fn assert_add_reg(sv: &str, map: &str, rg: &str, offset: &str, rights: &str) {
+    assert_sv_call(
+        sv,
+        &format!("{map}.add_reg"),
+        &[("rg", rg), ("offset", offset), ("rights", rights)],
+    );
+}
+
+fn assert_add_mem(sv: &str, map: &str, mem: &str, offset: &str, rights: &str) {
+    assert_sv_call(
+        sv,
+        &format!("{map}.add_mem"),
+        &[("mem", mem), ("offset", offset), ("rights", rights)],
+    );
+}
+
+fn assert_add_submap(sv: &str, map: &str, child_map: &str, offset: &str) {
+    assert_sv_call(
+        sv,
+        &format!("{map}.add_submap"),
+        &[("child_map", child_map), ("offset", offset)],
+    );
+}
+
+fn assert_hdl_path_slice(
+    sv: &str,
+    receiver: &str,
+    name: &str,
+    offset: &str,
+    size: &str,
+    first: &str,
+) {
+    assert_named_call(
+        sv,
+        &format!("{receiver}.add_hdl_path_slice"),
+        &[
+            ("name", name),
+            ("offset", offset),
+            ("size", size),
+            ("first", first),
+        ],
+    );
+}
+
+fn assert_set_reset(sv: &str, field: &str, value: &str, kind: &str) {
+    assert_sv_call(
+        sv,
+        &format!("{field}.set_reset"),
+        &[("value", value), ("kind", kind)],
+    );
+}
+
+fn assert_configure(sv: &str, target: &str, args: &[(&str, &str)]) {
+    assert_sv_call(sv, &format!("{target}.configure"), args);
+}
+
+fn assert_super_new(sv: &str, args: &[(&str, &str)]) {
+    assert_sv_call(sv, "super.new", args);
+}
+
+fn assert_new(sv: &str, target: &str, args: &[(&str, &str)]) {
+    assert_sv_call(sv, &format!("{target} = new"), args);
+}
+
+fn compact_sv_text(text: &str) -> String {
+    let mut out = String::new();
+    let mut in_string = false;
+    let mut escaped = false;
+
+    for ch in text.chars() {
+        if in_string {
+            out.push(ch);
+            if escaped {
+                escaped = false;
+            } else if ch == '\\' {
+                escaped = true;
+            } else if ch == '"' {
+                in_string = false;
+            }
+            continue;
+        }
+
+        if ch == '"' {
+            in_string = true;
+            out.push(ch);
+        } else if !ch.is_ascii_whitespace() {
+            out.push(ch);
+        }
+    }
+
+    out
 }
 
 fn assert_generated_sv_structural_gate(label: &str, sv: &str) {
@@ -5816,6 +6644,10 @@ fn assert_generated_sv_structural_gate(label: &str, sv: &str) {
         sv.contains("`include \"uvm_macros.svh\""),
         "{label}: missing uvm_macros include"
     );
+    assert_generated_include_sv_structural_gate(label, sv);
+}
+
+fn assert_generated_include_sv_structural_gate(label: &str, sv: &str) {
     assert!(sv.contains("`ifndef "), "{label}: missing include guard");
     assert!(
         sv.contains("`define "),
@@ -5829,12 +6661,6 @@ fn assert_generated_sv_structural_gate(label: &str, sv: &str) {
         !sv.contains("uvm_reg_map default_map;\n"),
         "{label}: generated code redeclares uvm_reg_block::default_map"
     );
-    for line in sv.lines().filter(|line| line.contains("create_map(")) {
-        assert!(
-            line.contains("UVM_LITTLE_ENDIAN, "),
-            "{label}: create_map should pass explicit byte_addressing argument: {line}"
-        );
-    }
     assert_generated_uvm_call_shapes(label, sv);
 
     let structurally_active_sv = sv_assuming_protected_sample_macros(sv);
@@ -5863,85 +6689,28 @@ fn assert_generated_sv_structural_gate(label: &str, sv: &str) {
     );
 }
 
-fn assert_generated_uvm_call_shapes(label: &str, sv: &str) {
-    for line in sv.lines() {
-        let trimmed = line.trim();
-        if trimmed.contains("create_map(") {
-            assert_call_arg_count(label, trimmed, "create_map", 5);
-        }
-        if trimmed.contains(".add_reg(") {
-            assert_call_arg_count(label, trimmed, ".add_reg", 3);
-        }
-        if trimmed.contains(".add_mem(") {
-            assert_call_arg_count(label, trimmed, ".add_mem", 3);
-        }
-        if trimmed.contains(".add_submap(") {
-            assert_call_arg_count(label, trimmed, ".add_submap", 2);
-        }
-        if trimmed.contains(".add_hdl_path_slice(") {
-            assert_call_arg_count(label, trimmed, ".add_hdl_path_slice", 4);
-        }
-        if trimmed.contains(".configure(") {
-            let count = call_arg_count(trimmed, ".configure")
-                .unwrap_or_else(|| panic!("{label}: malformed configure call: {trimmed}"));
-            assert!(
-                matches!(count, 1 | 2 | 3 | 9),
-                "{label}: unexpected UVM configure argument count {count}: {trimmed}"
-            );
-        }
-    }
-}
-
-fn assert_call_arg_count(label: &str, line: &str, call: &str, expected: usize) {
-    let count = call_arg_count(line, call)
-        .unwrap_or_else(|| panic!("{label}: malformed {call} call: {line}"));
-    assert_eq!(
-        count, expected,
-        "{label}: {call} should have {expected} arguments, found {count}: {line}"
+fn assert_contains_before(haystack: &str, needle: &str, marker: &str) {
+    let needle_index = haystack
+        .find(needle)
+        .unwrap_or_else(|| panic!("missing `{needle}` in generated output"));
+    let marker_index = haystack
+        .find(marker)
+        .unwrap_or_else(|| panic!("missing `{marker}` in generated output"));
+    assert!(
+        needle_index < marker_index,
+        "expected `{needle}` to appear before `{marker}`"
     );
 }
 
-fn call_arg_count(line: &str, call: &str) -> Option<usize> {
-    let start = line.find(call)?;
-    let open = line[start..].find('(')? + start;
-    let args = call_args_text(line, open)?;
-    if args.trim().is_empty() {
-        return Some(0);
-    }
-
-    let mut count = 1;
-    let mut paren_depth = 0usize;
-    let mut bracket_depth = 0usize;
-    let mut brace_depth = 0usize;
-    let mut in_string = false;
-    let mut escaped = false;
-
-    for ch in args.chars() {
-        if in_string {
-            if escaped {
-                escaped = false;
-            } else if ch == '\\' {
-                escaped = true;
-            } else if ch == '"' {
-                in_string = false;
-            }
-            continue;
-        }
-
-        match ch {
-            '"' => in_string = true,
-            '(' => paren_depth += 1,
-            ')' => paren_depth = paren_depth.saturating_sub(1),
-            '[' => bracket_depth += 1,
-            ']' => bracket_depth = bracket_depth.saturating_sub(1),
-            '{' => brace_depth += 1,
-            '}' => brace_depth = brace_depth.saturating_sub(1),
-            ',' if paren_depth == 0 && bracket_depth == 0 && brace_depth == 0 => count += 1,
-            _ => {}
-        }
-    }
-
-    Some(count)
+fn assert_generated_uvm_call_shapes(label: &str, sv: &str) {
+    assert!(
+        !sv.contains("create_map(\""),
+        "{label}: create_map has more than three arguments and should use named argument association"
+    );
+    assert!(
+        !sv.contains(".add_hdl_path_slice(") || sv.contains(".first("),
+        "{label}: add_hdl_path_slice has more than three arguments and should use named argument association"
+    );
 }
 
 fn call_args_text(line: &str, open: usize) -> Option<&str> {
