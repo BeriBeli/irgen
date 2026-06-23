@@ -19,11 +19,16 @@ generated from IP-XACT input with `irgen ip-xact --format html`.
 - `crates/cli`: command-line entry point.
 - `crates/snapsheet`: workbook parsing and validation.
 - `crates/ipxact`: IEEE 1685-2022 exporter from the snapsheet model.
+- `crates/ipxact-model`: shared IP-XACT component model and expression
+  evaluation used after XML parsing.
+- `crates/ipxact-parser`: IEEE 1685-2022 component XML parser and catalog/type
+  definition resolver.
 - `crates/ipxact-codegen`: local schema-code generator.
 - `crates/ralf`: RALF model and serializer.
 - `crates/systemrdl`: SystemRDL model and serializer.
-- `crates/uvmreg`: direct IP-XACT XML to UVM RAL generator.
-- `crates/docs`: static documentation generator used by `irgen ip-xact`.
+- `crates/uvmreg`: UVM RAL renderer from the shared IP-XACT model.
+- `crates/docs`: static documentation generator used by `irgen ip-xact`,
+  converting from the shared IP-XACT model into the documentation view.
 
 Active dependency direction:
 
@@ -32,8 +37,9 @@ cli -> snapsheet
 cli -> ipxact -> snapsheet
 cli -> ralf -> snapsheet
 cli -> systemrdl -> snapsheet
-cli -> uvmreg
-cli -> docs
+cli -> ipxact-parser -> ipxact-model
+cli -> uvmreg -> ipxact-model
+cli -> docs -> ipxact-model
 ```
 
 Do not add a generic facade crate unless there is a concrete shared API that
@@ -57,8 +63,9 @@ needs it.
 
 1. Keep the IEEE 1685-2022 exporter small and reproducible from
    `crates/ipxact-codegen`.
-2. Add realistic IP-XACT fixtures for the UVM RAL and HTML paths.
-3. Improve diagnostics for unsupported IP-XACT features in `uvmreg`.
+2. Add realistic IP-XACT fixtures for the parser, UVM RAL, and HTML paths.
+3. Improve diagnostics for unsupported IP-XACT features in the parser and
+   `uvmreg`.
 4. Add more snapsheet fixtures for bus-width splitting, reserved fields, and
    reset/no-compare behavior.
 5. Consider plain Markdown documentation output after the HTML path stabilizes.
@@ -78,7 +85,7 @@ Useful local gates:
 ```text
 cargo fmt --all
 cargo test -p irgen-snapsheet -p irgen-ip-xact -p irgen-ralf -p irgen-systemrdl -p irgen-cli
-cargo test -p irgen-uvmreg
+cargo test -p irgen-ipxact-parser -p irgen-uvmreg -p irgen-docs
 cargo check -p ipxact-codegen
 cargo check --workspace
 git diff --check

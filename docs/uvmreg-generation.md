@@ -4,8 +4,9 @@
 UVM RAL SystemVerilog or static HTML register documentation.
 
 This path is separate from snapsheet parsing. IP-XACT input is parsed by
-`crates/uvmreg`; HTML output converts that parsed model into the documentation
-view used by `crates/docs`.
+`crates/ipxact-parser` into the shared `crates/ipxact-model` representation.
+UVM output is rendered by `crates/uvmreg`; HTML output converts the same parsed
+model into the documentation view used by `crates/docs`.
 
 ## CLI
 
@@ -95,7 +96,7 @@ HTML generation is available only from `irgen ip-xact`, not directly from
 ## Useful Gates
 
 ```text
-cargo test -p irgen-uvmreg -p irgen-cli
+cargo test -p irgen-ipxact-parser -p irgen-uvmreg -p irgen-docs -p irgen-cli
 cargo run -q -p irgen-cli -- ip-xact path/to/component.xml -o ral_component.sv
 cargo run -q -p irgen-cli -- ip-xact path/to/component.xml --file-type header -o ral_component.sv
 cargo run -q -p irgen-cli -- ip-xact path/to/component.xml --file-layout blocks -o ral_component
