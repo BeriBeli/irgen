@@ -4,6 +4,8 @@ members = [
     "crates/docs",
     "crates/ipxact",
     "crates/ipxact-codegen",
+    "crates/ipxact-model",
+    "crates/ipxact-parser",
     "crates/ralf",
     "crates/snapsheet",
     "crates/systemrdl",

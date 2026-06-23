@@ -1,4 +1,4 @@
-use super::*;
+use irgen_ralf::*;
 use irgen_snapsheet::model::{
     Block as BaseBlock, Component, Field as BaseField, Register as BaseRegister,
     RegisterFile as BaseRegisterFile,

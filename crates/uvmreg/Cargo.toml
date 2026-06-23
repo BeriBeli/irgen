@@ -5,5 +5,8 @@ edition.workspace = true
 
 [dependencies]
 askama = "0.14"
-quick-xml = { workspace = true }
+irgen-ipxact-model = { path = "../ipxact-model" }
 thiserror = { workspace = true }
+
+[dev-dependencies]
+irgen-ipxact-parser = { path = "../ipxact-parser" }

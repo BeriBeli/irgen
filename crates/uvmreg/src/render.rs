@@ -2,12 +2,12 @@ use std::collections::BTreeMap;
 
 use askama::Template;
 
-use crate::model::{
+use crate::numeric::parse_u64_expr;
+use crate::{Error, Result};
+use irgen_ipxact_model::{
     AddressBlock, AddressSpace, AlternateRegister, Component, EnumeratedValue, Field, HdlPathSlice,
     Register, RegisterFile, Reset, Segment, SubspaceMap,
 };
-use crate::numeric::parse_u64_expr;
-use crate::{Error, Result};
 
 #[derive(Template)]
 #[template(path = "package.sv", escape = "none")]
@@ -1551,8 +1551,8 @@ fn subspace_segment_offset(
 
 fn validate_segment_ref_range(
     subspace: &SubspaceMap,
-    address_space: &crate::model::AddressSpace,
-    segment: &crate::model::Segment,
+    address_space: &AddressSpace,
+    segment: &Segment,
     parent_layout: MapLayout,
 ) -> Result<()> {
     let address_unit_bits = parse_u64(
@@ -3148,7 +3148,7 @@ fn indexed_hdl_slices(register: &Register, dims: &[u64]) -> Result<Vec<IndexedHd
 fn validate_unique_indexed_hdl_paths(
     owner: &str,
     dims: &[u64],
-    indexed_paths: &[crate::model::IndexedHdlPath],
+    indexed_paths: &[irgen_ipxact_model::IndexedHdlPath],
 ) -> Result<()> {
     let mut used = Vec::new();
     for indexed in indexed_paths {
@@ -3171,7 +3171,7 @@ fn validate_unique_indexed_hdl_paths(
 fn indexed_access_handle_indices(
     owner: &str,
     dims: &[u64],
-    indexed: &crate::model::IndexedHdlPath,
+    indexed: &irgen_ipxact_model::IndexedHdlPath,
 ) -> Result<Vec<u64>> {
     let indices = parse_dims("accessHandle index", &indexed.indices)?;
     if indices.len() != dims.len() {

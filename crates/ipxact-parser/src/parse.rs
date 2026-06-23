@@ -3,12 +3,12 @@ use std::collections::HashMap;
 use quick_xml::Reader;
 use quick_xml::events::{BytesStart, Event};
 
-use crate::model::{
+use crate::{Error, Result};
+use irgen_ipxact_model::{
     AddressBlock, AddressSpace, AlternateRegister, Component, EnumeratedValue, Field, HdlPathSlice,
     IndexedHdlPath, MemoryRemap, Register, RegisterFile, Reset, Segment, SubspaceMap,
+    parse_bool_expr_with_symbols, parse_u64_expr, parse_u64_expr_with_symbols,
 };
-use crate::numeric::{parse_bool_expr_with_symbols, parse_u64_expr, parse_u64_expr_with_symbols};
-use crate::{Error, Result};
 
 const IPXACT_2022_NAMESPACE: &str = "http://www.accellera.org/XMLSchema/IPXACT/1685-2022";
 
@@ -468,9 +468,7 @@ fn parse_component(root: &XmlNode, definitions: &Definitions) -> Result<Componen
                     .unwrap_or_else(|| "8".into()),
             )?;
             for block in source.children_named("addressBlock") {
-                if !node_is_present(block, definitions, "addressBlock isPresent")? {
-                    continue;
-                }
+                reject_unsupported_is_present(block)?;
                 ensure_unique_ipxact_name(
                     &mut block_names,
                     "addressBlock",
@@ -486,9 +484,7 @@ fn parse_component(root: &XmlNode, definitions: &Definitions) -> Result<Componen
                 )?);
             }
             for bank in source.children_named("bank") {
-                if !node_is_present(bank, definitions, "bank isPresent")? {
-                    continue;
-                }
+                reject_unsupported_is_present(bank)?;
                 blocks.extend(parse_bank(
                     bank,
                     0,
@@ -500,9 +496,7 @@ fn parse_component(root: &XmlNode, definitions: &Definitions) -> Result<Componen
                 )?);
             }
             for subspace_map in source.children_named("subspaceMap") {
-                if !node_is_present(subspace_map, definitions, "subspaceMap isPresent")? {
-                    continue;
-                }
+                reject_unsupported_is_present(subspace_map)?;
                 ensure_unique_ipxact_name(
                     &mut subspace_map_names,
                     "subspaceMap",
@@ -519,9 +513,7 @@ fn parse_component(root: &XmlNode, definitions: &Definitions) -> Result<Componen
                 )?);
             }
             for memory_remap in source.children_named("memoryRemap") {
-                if !node_is_present(memory_remap, definitions, "memoryRemap isPresent")? {
-                    continue;
-                }
+                reject_unsupported_is_present(memory_remap)?;
                 if !memory_remap_matches_preferred_mode(memory_remap, definitions)? {
                     continue;
                 }
@@ -564,9 +556,7 @@ fn parse_address_spaces(root: &XmlNode, definitions: &Definitions) -> Result<Vec
     let component_name = root.child_text("name")?;
 
     for address_space in address_spaces_node.children_named("addressSpace") {
-        if !node_is_present(address_space, definitions, "addressSpace isPresent")? {
-            continue;
-        }
+        reject_unsupported_is_present(address_space)?;
         let scoped_definitions =
             definitions.with_node_parameter_values(address_space, address_space);
         let definitions = &scoped_definitions;
@@ -591,9 +581,7 @@ fn parse_address_spaces(root: &XmlNode, definitions: &Definitions) -> Result<Vec
         if let Some(local_memory_map) = address_space.child("localMemoryMap") {
             let mut block_names = Vec::new();
             for block in local_memory_map.children_named("addressBlock") {
-                if !node_is_present(block, definitions, "addressBlock isPresent")? {
-                    continue;
-                }
+                reject_unsupported_is_present(block)?;
                 ensure_unique_ipxact_name(
                     &mut block_names,
                     "addressBlock",
@@ -609,9 +597,7 @@ fn parse_address_spaces(root: &XmlNode, definitions: &Definitions) -> Result<Vec
                 )?);
             }
             for bank in local_memory_map.children_named("bank") {
-                if !node_is_present(bank, definitions, "bank isPresent")? {
-                    continue;
-                }
+                reject_unsupported_is_present(bank)?;
                 blocks.extend(parse_bank(
                     bank,
                     0,
@@ -644,9 +630,7 @@ fn parse_segments(address_space: &XmlNode, definitions: &Definitions) -> Result<
     let mut segment_names = Vec::new();
     let address_space_name = address_space.child_text("name")?;
     for segment in segments.children_named("segment") {
-        if !node_is_present(segment, definitions, "addressSpace segment isPresent")? {
-            continue;
-        }
+        reject_unsupported_is_present(segment)?;
         let name = segment.child_text("name")?;
         ensure_unique_ipxact_name(
             &mut segment_names,
@@ -934,7 +918,6 @@ fn parse_subspace_map(
 ) -> Result<SubspaceMap> {
     let initiator_ref = node
         .attribute_text("initiatorRef")
-        .or_else(|| node.attribute_text("masterRef"))
         .ok_or(Error::MissingElement("initiatorRef"))?;
     let address_space_ref = initiator_address_spaces.get(&initiator_ref).cloned();
 
@@ -980,9 +963,7 @@ fn parse_memory_remap(
     let mut subspace_map_names = Vec::new();
 
     for block in source.children_named("addressBlock") {
-        if !node_is_present(block, definitions, "addressBlock isPresent")? {
-            continue;
-        }
+        reject_unsupported_is_present(block)?;
         ensure_unique_ipxact_name(
             &mut block_names,
             "addressBlock",
@@ -999,9 +980,7 @@ fn parse_memory_remap(
         )?);
     }
     for bank in source.children_named("bank") {
-        if !node_is_present(bank, definitions, "bank isPresent")? {
-            continue;
-        }
+        reject_unsupported_is_present(bank)?;
         blocks.extend(parse_bank(
             bank,
             0,
@@ -1013,9 +992,7 @@ fn parse_memory_remap(
         )?);
     }
     for subspace_map in source.children_named("subspaceMap") {
-        if !node_is_present(subspace_map, definitions, "subspaceMap isPresent")? {
-            continue;
-        }
+        reject_unsupported_is_present(subspace_map)?;
         ensure_unique_ipxact_name(
             &mut subspace_map_names,
             "subspaceMap",
@@ -1153,7 +1130,8 @@ fn parse_address_block_from(
 
     for child in &source.children {
         match child.name.as_str() {
-            "register" if node_is_present(child, definitions, "register isPresent")? => {
+            "register" => {
+                reject_unsupported_is_present(child)?;
                 ensure_unique_ipxact_name(
                     &mut child_names,
                     "register",
@@ -1163,7 +1141,8 @@ fn parse_address_block_from(
                 )?;
                 registers.push(parse_register(child, definitions)?)
             }
-            "registerFile" if node_is_present(child, definitions, "registerFile isPresent")? => {
+            "registerFile" => {
+                reject_unsupported_is_present(child)?;
                 ensure_unique_ipxact_name(
                     &mut child_names,
                     "registerFile",
@@ -1195,6 +1174,10 @@ fn parse_address_block_from(
                 .optional_child_text("width")
                 .unwrap_or(source.child_text("width")?),
         )?,
+        description: instance
+            .optional_child_text("description")
+            .or_else(|| source.optional_child_text("description"))
+            .unwrap_or_default(),
         address_unit_bits: address_unit_bits.into(),
         usage: instance
             .optional_child_text("usage")
@@ -1270,9 +1253,7 @@ fn parse_bank(
     for child in &source.children {
         match child.name.as_str() {
             "addressBlock" => {
-                if !node_is_present(child, definitions, "addressBlock isPresent")? {
-                    continue;
-                }
+                reject_unsupported_is_present(child)?;
                 let child_name = format!("{}_{}", path.join("_"), child.child_text("name")?);
                 let child_base = if alignment == "serial" { cursor } else { base };
                 let block = parse_address_block_at(
@@ -1290,9 +1271,7 @@ fn parse_bank(
                 blocks.push(block);
             }
             "bank" => {
-                if !node_is_present(child, definitions, "bank isPresent")? {
-                    continue;
-                }
+                reject_unsupported_is_present(child)?;
                 let child_base = if alignment == "serial" { cursor } else { base };
                 let child_blocks = parse_bank(
                     child,
@@ -1343,14 +1322,12 @@ fn parse_register_file(node: &XmlNode, definitions: &Definitions) -> Result<Regi
         .unwrap_or(node);
     let scoped_definitions = definitions.with_node_parameter_values(source, node);
     let definitions = &scoped_definitions;
-    let dims = element_dims(node, definitions)?;
     let mut registers = Vec::new();
     let mut register_names = Vec::new();
     let register_file_name = node.child_text("name")?;
+    let dims = element_dims("registerFile", &register_file_name, node, definitions)?;
     for register in source.children_named("register") {
-        if !node_is_present(register, definitions, "register isPresent")? {
-            continue;
-        }
+        reject_unsupported_is_present(register)?;
         ensure_unique_ipxact_name(
             &mut register_names,
             "register",
@@ -1376,6 +1353,10 @@ fn parse_register_file(node: &XmlNode, definitions: &Definitions) -> Result<Regi
             node.optional_child_text("range")
                 .unwrap_or(source.child_text("range")?),
         )?,
+        description: node
+            .optional_child_text("description")
+            .or_else(|| source.optional_child_text("description"))
+            .unwrap_or_default(),
         dim: total_dim_text(&dims),
         dims,
         stride: array_stride(node, definitions)?,
@@ -1390,10 +1371,10 @@ fn parse_register(node: &XmlNode, definitions: &Definitions) -> Result<Register>
         .unwrap_or(node);
     let scoped_definitions = definitions.with_node_parameter_values(source, node);
     let definitions = &scoped_definitions;
-    let dims = element_dims(node, definitions)?;
     let mut fields = Vec::new();
     let mut field_names = Vec::new();
     let register_name = node.child_text("name")?;
+    let dims = element_dims("register", &register_name, node, definitions)?;
     validate_unsupported_access_policy_features(
         "register",
         &register_name,
@@ -1402,9 +1383,7 @@ fn parse_register(node: &XmlNode, definitions: &Definitions) -> Result<Register>
         definitions,
     )?;
     for field in source.children_named("field") {
-        if !node_is_present(field, definitions, "field isPresent")? {
-            continue;
-        }
+        reject_unsupported_is_present(field)?;
         ensure_unique_ipxact_name(
             &mut field_names,
             "field",
@@ -1420,9 +1399,7 @@ fn parse_register(node: &XmlNode, definitions: &Definitions) -> Result<Register>
             let mut alternate_registers = Vec::new();
             let mut alternate_register_names = Vec::new();
             for alternate in alternates.children_named("alternateRegister") {
-                if !node_is_present(alternate, definitions, "alternateRegister isPresent")? {
-                    continue;
-                }
+                reject_unsupported_is_present(alternate)?;
                 ensure_unique_ipxact_name(
                     &mut alternate_register_names,
                     "alternateRegister",
@@ -1460,6 +1437,10 @@ fn parse_register(node: &XmlNode, definitions: &Definitions) -> Result<Register>
             node.optional_child_text("size")
                 .unwrap_or(source.child_text("size")?),
         )?,
+        description: node
+            .optional_child_text("description")
+            .or_else(|| source.optional_child_text("description"))
+            .unwrap_or_default(),
         dim: total_dim_text(&dims),
         dims,
         stride: array_stride(node, definitions)?,
@@ -1492,9 +1473,7 @@ fn parse_alternate_register(
         definitions,
     )?;
     for field in node.children_named("field") {
-        if !node_is_present(field, definitions, "field isPresent")? {
-            continue;
-        }
+        reject_unsupported_is_present(field)?;
         ensure_unique_ipxact_name(
             &mut field_names,
             "field",
@@ -1519,6 +1498,7 @@ fn parse_alternate_register(
 
     Ok(AlternateRegister {
         name: alternate_register_name,
+        description: node.optional_child_text("description").unwrap_or_default(),
         volatile: normalize_optional_bool_text(
             definitions,
             "alternateRegister volatile",
@@ -1559,29 +1539,27 @@ fn parse_field(
     validate_unsupported_features(
         "field",
         &field_name,
+        &[Some(source), Some(node)],
+        &[
+            "access",
+            "modifiedWriteValue",
+            "readAction",
+            "testable",
+            "reserved",
+        ],
+    )?;
+    validate_unsupported_features(
+        "field",
+        &field_name,
         &[policy, Some(source), Some(node)],
         &["writeValueConstraint", "broadcasts", "accessRestrictions"],
     )?;
-    let access = policy
-        .and_then(|policy| policy.optional_child_text("access"))
-        .or_else(|| source.optional_child_text("access"))
-        .or_else(|| node.optional_child_text("access"));
-    let modified_write_value = policy
-        .and_then(|policy| policy.optional_child_text("modifiedWriteValue"))
-        .or_else(|| source.optional_child_text("modifiedWriteValue"))
-        .or_else(|| node.optional_child_text("modifiedWriteValue"));
-    let read_action = policy
-        .and_then(|policy| policy.optional_child_text("readAction"))
-        .or_else(|| source.optional_child_text("readAction"))
-        .or_else(|| node.optional_child_text("readAction"));
-    let testable = policy
-        .and_then(|policy| policy.optional_child_text("testable"))
-        .or_else(|| source.optional_child_text("testable"))
-        .or_else(|| node.optional_child_text("testable"));
-    let reserved = policy
-        .and_then(|policy| policy.optional_child_text("reserved"))
-        .or_else(|| source.optional_child_text("reserved"))
-        .or_else(|| node.optional_child_text("reserved"));
+    let access = policy.and_then(|policy| policy.optional_child_text("access"));
+    let modified_write_value =
+        policy.and_then(|policy| policy.optional_child_text("modifiedWriteValue"));
+    let read_action = policy.and_then(|policy| policy.optional_child_text("readAction"));
+    let testable = policy.and_then(|policy| policy.optional_child_text("testable"));
+    let reserved = policy.and_then(|policy| policy.optional_child_text("reserved"));
     let resets = node
         .child("resets")
         .or_else(|| source.child("resets"))
@@ -1611,6 +1589,10 @@ fn parse_field(
             node.optional_child_text("bitWidth")
                 .unwrap_or(source.child_text("bitWidth")?),
         )?,
+        description: node
+            .optional_child_text("description")
+            .or_else(|| source.optional_child_text("description"))
+            .unwrap_or_default(),
         access,
         modified_write_value,
         read_action,
@@ -1699,15 +1681,18 @@ fn validate_unsupported_features(
 fn parse_resets(node: &XmlNode, definitions: &Definitions) -> Result<Vec<Reset>> {
     node.children_named("reset")
         .map(|reset| {
+            if reset.child("resetTypeRef").is_some() {
+                return Err(Error::UnsupportedElement {
+                    element: "resetTypeRef".into(),
+                });
+            }
             Ok(Reset {
                 value: required_numeric_text(definitions, reset, "value", "field reset")?,
                 mask: reset
                     .optional_child_text("mask")
                     .map(|mask| normalize_numeric_text(definitions, "field reset mask", mask))
                     .transpose()?,
-                reset_type: reset
-                    .optional_child_text("resetTypeRef")
-                    .or_else(|| reset.attribute_text("resetTypeRef")),
+                reset_type: reset.attribute_text("resetTypeRef"),
             })
         })
         .collect()
@@ -1794,9 +1779,7 @@ fn parse_enumerated_values(
     let mut values = Vec::new();
     let mut value_names = Vec::new();
     for enumerated_value in source.children_named("enumeratedValue") {
-        if !node_is_present(enumerated_value, definitions, "enumeratedValue isPresent")? {
-            continue;
-        }
+        reject_unsupported_is_present(enumerated_value)?;
         let name = enumerated_value.child_text("name")?;
         ensure_unique_ipxact_name(
             &mut value_names,
@@ -2160,7 +2143,7 @@ fn normalize_bool_text(
 fn parse_u64_text(definitions: &Definitions, field: &'static str, value: &str) -> Result<u64> {
     parse_u64_expr(field, value)
         .or_else(|_| parse_u64_expr_with_symbols(field, value, &definitions.parameters))
-        .or_else(|error| {
+        .map_err(|error| {
             unsupported_parameter_reference(definitions, value)
                 .map(
                     |(parameter, expression)| Error::UnsupportedParameterExpression {
@@ -2169,7 +2152,7 @@ fn parse_u64_text(definitions: &Definitions, field: &'static str, value: &str) -
                         expression: expression.into(),
                     },
                 )
-                .map_or(Err(error), Err)
+                .unwrap_or_else(|| Error::from(error))
         })
 }
 
@@ -2216,36 +2199,13 @@ fn is_identifier_continue(ch: char) -> bool {
     ch == '_' || ch == '.' || ch.is_ascii_alphanumeric()
 }
 
-fn node_is_present(node: &XmlNode, definitions: &Definitions, field: &'static str) -> Result<bool> {
-    let Some(value) = node.optional_child_text("isPresent") else {
-        return Ok(true);
-    };
-    let trimmed = value.trim();
-    if trimmed.eq_ignore_ascii_case("true") {
-        return Ok(true);
+fn reject_unsupported_is_present(node: &XmlNode) -> Result<()> {
+    if node.child("isPresent").is_some() {
+        return Err(Error::UnsupportedElement {
+            element: "isPresent".into(),
+        });
     }
-    if trimmed.eq_ignore_ascii_case("false") {
-        return Ok(false);
-    }
-    parse_bool_expr_with_symbols(field, trimmed, &definitions.parameters).or_else(|_| {
-        unsupported_parameter_reference(definitions, trimmed)
-            .map(
-                |(parameter, expression)| Error::UnsupportedParameterExpression {
-                    parameter: parameter.into(),
-                    field,
-                    expression: expression.into(),
-                },
-            )
-            .map_or_else(
-                || {
-                    Err(Error::InvalidBoolean {
-                        field,
-                        value: value.clone(),
-                    })
-                },
-                Err,
-            )
-    })
+    Ok(())
 }
 
 fn addr_text(value: u64) -> String {
@@ -2323,9 +2283,18 @@ fn definition_ref(node: &XmlNode, name: &str) -> Option<DefinitionReference> {
     })
 }
 
-fn element_dims(node: &XmlNode, definitions: &Definitions) -> Result<Vec<String>> {
-    if let Some(dim) = node.optional_child_text("dim") {
-        return Ok(vec![normalize_numeric_text(definitions, "array dim", dim)?]);
+fn element_dims(
+    kind: &'static str,
+    name: &str,
+    node: &XmlNode,
+    definitions: &Definitions,
+) -> Result<Vec<String>> {
+    if node.child("dim").is_some() {
+        return Err(Error::UnsupportedElementFeature {
+            kind,
+            name: name.into(),
+            feature: "direct dim".into(),
+        });
     }
 
     let dims = node.child("array").map_or_else(
@@ -2383,10 +2352,12 @@ fn first_descendant<'a>(node: &'a XmlNode, name: &str) -> Option<&'a XmlNode> {
 }
 
 fn path_segment_text(node: &XmlNode, owner: &str) -> Result<Option<String>> {
-    let Some(segment) = node
-        .optional_child_text("pathSegmentName")
-        .or_else(|| (!node.text.trim().is_empty()).then(|| node.text.trim().to_string()))
-    else {
+    if node.child("pathSegmentName").is_some() {
+        return Err(Error::UnsupportedElement {
+            element: "pathSegmentName".into(),
+        });
+    }
+    let Some(segment) = (!node.text.trim().is_empty()).then(|| node.text.trim().to_string()) else {
         return Ok(None);
     };
     let trimmed = segment.trim();

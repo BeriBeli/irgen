@@ -766,7 +766,11 @@ fn generates_uvm_reg_by_block_from_ipxact_subcommand() {
             <ipxact:name>enable</ipxact:name>
             <ipxact:bitOffset>0</ipxact:bitOffset>
             <ipxact:bitWidth>1</ipxact:bitWidth>
-            <ipxact:access>read-write</ipxact:access>
+            <ipxact:fieldAccessPolicies>
+              <ipxact:fieldAccessPolicy>
+                <ipxact:access>read-write</ipxact:access>
+              </ipxact:fieldAccessPolicy>
+            </ipxact:fieldAccessPolicies>
           </ipxact:field>
         </ipxact:register>
       </ipxact:addressBlock>
@@ -783,7 +787,11 @@ fn generates_uvm_reg_by_block_from_ipxact_subcommand() {
             <ipxact:name>value</ipxact:name>
             <ipxact:bitOffset>0</ipxact:bitOffset>
             <ipxact:bitWidth>1</ipxact:bitWidth>
-            <ipxact:access>read-only</ipxact:access>
+            <ipxact:fieldAccessPolicies>
+              <ipxact:fieldAccessPolicy>
+                <ipxact:access>read-only</ipxact:access>
+              </ipxact:fieldAccessPolicy>
+            </ipxact:fieldAccessPolicies>
           </ipxact:field>
         </ipxact:register>
       </ipxact:addressBlock>
@@ -880,7 +888,11 @@ fn ipxact_subcommand_resolves_external_type_definitions_from_input_directory() {
           <ipxact:name>ready</ipxact:name>
           <ipxact:bitOffset>0</ipxact:bitOffset>
           <ipxact:bitWidth>1</ipxact:bitWidth>
-          <ipxact:access>read-only</ipxact:access>
+          <ipxact:fieldAccessPolicies>
+            <ipxact:fieldAccessPolicy>
+              <ipxact:access>read-only</ipxact:access>
+            </ipxact:fieldAccessPolicy>
+          </ipxact:fieldAccessPolicies>
         </ipxact:field>
       </ipxact:register>
     </ipxact:addressBlockDefinition>
@@ -977,7 +989,11 @@ fn ipxact_subcommand_resolves_external_type_definitions_from_catalog_library_pat
           <ipxact:name>enable</ipxact:name>
           <ipxact:bitOffset>0</ipxact:bitOffset>
           <ipxact:bitWidth>1</ipxact:bitWidth>
-          <ipxact:access>read-write</ipxact:access>
+          <ipxact:fieldAccessPolicies>
+            <ipxact:fieldAccessPolicy>
+              <ipxact:access>read-write</ipxact:access>
+            </ipxact:fieldAccessPolicy>
+          </ipxact:fieldAccessPolicies>
         </ipxact:field>
       </ipxact:register>
     </ipxact:addressBlockDefinition>

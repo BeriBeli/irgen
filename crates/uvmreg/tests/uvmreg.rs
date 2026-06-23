@@ -1,6 +1,8 @@
+use irgen_ipxact_parser::{
+    ParseOptions, parse_ipxact, parse_ipxact_with_options, parse_ipxact_with_resolver,
+};
 use irgen_uvmreg::{
-    FileType, ParseOptions, RenderOptions, ipxact_to_uvm_reg, parse_ipxact,
-    parse_ipxact_with_options, parse_ipxact_with_resolver, serialize_uvm_reg_by_block_with_options,
+    FileType, RenderOptions, serialize_uvm_reg, serialize_uvm_reg_by_block_with_options,
     serialize_uvm_reg_with_options,
 };
 
@@ -88,22 +90,28 @@ const IPXACT_COMMON: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
         <ipxact:width>32</ipxact:width>
         <ipxact:register>
           <ipxact:name>status</ipxact:name>
-          <ipxact:accessHandles><ipxact:accessHandle><ipxact:pathSegments><ipxact:pathSegment><ipxact:pathSegmentName>`REGS_HDL_PATH</ipxact:pathSegmentName></ipxact:pathSegment></ipxact:pathSegments></ipxact:accessHandle></ipxact:accessHandles>
+          <ipxact:accessHandles><ipxact:accessHandle><ipxact:pathSegments><ipxact:pathSegment>`REGS_HDL_PATH</ipxact:pathSegment></ipxact:pathSegments></ipxact:accessHandle></ipxact:accessHandles>
           <ipxact:addressOffset>0x4</ipxact:addressOffset>
           <ipxact:size>32</ipxact:size>
           <ipxact:field>
             <ipxact:name>done</ipxact:name>
-            <ipxact:accessHandles><ipxact:accessHandle><ipxact:slices><ipxact:slice><ipxact:pathSegments><ipxact:pathSegment><ipxact:pathSegmentName>done_q</ipxact:pathSegmentName></ipxact:pathSegment></ipxact:pathSegments></ipxact:slice></ipxact:slices></ipxact:accessHandle></ipxact:accessHandles>
+            <ipxact:accessHandles><ipxact:accessHandle><ipxact:slices><ipxact:slice><ipxact:pathSegments><ipxact:pathSegment>done_q</ipxact:pathSegment></ipxact:pathSegments></ipxact:slice></ipxact:slices></ipxact:accessHandle></ipxact:accessHandles>
             <ipxact:bitOffset>0</ipxact:bitOffset>
             <ipxact:resets><ipxact:reset><ipxact:value>0x1</ipxact:value></ipxact:reset></ipxact:resets>
             <ipxact:bitWidth>1</ipxact:bitWidth>
-            <ipxact:access>read-only</ipxact:access>
+            <ipxact:fieldAccessPolicies>
+              <ipxact:fieldAccessPolicy>
+                <ipxact:access>read-only</ipxact:access>
+              </ipxact:fieldAccessPolicy>
+            </ipxact:fieldAccessPolicies>
           </ipxact:field>
         </ipxact:register>
         <ipxact:registerFile>
           <ipxact:name>lane</ipxact:name>
-          <ipxact:accessHandles><ipxact:accessHandle><ipxact:pathSegments><ipxact:pathSegment><ipxact:pathSegmentName>top.u_regs.lane</ipxact:pathSegmentName></ipxact:pathSegment></ipxact:pathSegments></ipxact:accessHandle></ipxact:accessHandles>
-          <ipxact:dim>4</ipxact:dim>
+          <ipxact:accessHandles><ipxact:accessHandle><ipxact:pathSegments><ipxact:pathSegment>top.u_regs.lane</ipxact:pathSegment></ipxact:pathSegments></ipxact:accessHandle></ipxact:accessHandles>
+          <ipxact:array>
+            <ipxact:dim>4</ipxact:dim>
+          </ipxact:array>
           <ipxact:addressOffset>0x20</ipxact:addressOffset>
           <ipxact:range>0x10</ipxact:range>
           <ipxact:register>
@@ -112,11 +120,15 @@ const IPXACT_COMMON: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
             <ipxact:size>32</ipxact:size>
             <ipxact:field>
               <ipxact:name>enable</ipxact:name>
-              <ipxact:accessHandles><ipxact:accessHandle><ipxact:slices><ipxact:slice><ipxact:pathSegments><ipxact:pathSegment><ipxact:pathSegmentName>enable_q</ipxact:pathSegmentName></ipxact:pathSegment></ipxact:pathSegments></ipxact:slice></ipxact:slices></ipxact:accessHandle></ipxact:accessHandles>
+              <ipxact:accessHandles><ipxact:accessHandle><ipxact:slices><ipxact:slice><ipxact:pathSegments><ipxact:pathSegment>enable_q</ipxact:pathSegment></ipxact:pathSegments></ipxact:slice></ipxact:slices></ipxact:accessHandle></ipxact:accessHandles>
               <ipxact:bitOffset>0</ipxact:bitOffset>
               <ipxact:resets><ipxact:reset><ipxact:value>0</ipxact:value></ipxact:reset></ipxact:resets>
               <ipxact:bitWidth>1</ipxact:bitWidth>
-              <ipxact:access>read-write</ipxact:access>
+              <ipxact:fieldAccessPolicies>
+                <ipxact:fieldAccessPolicy>
+                  <ipxact:access>read-write</ipxact:access>
+                </ipxact:fieldAccessPolicy>
+              </ipxact:fieldAccessPolicies>
             </ipxact:field>
           </ipxact:register>
         </ipxact:registerFile>
@@ -124,6 +136,11 @@ const IPXACT_COMMON: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
     </ipxact:memoryMap>
   </ipxact:memoryMaps>
 </ipxact:component>"#;
+
+fn parse_and_serialize_uvm_reg(xml: &str) -> Result<String, String> {
+    let component = parse_ipxact(xml).map_err(|error| error.to_string())?;
+    serialize_uvm_reg(&component).map_err(|error| error.to_string())
+}
 
 const IPXACT_2022: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
 <ipxact:component xmlns:ipxact="http://www.accellera.org/XMLSchema/IPXACT/1685-2022">
@@ -243,7 +260,11 @@ const IPXACT_2022: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
               <ipxact:name>kick</ipxact:name>
               <ipxact:bitOffset>0</ipxact:bitOffset>
               <ipxact:bitWidth>1</ipxact:bitWidth>
-              <ipxact:access>write-only</ipxact:access>
+              <ipxact:fieldAccessPolicies>
+                <ipxact:fieldAccessPolicy>
+                  <ipxact:access>write-only</ipxact:access>
+                </ipxact:fieldAccessPolicy>
+              </ipxact:fieldAccessPolicies>
             </ipxact:field>
           </ipxact:register>
         </ipxact:addressBlock>
@@ -269,7 +290,11 @@ const IPXACT_2022: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
               <ipxact:name>enabled</ipxact:name>
               <ipxact:bitOffset>0</ipxact:bitOffset>
               <ipxact:bitWidth>1</ipxact:bitWidth>
-              <ipxact:access>read-write</ipxact:access>
+              <ipxact:fieldAccessPolicies>
+                <ipxact:fieldAccessPolicy>
+                  <ipxact:access>read-write</ipxact:access>
+                </ipxact:fieldAccessPolicy>
+              </ipxact:fieldAccessPolicies>
             </ipxact:field>
           </ipxact:register>
         </ipxact:addressBlock>
@@ -304,8 +329,7 @@ const IPXACT_2022: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
                 <ipxact:value>0</ipxact:value>
                 <ipxact:mask>1</ipxact:mask>
               </ipxact:reset>
-              <ipxact:reset>
-                <ipxact:resetTypeRef>SOFT</ipxact:resetTypeRef>
+              <ipxact:reset resetTypeRef="SOFT">
                 <ipxact:value>1</ipxact:value>
                 <ipxact:mask>1</ipxact:mask>
               </ipxact:reset>
@@ -444,7 +468,11 @@ const IPXACT_2022: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
               <ipxact:name>cause</ipxact:name>
               <ipxact:bitOffset>0</ipxact:bitOffset>
               <ipxact:bitWidth>4</ipxact:bitWidth>
-              <ipxact:access>read-only</ipxact:access>
+              <ipxact:fieldAccessPolicies>
+                <ipxact:fieldAccessPolicy>
+                  <ipxact:access>read-only</ipxact:access>
+                </ipxact:fieldAccessPolicy>
+              </ipxact:fieldAccessPolicies>
             </ipxact:field>
           </ipxact:register>
         </ipxact:addressBlock>
@@ -470,7 +498,11 @@ const IPXACT_2022: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
               <ipxact:name>en</ipxact:name>
               <ipxact:bitOffset>0</ipxact:bitOffset>
               <ipxact:bitWidth>1</ipxact:bitWidth>
-              <ipxact:access>read-write</ipxact:access>
+              <ipxact:fieldAccessPolicies>
+                <ipxact:fieldAccessPolicy>
+                  <ipxact:access>read-write</ipxact:access>
+                </ipxact:fieldAccessPolicy>
+              </ipxact:fieldAccessPolicies>
             </ipxact:field>
           </ipxact:register>
         </ipxact:addressBlock>
@@ -486,7 +518,11 @@ const IPXACT_2022: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
               <ipxact:name>code</ipxact:name>
               <ipxact:bitOffset>0</ipxact:bitOffset>
               <ipxact:bitWidth>8</ipxact:bitWidth>
-              <ipxact:access>read-only</ipxact:access>
+              <ipxact:fieldAccessPolicies>
+                <ipxact:fieldAccessPolicy>
+                  <ipxact:access>read-only</ipxact:access>
+                </ipxact:fieldAccessPolicy>
+              </ipxact:fieldAccessPolicies>
             </ipxact:field>
           </ipxact:register>
         </ipxact:addressBlock>
@@ -496,45 +532,15 @@ const IPXACT_2022: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
 </ipxact:component>"#;
 
 #[test]
-fn parses_ipxact_register_subset() {
-    let component = parse_ipxact(IPXACT_COMMON).unwrap();
-
-    assert_eq!(component.name, "demo");
-    assert_eq!(component.blocks[0].registers[0].name, "status");
-    assert_eq!(
-        component.blocks[0].registers[0].hdl_path.as_deref(),
-        Some("`REGS_HDL_PATH")
-    );
-    assert_eq!(
-        component.blocks[0].registers[0].fields[0]
-            .hdl_path
-            .as_deref(),
-        Some("done_q")
-    );
-    assert_eq!(component.blocks[0].register_files[0].dim, "4");
-}
-
-#[test]
-fn rejects_non_2022_ipxact_namespaces() {
-    let xml = IPXACT_COMMON.replace(
-        "http://www.accellera.org/XMLSchema/IPXACT/1685-2022",
-        "urn:unsupported-ipxact-namespace",
-    );
-    let error = parse_ipxact(&xml).unwrap_err().to_string();
-
-    assert!(error.contains("unsupported IP-XACT namespace"), "{error}");
-}
-
-#[test]
 fn renders_uvm_ieee_2022_register_model() {
-    let sv = ipxact_to_uvm_reg(IPXACT_COMMON).unwrap();
+    let sv = parse_and_serialize_uvm_reg(IPXACT_COMMON).unwrap();
 
     assert_demo_uvm_golden_patterns("ieee-2022-register-model", &sv);
 }
 
 #[test]
 fn generated_uvm_systemverilog_passes_structural_gate() {
-    let common_sv = ipxact_to_uvm_reg(IPXACT_COMMON).unwrap();
+    let common_sv = parse_and_serialize_uvm_reg(IPXACT_COMMON).unwrap();
     assert_generated_sv_structural_gate("common-golden", &common_sv);
     assert_demo_uvm_golden_patterns("common-golden", &common_sv);
 
@@ -645,13 +651,21 @@ fn avoids_generated_systemverilog_member_name_collisions() {
             <ipxact:name>build</ipxact:name>
             <ipxact:bitOffset>0</ipxact:bitOffset>
             <ipxact:bitWidth>1</ipxact:bitWidth>
-            <ipxact:access>read-write</ipxact:access>
+            <ipxact:fieldAccessPolicies>
+              <ipxact:fieldAccessPolicy>
+                <ipxact:access>read-write</ipxact:access>
+              </ipxact:fieldAccessPolicy>
+            </ipxact:fieldAccessPolicies>
           </ipxact:field>
           <ipxact:field>
             <ipxact:name>cg_bits</ipxact:name>
             <ipxact:bitOffset>1</ipxact:bitOffset>
             <ipxact:bitWidth>1</ipxact:bitWidth>
-            <ipxact:access>read-only</ipxact:access>
+            <ipxact:fieldAccessPolicies>
+              <ipxact:fieldAccessPolicy>
+                <ipxact:access>read-only</ipxact:access>
+              </ipxact:fieldAccessPolicy>
+            </ipxact:fieldAccessPolicies>
           </ipxact:field>
         </ipxact:register>
         <ipxact:registerFile>
@@ -670,7 +684,11 @@ fn avoids_generated_systemverilog_member_name_collisions() {
               <ipxact:name>value</ipxact:name>
               <ipxact:bitOffset>0</ipxact:bitOffset>
               <ipxact:bitWidth>32</ipxact:bitWidth>
-              <ipxact:access>read-write</ipxact:access>
+              <ipxact:fieldAccessPolicies>
+                <ipxact:fieldAccessPolicy>
+                  <ipxact:access>read-write</ipxact:access>
+                </ipxact:fieldAccessPolicy>
+              </ipxact:fieldAccessPolicies>
             </ipxact:field>
           </ipxact:register>
         </ipxact:registerFile>
@@ -755,7 +773,11 @@ fn prefers_generic_access_handle_over_view_specific_paths() {
             </ipxact:accessHandles>
             <ipxact:bitOffset>0</ipxact:bitOffset>
             <ipxact:bitWidth>1</ipxact:bitWidth>
-            <ipxact:access>read-only</ipxact:access>
+            <ipxact:fieldAccessPolicies>
+              <ipxact:fieldAccessPolicy>
+                <ipxact:access>read-only</ipxact:access>
+              </ipxact:fieldAccessPolicy>
+            </ipxact:fieldAccessPolicies>
           </ipxact:field>
         </ipxact:register>
         <ipxact:register>
@@ -775,7 +797,11 @@ fn prefers_generic_access_handle_over_view_specific_paths() {
             <ipxact:name>value</ipxact:name>
             <ipxact:bitOffset>0</ipxact:bitOffset>
             <ipxact:bitWidth>1</ipxact:bitWidth>
-            <ipxact:access>read-write</ipxact:access>
+            <ipxact:fieldAccessPolicies>
+              <ipxact:fieldAccessPolicy>
+                <ipxact:access>read-write</ipxact:access>
+              </ipxact:fieldAccessPolicy>
+            </ipxact:fieldAccessPolicies>
           </ipxact:field>
         </ipxact:register>
       </ipxact:addressBlock>
@@ -800,7 +826,7 @@ fn prefers_generic_access_handle_over_view_specific_paths() {
         Some("rtl.fallback")
     );
 
-    let sv = ipxact_to_uvm_reg(xml).unwrap();
+    let sv = parse_and_serialize_uvm_reg(xml).unwrap();
     assert_hdl_path_slice(&sv, "status", "\"rtl.status.ready_q\"", "0", "1", "1");
     assert_hdl_path_slice(&sv, "fallback", "\"rtl.fallback\"", "-1", "-1", "1");
     assert!(!sv.contains("gate.status"));
@@ -924,7 +950,7 @@ fn skips_selected_access_handles_without_paths_when_later_handle_has_path() {
         Some("gate_ready_q")
     );
 
-    let sv = ipxact_to_uvm_reg(xml).unwrap();
+    let sv = parse_and_serialize_uvm_reg(xml).unwrap();
     assert_hdl_path_slice(&sv, "status", "\"rtl.status.ready_q\"", "0", "1", "1");
     let gate_sv =
         serialize_uvm_reg_with_options(&gate_component, RenderOptions::default()).unwrap();
@@ -935,109 +961,6 @@ fn skips_selected_access_handles_without_paths_when_later_handle_has_path() {
         "0",
         "1",
         "1",
-    );
-}
-
-#[test]
-fn reports_requested_access_handle_view_without_matching_or_generic_path() {
-    let xml = r#"
-<ipxact:component xmlns:ipxact="http://www.accellera.org/XMLSchema/IPXACT/1685-2022">
-  <ipxact:vendor>acme</ipxact:vendor>
-  <ipxact:library>ip</ipxact:library>
-  <ipxact:name>missing_view_path</ipxact:name>
-  <ipxact:version>1.0</ipxact:version>
-  <ipxact:memoryMaps>
-    <ipxact:memoryMap>
-      <ipxact:name>regs</ipxact:name>
-      <ipxact:addressBlock>
-        <ipxact:name>cfg</ipxact:name>
-        <ipxact:baseAddress>0</ipxact:baseAddress>
-        <ipxact:range>4</ipxact:range>
-        <ipxact:width>32</ipxact:width>
-        <ipxact:register>
-          <ipxact:name>status</ipxact:name>
-          <ipxact:accessHandles>
-            <ipxact:accessHandle>
-              <ipxact:viewRef>gate</ipxact:viewRef>
-              <ipxact:pathSegments><ipxact:pathSegment>gate.status</ipxact:pathSegment></ipxact:pathSegments>
-            </ipxact:accessHandle>
-          </ipxact:accessHandles>
-          <ipxact:addressOffset>0</ipxact:addressOffset>
-          <ipxact:size>32</ipxact:size>
-          <ipxact:field>
-            <ipxact:name>ready</ipxact:name>
-            <ipxact:bitOffset>0</ipxact:bitOffset>
-            <ipxact:bitWidth>1</ipxact:bitWidth>
-          </ipxact:field>
-        </ipxact:register>
-      </ipxact:addressBlock>
-    </ipxact:memoryMap>
-  </ipxact:memoryMaps>
-</ipxact:component>"#;
-
-    let error = parse_ipxact_with_options(
-        xml,
-        ParseOptions {
-            preferred_view: Some("rtl".into()),
-            ..ParseOptions::default()
-        },
-    )
-    .unwrap_err()
-    .to_string();
-
-    assert!(
-        error.contains(
-            "IP-XACT accessHandle for `status` does not define requested view `rtl` and has no generic fallback"
-        ),
-        "{error}"
-    );
-}
-
-#[test]
-fn reports_quoted_access_handle_path_segments() {
-    let xml = r#"
-<ipxact:component xmlns:ipxact="http://www.accellera.org/XMLSchema/IPXACT/1685-2022">
-  <ipxact:vendor>acme</ipxact:vendor>
-  <ipxact:library>ip</ipxact:library>
-  <ipxact:name>quoted_path</ipxact:name>
-  <ipxact:version>1.0</ipxact:version>
-  <ipxact:memoryMaps>
-    <ipxact:memoryMap>
-      <ipxact:name>regs</ipxact:name>
-      <ipxact:addressBlock>
-        <ipxact:name>cfg</ipxact:name>
-        <ipxact:baseAddress>0</ipxact:baseAddress>
-        <ipxact:range>4</ipxact:range>
-        <ipxact:width>32</ipxact:width>
-        <ipxact:register>
-          <ipxact:name>status</ipxact:name>
-          <ipxact:accessHandles>
-            <ipxact:accessHandle>
-              <ipxact:pathSegments>
-                <ipxact:pathSegment>"rtl.status"</ipxact:pathSegment>
-              </ipxact:pathSegments>
-            </ipxact:accessHandle>
-          </ipxact:accessHandles>
-          <ipxact:addressOffset>0</ipxact:addressOffset>
-          <ipxact:size>32</ipxact:size>
-          <ipxact:field>
-            <ipxact:name>ready</ipxact:name>
-            <ipxact:bitOffset>0</ipxact:bitOffset>
-            <ipxact:bitWidth>1</ipxact:bitWidth>
-          </ipxact:field>
-        </ipxact:register>
-      </ipxact:addressBlock>
-    </ipxact:memoryMap>
-  </ipxact:memoryMaps>
-</ipxact:component>"#;
-
-    let error = parse_ipxact(xml).unwrap_err().to_string();
-
-    assert!(
-        error.contains(
-            "IP-XACT accessHandle pathSegment for `status` must not include SystemVerilog string quotes: `\"rtl.status\"`"
-        ),
-        "{error}"
     );
 }
 
@@ -1084,7 +1007,11 @@ fn renders_multiple_hdl_slices_for_split_fields() {
             </ipxact:accessHandles>
             <ipxact:bitOffset>8</ipxact:bitOffset>
             <ipxact:bitWidth>8</ipxact:bitWidth>
-            <ipxact:access>read-write</ipxact:access>
+            <ipxact:fieldAccessPolicies>
+              <ipxact:fieldAccessPolicy>
+                <ipxact:access>read-write</ipxact:access>
+              </ipxact:fieldAccessPolicy>
+            </ipxact:fieldAccessPolicies>
           </ipxact:field>
         </ipxact:register>
       </ipxact:addressBlock>
@@ -1099,7 +1026,7 @@ fn renders_multiple_hdl_slices_for_split_fields() {
     assert_eq!(field.hdl_path_slices[0].path, "payload_hi");
     assert_eq!(field.hdl_path_slices[1].right.as_deref(), Some("0"));
 
-    let sv = ipxact_to_uvm_reg(xml).unwrap();
+    let sv = parse_and_serialize_uvm_reg(xml).unwrap();
     assert!(contains_named_call(
         &sv,
         "status.add_hdl_path_slice",
@@ -1163,7 +1090,7 @@ fn reports_duplicate_generated_class_names() {
   </ipxact:memoryMaps>
 </ipxact:component>"#;
 
-    let error = ipxact_to_uvm_reg(xml).unwrap_err().to_string();
+    let error = parse_and_serialize_uvm_reg(xml).unwrap_err().to_string();
 
     assert!(
         error.contains("duplicate generated SystemVerilog class name `ral_reg_cfg_status_flag`"),
@@ -1232,7 +1159,7 @@ fn normalizes_generated_systemverilog_identifiers_for_stress_names() {
   </ipxact:memoryMaps>
 </ipxact:component>"#;
 
-    let sv = ipxact_to_uvm_reg(xml).unwrap();
+    let sv = parse_and_serialize_uvm_reg(xml).unwrap();
 
     assert_generated_sv_structural_gate("identifier stress", &sv);
     assert!(sv.contains("class ral_sys__123_top_unit_with_a_very_very_long_component_name_0123456789 extends uvm_reg_block;"));
@@ -1310,7 +1237,7 @@ fn selects_mode_specific_access_policies_when_requested() {
     assert_eq!(register.access.as_deref(), Some("read-only"));
     assert_eq!(register.fields[0].access.as_deref(), Some("read-only"));
 
-    let sv = ipxact_to_uvm_reg(xml).unwrap();
+    let sv = parse_and_serialize_uvm_reg(xml).unwrap();
     assert!(sv.contains(&field_configure_access("flag", "1", "0", "RO")));
     assert!(sv.contains(&field_configure_access("value", "3", "1", "RO")));
     assert_add_reg(
@@ -1444,171 +1371,6 @@ fn selects_lowest_priority_mode_access_policy() {
 }
 
 #[test]
-fn reports_requested_register_access_policy_mode_without_matching_or_generic_policy() {
-    let xml = r#"
-<ipxact:component xmlns:ipxact="http://www.accellera.org/XMLSchema/IPXACT/1685-2022">
-  <ipxact:vendor>acme</ipxact:vendor>
-  <ipxact:library>ip</ipxact:library>
-  <ipxact:name>missing_register_mode_policy</ipxact:name>
-  <ipxact:version>1.0</ipxact:version>
-  <ipxact:memoryMaps>
-    <ipxact:memoryMap>
-      <ipxact:name>regs</ipxact:name>
-      <ipxact:addressBlock>
-        <ipxact:name>cfg</ipxact:name>
-        <ipxact:baseAddress>0</ipxact:baseAddress>
-        <ipxact:range>4</ipxact:range>
-        <ipxact:width>32</ipxact:width>
-        <ipxact:register>
-          <ipxact:name>status</ipxact:name>
-          <ipxact:accessPolicies>
-            <ipxact:accessPolicy>
-              <ipxact:modeRef>sleep</ipxact:modeRef>
-              <ipxact:access>read-only</ipxact:access>
-            </ipxact:accessPolicy>
-          </ipxact:accessPolicies>
-          <ipxact:addressOffset>0</ipxact:addressOffset>
-          <ipxact:size>32</ipxact:size>
-          <ipxact:field>
-            <ipxact:name>ready</ipxact:name>
-            <ipxact:bitOffset>0</ipxact:bitOffset>
-            <ipxact:bitWidth>1</ipxact:bitWidth>
-          </ipxact:field>
-        </ipxact:register>
-      </ipxact:addressBlock>
-    </ipxact:memoryMap>
-  </ipxact:memoryMaps>
-</ipxact:component>"#;
-
-    let error = parse_ipxact_with_options(
-        xml,
-        ParseOptions {
-            preferred_mode: Some("diagnostic".into()),
-            ..ParseOptions::default()
-        },
-    )
-    .unwrap_err()
-    .to_string();
-
-    assert!(
-        error.contains(
-            "IP-XACT register `status` access policy does not define requested mode `diagnostic` and has no generic fallback"
-        ),
-        "{error}"
-    );
-}
-
-#[test]
-fn reports_requested_address_block_access_policy_mode_without_matching_or_generic_policy() {
-    let xml = r#"
-<ipxact:component xmlns:ipxact="http://www.accellera.org/XMLSchema/IPXACT/1685-2022">
-  <ipxact:vendor>acme</ipxact:vendor>
-  <ipxact:library>ip</ipxact:library>
-  <ipxact:name>missing_block_mode_policy</ipxact:name>
-  <ipxact:version>1.0</ipxact:version>
-  <ipxact:memoryMaps>
-    <ipxact:memoryMap>
-      <ipxact:name>regs</ipxact:name>
-      <ipxact:addressBlock>
-        <ipxact:name>cfg</ipxact:name>
-        <ipxact:baseAddress>0</ipxact:baseAddress>
-        <ipxact:range>4</ipxact:range>
-        <ipxact:width>32</ipxact:width>
-        <ipxact:accessPolicies>
-          <ipxact:accessPolicy>
-            <ipxact:modeRef>sleep</ipxact:modeRef>
-            <ipxact:access>read-only</ipxact:access>
-          </ipxact:accessPolicy>
-        </ipxact:accessPolicies>
-        <ipxact:register>
-          <ipxact:name>status</ipxact:name>
-          <ipxact:addressOffset>0</ipxact:addressOffset>
-          <ipxact:size>32</ipxact:size>
-          <ipxact:field>
-            <ipxact:name>ready</ipxact:name>
-            <ipxact:bitOffset>0</ipxact:bitOffset>
-            <ipxact:bitWidth>1</ipxact:bitWidth>
-          </ipxact:field>
-        </ipxact:register>
-      </ipxact:addressBlock>
-    </ipxact:memoryMap>
-  </ipxact:memoryMaps>
-</ipxact:component>"#;
-
-    let error = parse_ipxact_with_options(
-        xml,
-        ParseOptions {
-            preferred_mode: Some("diagnostic".into()),
-            ..ParseOptions::default()
-        },
-    )
-    .unwrap_err()
-    .to_string();
-
-    assert!(
-        error.contains(
-            "IP-XACT addressBlock `cfg` access policy does not define requested mode `diagnostic` and has no generic fallback"
-        ),
-        "{error}"
-    );
-}
-
-#[test]
-fn reports_requested_field_access_policy_mode_without_matching_or_generic_policy() {
-    let xml = r#"
-<ipxact:component xmlns:ipxact="http://www.accellera.org/XMLSchema/IPXACT/1685-2022">
-  <ipxact:vendor>acme</ipxact:vendor>
-  <ipxact:library>ip</ipxact:library>
-  <ipxact:name>missing_field_mode_policy</ipxact:name>
-  <ipxact:version>1.0</ipxact:version>
-  <ipxact:memoryMaps>
-    <ipxact:memoryMap>
-      <ipxact:name>regs</ipxact:name>
-      <ipxact:addressBlock>
-        <ipxact:name>cfg</ipxact:name>
-        <ipxact:baseAddress>0</ipxact:baseAddress>
-        <ipxact:range>4</ipxact:range>
-        <ipxact:width>32</ipxact:width>
-        <ipxact:register>
-          <ipxact:name>status</ipxact:name>
-          <ipxact:addressOffset>0</ipxact:addressOffset>
-          <ipxact:size>32</ipxact:size>
-          <ipxact:field>
-            <ipxact:name>ready</ipxact:name>
-            <ipxact:bitOffset>0</ipxact:bitOffset>
-            <ipxact:bitWidth>1</ipxact:bitWidth>
-            <ipxact:fieldAccessPolicies>
-              <ipxact:fieldAccessPolicy>
-                <ipxact:modeRef>sleep</ipxact:modeRef>
-                <ipxact:access>read-only</ipxact:access>
-              </ipxact:fieldAccessPolicy>
-            </ipxact:fieldAccessPolicies>
-          </ipxact:field>
-        </ipxact:register>
-      </ipxact:addressBlock>
-    </ipxact:memoryMap>
-  </ipxact:memoryMaps>
-</ipxact:component>"#;
-
-    let error = parse_ipxact_with_options(
-        xml,
-        ParseOptions {
-            preferred_mode: Some("diagnostic".into()),
-            ..ParseOptions::default()
-        },
-    )
-    .unwrap_err()
-    .to_string();
-
-    assert!(
-        error.contains(
-            "IP-XACT field `ready` access policy does not define requested mode `diagnostic` and has no generic fallback"
-        ),
-        "{error}"
-    );
-}
-
-#[test]
 fn optionally_renders_register_bit_coverage() {
     let component = parse_ipxact(IPXACT_COMMON).unwrap();
     let sv = serialize_uvm_reg_with_options(
@@ -1650,7 +1412,7 @@ fn renders_ipxact_2022_field_access_policies() {
     assert_eq!(state.testable.as_deref(), Some("false"));
     assert_eq!(state.reserved.as_deref(), Some("true"));
 
-    let sv = ipxact_to_uvm_reg(IPXACT_2022).unwrap();
+    let sv = parse_and_serialize_uvm_reg(IPXACT_2022).unwrap();
 
     assert!(sv.contains(&field_configure_call(
         "clear",
@@ -1729,7 +1491,7 @@ fn applies_ipxact_reset_masks_to_generated_uvm_resets() {
     assert_eq!(field.resets[1].value, "4'ha");
     assert_eq!(field.resets[1].mask.as_deref(), Some("4'h3"));
 
-    let sv = ipxact_to_uvm_reg(xml).unwrap();
+    let sv = parse_and_serialize_uvm_reg(xml).unwrap();
     assert!(sv.contains(&field_configure_call(
         "mode",
         "4",
@@ -1772,47 +1534,75 @@ fn maps_ipxact_read_write_side_effects_to_ieee_1800_2_access_strings() {
             <ipxact:name>rw_clear</ipxact:name>
             <ipxact:bitOffset>0</ipxact:bitOffset>
             <ipxact:bitWidth>1</ipxact:bitWidth>
-            <ipxact:access>read-write</ipxact:access>
-            <ipxact:readAction>clear</ipxact:readAction>
+            <ipxact:fieldAccessPolicies>
+              <ipxact:fieldAccessPolicy>
+                <ipxact:access>read-write</ipxact:access>
+                <ipxact:readAction>clear</ipxact:readAction>
+              </ipxact:fieldAccessPolicy>
+            </ipxact:fieldAccessPolicies>
           </ipxact:field>
           <ipxact:field>
             <ipxact:name>rw_set</ipxact:name>
             <ipxact:bitOffset>1</ipxact:bitOffset>
             <ipxact:bitWidth>1</ipxact:bitWidth>
-            <ipxact:access>read-write</ipxact:access>
-            <ipxact:readAction>set</ipxact:readAction>
+            <ipxact:fieldAccessPolicies>
+              <ipxact:fieldAccessPolicy>
+                <ipxact:access>read-write</ipxact:access>
+                <ipxact:readAction>set</ipxact:readAction>
+              </ipxact:fieldAccessPolicy>
+            </ipxact:fieldAccessPolicies>
           </ipxact:field>
           <ipxact:field>
             <ipxact:name>rw_once</ipxact:name>
             <ipxact:bitOffset>2</ipxact:bitOffset>
             <ipxact:bitWidth>1</ipxact:bitWidth>
-            <ipxact:access>read-writeOnce</ipxact:access>
+            <ipxact:fieldAccessPolicies>
+              <ipxact:fieldAccessPolicy>
+                <ipxact:access>read-writeOnce</ipxact:access>
+              </ipxact:fieldAccessPolicy>
+            </ipxact:fieldAccessPolicies>
           </ipxact:field>
           <ipxact:field>
             <ipxact:name>wo_once</ipxact:name>
             <ipxact:bitOffset>3</ipxact:bitOffset>
             <ipxact:bitWidth>1</ipxact:bitWidth>
-            <ipxact:access>writeOnce</ipxact:access>
+            <ipxact:fieldAccessPolicies>
+              <ipxact:fieldAccessPolicy>
+                <ipxact:access>writeOnce</ipxact:access>
+              </ipxact:fieldAccessPolicy>
+            </ipxact:fieldAccessPolicies>
           </ipxact:field>
           <ipxact:field>
             <ipxact:name>w_set_r_clear</ipxact:name>
             <ipxact:bitOffset>4</ipxact:bitOffset>
             <ipxact:bitWidth>1</ipxact:bitWidth>
-            <ipxact:modifiedWriteValue>set</ipxact:modifiedWriteValue>
-            <ipxact:readAction>clear</ipxact:readAction>
+            <ipxact:fieldAccessPolicies>
+              <ipxact:fieldAccessPolicy>
+                <ipxact:modifiedWriteValue>set</ipxact:modifiedWriteValue>
+                <ipxact:readAction>clear</ipxact:readAction>
+              </ipxact:fieldAccessPolicy>
+            </ipxact:fieldAccessPolicies>
           </ipxact:field>
           <ipxact:field>
             <ipxact:name>w_clear_r_set</ipxact:name>
             <ipxact:bitOffset>5</ipxact:bitOffset>
             <ipxact:bitWidth>1</ipxact:bitWidth>
-            <ipxact:modifiedWriteValue>clear</ipxact:modifiedWriteValue>
-            <ipxact:readAction>set</ipxact:readAction>
+            <ipxact:fieldAccessPolicies>
+              <ipxact:fieldAccessPolicy>
+                <ipxact:modifiedWriteValue>clear</ipxact:modifiedWriteValue>
+                <ipxact:readAction>set</ipxact:readAction>
+              </ipxact:fieldAccessPolicy>
+            </ipxact:fieldAccessPolicies>
           </ipxact:field>
           <ipxact:field>
             <ipxact:name>disabled</ipxact:name>
             <ipxact:bitOffset>6</ipxact:bitOffset>
             <ipxact:bitWidth>1</ipxact:bitWidth>
-            <ipxact:access>no-access</ipxact:access>
+            <ipxact:fieldAccessPolicies>
+              <ipxact:fieldAccessPolicy>
+                <ipxact:access>no-access</ipxact:access>
+              </ipxact:fieldAccessPolicy>
+            </ipxact:fieldAccessPolicies>
           </ipxact:field>
         </ipxact:register>
         <ipxact:register>
@@ -1823,43 +1613,67 @@ fn maps_ipxact_read_write_side_effects_to_ieee_1800_2_access_strings() {
             <ipxact:name>woc</ipxact:name>
             <ipxact:bitOffset>0</ipxact:bitOffset>
             <ipxact:bitWidth>1</ipxact:bitWidth>
-            <ipxact:access>write-only</ipxact:access>
-            <ipxact:modifiedWriteValue>clear</ipxact:modifiedWriteValue>
+            <ipxact:fieldAccessPolicies>
+              <ipxact:fieldAccessPolicy>
+                <ipxact:access>write-only</ipxact:access>
+                <ipxact:modifiedWriteValue>clear</ipxact:modifiedWriteValue>
+              </ipxact:fieldAccessPolicy>
+            </ipxact:fieldAccessPolicies>
           </ipxact:field>
           <ipxact:field>
             <ipxact:name>wos</ipxact:name>
             <ipxact:bitOffset>1</ipxact:bitOffset>
             <ipxact:bitWidth>1</ipxact:bitWidth>
-            <ipxact:access>write-only</ipxact:access>
-            <ipxact:modifiedWriteValue>set</ipxact:modifiedWriteValue>
+            <ipxact:fieldAccessPolicies>
+              <ipxact:fieldAccessPolicy>
+                <ipxact:access>write-only</ipxact:access>
+                <ipxact:modifiedWriteValue>set</ipxact:modifiedWriteValue>
+              </ipxact:fieldAccessPolicy>
+            </ipxact:fieldAccessPolicies>
           </ipxact:field>
           <ipxact:field>
             <ipxact:name>w1src</ipxact:name>
             <ipxact:bitOffset>2</ipxact:bitOffset>
             <ipxact:bitWidth>1</ipxact:bitWidth>
-            <ipxact:modifiedWriteValue>oneToSet</ipxact:modifiedWriteValue>
-            <ipxact:readAction>clear</ipxact:readAction>
+            <ipxact:fieldAccessPolicies>
+              <ipxact:fieldAccessPolicy>
+                <ipxact:modifiedWriteValue>oneToSet</ipxact:modifiedWriteValue>
+                <ipxact:readAction>clear</ipxact:readAction>
+              </ipxact:fieldAccessPolicy>
+            </ipxact:fieldAccessPolicies>
           </ipxact:field>
           <ipxact:field>
             <ipxact:name>w1crs</ipxact:name>
             <ipxact:bitOffset>3</ipxact:bitOffset>
             <ipxact:bitWidth>1</ipxact:bitWidth>
-            <ipxact:modifiedWriteValue>oneToClear</ipxact:modifiedWriteValue>
-            <ipxact:readAction>set</ipxact:readAction>
+            <ipxact:fieldAccessPolicies>
+              <ipxact:fieldAccessPolicy>
+                <ipxact:modifiedWriteValue>oneToClear</ipxact:modifiedWriteValue>
+                <ipxact:readAction>set</ipxact:readAction>
+              </ipxact:fieldAccessPolicy>
+            </ipxact:fieldAccessPolicies>
           </ipxact:field>
           <ipxact:field>
             <ipxact:name>w0src</ipxact:name>
             <ipxact:bitOffset>4</ipxact:bitOffset>
             <ipxact:bitWidth>1</ipxact:bitWidth>
-            <ipxact:modifiedWriteValue>zeroToSet</ipxact:modifiedWriteValue>
-            <ipxact:readAction>clear</ipxact:readAction>
+            <ipxact:fieldAccessPolicies>
+              <ipxact:fieldAccessPolicy>
+                <ipxact:modifiedWriteValue>zeroToSet</ipxact:modifiedWriteValue>
+                <ipxact:readAction>clear</ipxact:readAction>
+              </ipxact:fieldAccessPolicy>
+            </ipxact:fieldAccessPolicies>
           </ipxact:field>
           <ipxact:field>
             <ipxact:name>w0crs</ipxact:name>
             <ipxact:bitOffset>5</ipxact:bitOffset>
             <ipxact:bitWidth>1</ipxact:bitWidth>
-            <ipxact:modifiedWriteValue>zeroToClear</ipxact:modifiedWriteValue>
-            <ipxact:readAction>set</ipxact:readAction>
+            <ipxact:fieldAccessPolicies>
+              <ipxact:fieldAccessPolicy>
+                <ipxact:modifiedWriteValue>zeroToClear</ipxact:modifiedWriteValue>
+                <ipxact:readAction>set</ipxact:readAction>
+              </ipxact:fieldAccessPolicy>
+            </ipxact:fieldAccessPolicies>
           </ipxact:field>
         </ipxact:register>
       </ipxact:addressBlock>
@@ -1867,7 +1681,7 @@ fn maps_ipxact_read_write_side_effects_to_ieee_1800_2_access_strings() {
   </ipxact:memoryMaps>
 </ipxact:component>"#;
 
-    let sv = ipxact_to_uvm_reg(xml).unwrap();
+    let sv = parse_and_serialize_uvm_reg(xml).unwrap();
 
     assert!(sv.contains(&field_configure_access("rw_clear", "1", "0", "WRC")));
     assert!(sv.contains(&field_configure_access("rw_set", "1", "1", "WRS")));
@@ -1924,8 +1738,12 @@ fn reports_unmapped_ipxact_access_side_effects() {
             <ipxact:name>custom</ipxact:name>
             <ipxact:bitOffset>0</ipxact:bitOffset>
             <ipxact:bitWidth>1</ipxact:bitWidth>
-            <ipxact:access>read-write</ipxact:access>
-            <ipxact:modifiedWriteValue>modify</ipxact:modifiedWriteValue>
+            <ipxact:fieldAccessPolicies>
+              <ipxact:fieldAccessPolicy>
+                <ipxact:access>read-write</ipxact:access>
+                <ipxact:modifiedWriteValue>modify</ipxact:modifiedWriteValue>
+              </ipxact:fieldAccessPolicy>
+            </ipxact:fieldAccessPolicies>
           </ipxact:field>
         </ipxact:register>
       </ipxact:addressBlock>
@@ -1933,7 +1751,7 @@ fn reports_unmapped_ipxact_access_side_effects() {
   </ipxact:memoryMaps>
 </ipxact:component>"#;
 
-    let error = ipxact_to_uvm_reg(xml).unwrap_err().to_string();
+    let error = parse_and_serialize_uvm_reg(xml).unwrap_err().to_string();
 
     assert!(
         error.contains(
@@ -1949,7 +1767,7 @@ fn reports_unsupported_field_write_value_constraints() {
         r#"<ipxact:writeValueConstraint><ipxact:minimum>0</ipxact:minimum><ipxact:maximum>3</ipxact:maximum></ipxact:writeValueConstraint>"#,
     );
 
-    let error = ipxact_to_uvm_reg(&xml).unwrap_err().to_string();
+    let error = parse_and_serialize_uvm_reg(&xml).unwrap_err().to_string();
 
     assert!(
         error.contains("unsupported IP-XACT feature `writeValueConstraint` on field `limited`"),
@@ -1963,7 +1781,7 @@ fn reports_unsupported_field_broadcasts() {
         r#"<ipxact:broadcasts><ipxact:broadcastTo><ipxact:fieldRef fieldRef="other"/></ipxact:broadcastTo></ipxact:broadcasts>"#,
     );
 
-    let error = ipxact_to_uvm_reg(&xml).unwrap_err().to_string();
+    let error = parse_and_serialize_uvm_reg(&xml).unwrap_err().to_string();
 
     assert!(
         error.contains("unsupported IP-XACT feature `broadcasts` on field `limited`"),
@@ -1977,7 +1795,7 @@ fn reports_unsupported_field_access_restrictions() {
         r#"<ipxact:accessRestrictions><ipxact:accessRestriction><ipxact:readAccessMask>0x1</ipxact:readAccessMask></ipxact:accessRestriction></ipxact:accessRestrictions>"#,
     );
 
-    let error = ipxact_to_uvm_reg(&xml).unwrap_err().to_string();
+    let error = parse_and_serialize_uvm_reg(&xml).unwrap_err().to_string();
 
     assert!(
         error.contains("unsupported IP-XACT feature `accessRestrictions` on field `limited`"),
@@ -1989,7 +1807,7 @@ fn reports_unsupported_field_access_restrictions() {
 fn reports_unsupported_register_access_restrictions() {
     let xml = unsupported_register_access_restrictions_xml();
 
-    let error = ipxact_to_uvm_reg(&xml).unwrap_err().to_string();
+    let error = parse_and_serialize_uvm_reg(&xml).unwrap_err().to_string();
 
     assert!(
         error.contains("unsupported IP-XACT feature `accessRestrictions` on register `status`"),
@@ -2001,7 +1819,7 @@ fn reports_unsupported_register_access_restrictions() {
 fn reports_unsupported_address_block_access_restrictions() {
     let xml = unsupported_address_block_access_restrictions_xml();
 
-    let error = ipxact_to_uvm_reg(&xml).unwrap_err().to_string();
+    let error = parse_and_serialize_uvm_reg(&xml).unwrap_err().to_string();
 
     assert!(
         error.contains("unsupported IP-XACT feature `accessRestrictions` on addressBlock `cfg`"),
@@ -2081,7 +1899,11 @@ fn unsupported_register_access_restrictions_xml() -> String {
             <ipxact:name>value</ipxact:name>
             <ipxact:bitOffset>0</ipxact:bitOffset>
             <ipxact:bitWidth>8</ipxact:bitWidth>
-            <ipxact:access>read-write</ipxact:access>
+            <ipxact:fieldAccessPolicies>
+              <ipxact:fieldAccessPolicy>
+                <ipxact:access>read-write</ipxact:access>
+              </ipxact:fieldAccessPolicy>
+            </ipxact:fieldAccessPolicies>
           </ipxact:field>
         </ipxact:register>
       </ipxact:addressBlock>
@@ -2124,7 +1946,11 @@ fn unsupported_address_block_access_restrictions_xml() -> String {
             <ipxact:name>value</ipxact:name>
             <ipxact:bitOffset>0</ipxact:bitOffset>
             <ipxact:bitWidth>8</ipxact:bitWidth>
-            <ipxact:access>read-write</ipxact:access>
+            <ipxact:fieldAccessPolicies>
+              <ipxact:fieldAccessPolicy>
+                <ipxact:access>read-write</ipxact:access>
+              </ipxact:fieldAccessPolicy>
+            </ipxact:fieldAccessPolicies>
           </ipxact:field>
         </ipxact:register>
       </ipxact:addressBlock>
@@ -2143,7 +1969,7 @@ fn renders_ipxact_alternate_registers() {
     assert_eq!(alternate.access.as_deref(), Some("read-only"));
     assert_eq!(alternate.fields[0].name, "raw");
 
-    let sv = ipxact_to_uvm_reg(IPXACT_2022).unwrap();
+    let sv = parse_and_serialize_uvm_reg(IPXACT_2022).unwrap();
     assert!(sv.contains("class ral_reg_regs_irq_debug_irq extends uvm_reg;"));
     assert!(sv.contains(&field_configure_call(
         "raw",
@@ -2175,7 +2001,7 @@ fn inherits_block_and_register_access_policies() {
     assert_eq!(gate.access.as_deref(), Some("write-only"));
     assert_eq!(gate.fields[0].access.as_deref(), None);
 
-    let sv = ipxact_to_uvm_reg(IPXACT_2022).unwrap();
+    let sv = parse_and_serialize_uvm_reg(IPXACT_2022).unwrap();
     assert!(sv.contains(&field_configure_call(
         "state",
         "4",
@@ -2220,7 +2046,7 @@ fn renders_ipxact_memory_blocks_as_uvm_mem() {
     assert_eq!(memory.access.as_deref(), Some("read-only"));
     assert_eq!(memory.hdl_path.as_deref(), Some("`PKT_MEM_HDL_PATH"));
 
-    let sv = ipxact_to_uvm_reg(IPXACT_2022).unwrap();
+    let sv = parse_and_serialize_uvm_reg(IPXACT_2022).unwrap();
     assert!(sv.contains("uvm_mem packet_mem;"));
     assert_new(
         &sv,
@@ -2276,7 +2102,7 @@ fn renders_read_write_ipxact_memory_blocks_as_rw_uvm_mem() {
   </ipxact:memoryMaps>
 </ipxact:component>"#;
 
-    let sv = ipxact_to_uvm_reg(xml).unwrap();
+    let sv = parse_and_serialize_uvm_reg(xml).unwrap();
 
     assert_new(
         &sv,
@@ -2321,7 +2147,7 @@ fn reports_ipxact_memory_access_that_uvm_mem_cannot_represent() {
   </ipxact:memoryMaps>
 </ipxact:component>"#;
 
-    let error = ipxact_to_uvm_reg(xml).unwrap_err().to_string();
+    let error = parse_and_serialize_uvm_reg(xml).unwrap_err().to_string();
 
     assert!(
         error.contains("unsupported IP-XACT memory access for memory block `sink`: `write-only`"),
@@ -2355,7 +2181,7 @@ fn reports_zero_address_block_width_before_generating_uvm_map() {
   </ipxact:memoryMaps>
 </ipxact:component>"#;
 
-    let error = ipxact_to_uvm_reg(xml).unwrap_err().to_string();
+    let error = parse_and_serialize_uvm_reg(xml).unwrap_err().to_string();
 
     assert!(
         error.contains("invalid IP-XACT number for addressBlock width: `0`"),
@@ -2385,7 +2211,7 @@ fn reports_zero_memory_block_range_before_generating_uvm_mem() {
   </ipxact:memoryMaps>
 </ipxact:component>"#;
 
-    let error = ipxact_to_uvm_reg(xml).unwrap_err().to_string();
+    let error = parse_and_serialize_uvm_reg(xml).unwrap_err().to_string();
 
     assert!(
         error.contains("invalid IP-XACT number for addressBlock range: `0`"),
@@ -2420,7 +2246,7 @@ fn reports_zero_memory_map_address_unit_bits() {
   </ipxact:memoryMaps>
 </ipxact:component>"#;
 
-    let error = ipxact_to_uvm_reg(xml).unwrap_err().to_string();
+    let error = parse_and_serialize_uvm_reg(xml).unwrap_err().to_string();
 
     assert!(
         error.contains("invalid IP-XACT number for memoryMap addressUnitBits: `0`"),
@@ -2482,7 +2308,7 @@ fn expands_local_address_block_and_register_definitions() {
     assert_eq!(register.fields[0].reset.as_deref(), Some("1"));
     assert_eq!(register.fields[0].enumerated_values.len(), 2);
 
-    let sv = ipxact_to_uvm_reg(IPXACT_2022).unwrap();
+    let sv = parse_and_serialize_uvm_reg(IPXACT_2022).unwrap();
     assert!(sv.contains("class ral_reg_from_definition_status_from_def extends uvm_reg;"));
     assert!(sv.contains("READY_NOT_READY = 2'h0,"));
     assert!(sv.contains("READY_READY = 2'h1"));
@@ -2520,7 +2346,7 @@ fn flattens_serial_banks_into_address_blocks() {
     assert_eq!(stat.name, "banked_stat");
     assert_eq!(stat.base_address, "0x3010");
 
-    let sv = ipxact_to_uvm_reg(IPXACT_2022).unwrap();
+    let sv = parse_and_serialize_uvm_reg(IPXACT_2022).unwrap();
     assert!(sv.contains("class ral_reg_banked_ctl_mode extends uvm_reg;"));
     assert_add_reg(
         &sv,
@@ -2559,7 +2385,7 @@ fn resolves_top_level_subspace_maps_without_metadata_output() {
     assert_eq!(subspace.base_address, "0x2800");
     assert_eq!(subspace.segment_ref.as_deref(), Some("cfg_seg"));
 
-    let sv = ipxact_to_uvm_reg(IPXACT_2022).unwrap();
+    let sv = parse_and_serialize_uvm_reg(IPXACT_2022).unwrap();
     assert!(!sv.contains("localparam"));
 }
 
@@ -2572,7 +2398,7 @@ fn preserves_memory_remaps_and_generates_their_registers() {
     assert_eq!(remap.blocks[0].name, "low_power_lp_regs");
     assert_eq!(remap.subspace_maps[0].name, "low_power_lp_window");
 
-    let sv = ipxact_to_uvm_reg(IPXACT_2022).unwrap();
+    let sv = parse_and_serialize_uvm_reg(IPXACT_2022).unwrap();
     assert!(sv.contains("class ral_reg_low_power_lp_regs_wake extends uvm_reg;"));
     assert!(sv.contains("rand ral_reg_low_power_lp_regs_wake low_power_lp_regs_wake;"));
     assert_add_reg(
@@ -2709,7 +2535,7 @@ fn renders_ipxact_register_arrays() {
     assert_eq!(counter.stride.as_deref(), Some("8"));
     assert_eq!(counter.volatile.as_deref(), Some("true"));
 
-    let sv = ipxact_to_uvm_reg(IPXACT_2022).unwrap();
+    let sv = parse_and_serialize_uvm_reg(IPXACT_2022).unwrap();
     assert!(sv.contains(&field_configure_call(
         "value",
         "32",
@@ -2765,7 +2591,7 @@ fn reports_zero_register_array_dimensions() {
   </ipxact:memoryMaps>
 </ipxact:component>"#;
 
-    let error = ipxact_to_uvm_reg(xml).unwrap_err().to_string();
+    let error = parse_and_serialize_uvm_reg(xml).unwrap_err().to_string();
 
     assert!(
         error.contains("invalid IP-XACT number for register dim: `0`"),
@@ -2803,7 +2629,7 @@ fn reports_zero_register_file_array_dimensions() {
   </ipxact:memoryMaps>
 </ipxact:component>"#;
 
-    let error = ipxact_to_uvm_reg(xml).unwrap_err().to_string();
+    let error = parse_and_serialize_uvm_reg(xml).unwrap_err().to_string();
 
     assert!(
         error.contains("invalid IP-XACT number for registerFile dim: `0`"),
@@ -2849,7 +2675,11 @@ fn renders_indexed_access_handles_for_register_arrays() {
             <ipxact:name>value</ipxact:name>
             <ipxact:bitOffset>0</ipxact:bitOffset>
             <ipxact:bitWidth>32</ipxact:bitWidth>
-            <ipxact:access>read-write</ipxact:access>
+            <ipxact:fieldAccessPolicies>
+              <ipxact:fieldAccessPolicy>
+                <ipxact:access>read-write</ipxact:access>
+              </ipxact:fieldAccessPolicy>
+            </ipxact:fieldAccessPolicies>
           </ipxact:field>
         </ipxact:register>
       </ipxact:addressBlock>
@@ -2866,7 +2696,7 @@ fn renders_indexed_access_handles_for_register_arrays() {
         "top.u_regs.counter1"
     );
 
-    let sv = ipxact_to_uvm_reg(xml).unwrap();
+    let sv = parse_and_serialize_uvm_reg(xml).unwrap();
     assert!(sv.contains("if (i == 0) begin"));
     assert_hdl_path_slice(
         &sv,
@@ -2925,7 +2755,11 @@ fn renders_indexed_field_access_handles_for_register_arrays() {
             </ipxact:accessHandles>
             <ipxact:bitOffset>0</ipxact:bitOffset>
             <ipxact:bitWidth>1</ipxact:bitWidth>
-            <ipxact:access>read-only</ipxact:access>
+            <ipxact:fieldAccessPolicies>
+              <ipxact:fieldAccessPolicy>
+                <ipxact:access>read-only</ipxact:access>
+              </ipxact:fieldAccessPolicy>
+            </ipxact:fieldAccessPolicies>
           </ipxact:field>
           <ipxact:field>
             <ipxact:name>error</ipxact:name>
@@ -2941,7 +2775,11 @@ fn renders_indexed_field_access_handles_for_register_arrays() {
             </ipxact:accessHandles>
             <ipxact:bitOffset>1</ipxact:bitOffset>
             <ipxact:bitWidth>1</ipxact:bitWidth>
-            <ipxact:access>read-only</ipxact:access>
+            <ipxact:fieldAccessPolicies>
+              <ipxact:fieldAccessPolicy>
+                <ipxact:access>read-only</ipxact:access>
+              </ipxact:fieldAccessPolicy>
+            </ipxact:fieldAccessPolicies>
           </ipxact:field>
         </ipxact:register>
       </ipxact:addressBlock>
@@ -2962,7 +2800,7 @@ fn renders_indexed_field_access_handles_for_register_arrays() {
         "top.u1.error_q"
     );
 
-    let sv = ipxact_to_uvm_reg(xml).unwrap();
+    let sv = parse_and_serialize_uvm_reg(xml).unwrap();
     assert!(sv.contains("if (i == 0) begin"));
     assert_hdl_path_slice(&sv, "status[i]", "\"top.u0.ready_q\"", "0", "1", "1");
     assert_hdl_path_slice(&sv, "status[i]", "\"top.u0.error_q\"", "1", "1", "0");
@@ -3006,7 +2844,11 @@ fn reports_indexed_access_handle_dimension_mismatch() {
             </ipxact:accessHandles>
             <ipxact:bitOffset>0</ipxact:bitOffset>
             <ipxact:bitWidth>1</ipxact:bitWidth>
-            <ipxact:access>read-only</ipxact:access>
+            <ipxact:fieldAccessPolicies>
+              <ipxact:fieldAccessPolicy>
+                <ipxact:access>read-only</ipxact:access>
+              </ipxact:fieldAccessPolicy>
+            </ipxact:fieldAccessPolicies>
           </ipxact:field>
         </ipxact:register>
       </ipxact:addressBlock>
@@ -3014,7 +2856,7 @@ fn reports_indexed_access_handle_dimension_mismatch() {
   </ipxact:memoryMaps>
 </ipxact:component>"#;
 
-    let error = ipxact_to_uvm_reg(xml).unwrap_err().to_string();
+    let error = parse_and_serialize_uvm_reg(xml).unwrap_err().to_string();
 
     assert!(
         error.contains(
@@ -3065,7 +2907,7 @@ fn reports_out_of_range_indexed_register_access_handle_indices() {
   </ipxact:memoryMaps>
 </ipxact:component>"#;
 
-    let error = ipxact_to_uvm_reg(xml).unwrap_err().to_string();
+    let error = parse_and_serialize_uvm_reg(xml).unwrap_err().to_string();
 
     assert!(
         error.contains(
@@ -3120,7 +2962,7 @@ fn reports_out_of_range_indexed_field_access_handle_indices() {
   </ipxact:memoryMaps>
 </ipxact:component>"#;
 
-    let error = ipxact_to_uvm_reg(xml).unwrap_err().to_string();
+    let error = parse_and_serialize_uvm_reg(xml).unwrap_err().to_string();
 
     assert!(
         error.contains(
@@ -3175,7 +3017,7 @@ fn reports_duplicate_indexed_access_handle_indices() {
   </ipxact:memoryMaps>
 </ipxact:component>"#;
 
-    let error = ipxact_to_uvm_reg(xml).unwrap_err().to_string();
+    let error = parse_and_serialize_uvm_reg(xml).unwrap_err().to_string();
 
     assert!(
         error.contains("duplicate IP-XACT accessHandle indices for `status.ready`: `0`"),
@@ -3223,7 +3065,7 @@ fn reports_indexed_access_handles_missing_paths() {
   </ipxact:memoryMaps>
 </ipxact:component>"#;
 
-    let error = ipxact_to_uvm_reg(xml).unwrap_err().to_string();
+    let error = parse_and_serialize_uvm_reg(xml).unwrap_err().to_string();
 
     assert!(
         error.contains("IP-XACT indexed accessHandle for `status` is missing a path"),
@@ -3272,7 +3114,7 @@ fn reports_indexed_access_handles_missing_indices() {
   </ipxact:memoryMaps>
 </ipxact:component>"#;
 
-    let error = ipxact_to_uvm_reg(xml).unwrap_err().to_string();
+    let error = parse_and_serialize_uvm_reg(xml).unwrap_err().to_string();
 
     assert!(
         error.contains("IP-XACT indexed accessHandle for `status.ready` is missing indices"),
@@ -3314,7 +3156,7 @@ fn reports_non_indexed_access_handles_missing_paths() {
   </ipxact:memoryMaps>
 </ipxact:component>"#;
 
-    let error = ipxact_to_uvm_reg(xml).unwrap_err().to_string();
+    let error = parse_and_serialize_uvm_reg(xml).unwrap_err().to_string();
 
     assert!(
         error.contains("IP-XACT accessHandle for `status` is missing a path"),
@@ -3360,7 +3202,7 @@ fn reports_access_handle_slices_missing_paths() {
   </ipxact:memoryMaps>
 </ipxact:component>"#;
 
-    let error = ipxact_to_uvm_reg(xml).unwrap_err().to_string();
+    let error = parse_and_serialize_uvm_reg(xml).unwrap_err().to_string();
 
     assert!(
         error.contains("IP-XACT accessHandle for `status.ready` is missing a path"),
@@ -3393,7 +3235,11 @@ fn respects_memory_map_address_unit_bits() {
             <ipxact:name>en</ipxact:name>
             <ipxact:bitOffset>0</ipxact:bitOffset>
             <ipxact:bitWidth>1</ipxact:bitWidth>
-            <ipxact:access>read-write</ipxact:access>
+            <ipxact:fieldAccessPolicies>
+              <ipxact:fieldAccessPolicy>
+                <ipxact:access>read-write</ipxact:access>
+              </ipxact:fieldAccessPolicy>
+            </ipxact:fieldAccessPolicies>
           </ipxact:field>
         </ipxact:register>
       </ipxact:addressBlock>
@@ -3412,7 +3258,7 @@ fn respects_memory_map_address_unit_bits() {
 
     assert_eq!(component.blocks[0].address_unit_bits, "32");
 
-    let sv = ipxact_to_uvm_reg(xml).unwrap();
+    let sv = parse_and_serialize_uvm_reg(xml).unwrap();
     assert_create_map(&sv, "default_map", "\"default_map\"", "4", "0");
     assert_add_reg(
         &sv,
@@ -3509,7 +3355,7 @@ fn evaluates_common_ipxact_constant_expressions() {
     assert_eq!(component.blocks[0].base_address, "(32'sh80<<1) | 16");
     assert_eq!(component.blocks[0].registers[0].dim, "2");
 
-    let sv = ipxact_to_uvm_reg(xml).unwrap();
+    let sv = parse_and_serialize_uvm_reg(xml).unwrap();
     assert!(sv.contains("class ral_reg_cfg_sample extends uvm_reg;"));
     assert!(sv.contains("typedef enum bit [2:0] {"));
     assert!(sv.contains("MODE_MAX = 3'h7"));
@@ -3603,13 +3449,17 @@ fn evaluates_ipxact_parameters_and_configurable_values() {
                 <ipxact:value>RESET_VALUE</ipxact:value>
               </ipxact:reset>
             </ipxact:resets>
-            <ipxact:access>read-write</ipxact:access>
             <ipxact:enumeratedValues>
               <ipxact:enumeratedValue>
                 <ipxact:name>busy</ipxact:name>
                 <ipxact:value>ENUM_BUSY</ipxact:value>
               </ipxact:enumeratedValue>
             </ipxact:enumeratedValues>
+            <ipxact:fieldAccessPolicies>
+              <ipxact:fieldAccessPolicy>
+                <ipxact:access>read-write</ipxact:access>
+              </ipxact:fieldAccessPolicy>
+            </ipxact:fieldAccessPolicies>
           </ipxact:field>
         </ipxact:register>
       </ipxact:addressBlock>
@@ -3639,7 +3489,7 @@ fn evaluates_ipxact_parameters_and_configurable_values() {
         "3"
     );
 
-    let sv = ipxact_to_uvm_reg(xml).unwrap();
+    let sv = parse_and_serialize_uvm_reg(xml).unwrap();
     assert!(sv.contains("MODE_BUSY = 2'h3"));
     assert!(sv.contains(&field_configure_call(
         "mode",
@@ -3713,13 +3563,21 @@ fn evaluates_parameterized_ipxact_boolean_metadata() {
             <ipxact:bitOffset>0</ipxact:bitOffset>
             <ipxact:bitWidth>1</ipxact:bitWidth>
             <ipxact:volatile>FIELD_VOL</ipxact:volatile>
-            <ipxact:testable>FIELD_TESTABLE</ipxact:testable>
+            <ipxact:fieldAccessPolicies>
+              <ipxact:fieldAccessPolicy>
+                <ipxact:testable>FIELD_TESTABLE</ipxact:testable>
+              </ipxact:fieldAccessPolicy>
+            </ipxact:fieldAccessPolicies>
           </ipxact:field>
           <ipxact:field>
             <ipxact:name>reserved_bit</ipxact:name>
             <ipxact:bitOffset>1</ipxact:bitOffset>
             <ipxact:bitWidth>1</ipxact:bitWidth>
-            <ipxact:reserved>RESERVED_FLAG</ipxact:reserved>
+            <ipxact:fieldAccessPolicies>
+              <ipxact:fieldAccessPolicy>
+                <ipxact:reserved>RESERVED_FLAG</ipxact:reserved>
+              </ipxact:fieldAccessPolicy>
+            </ipxact:fieldAccessPolicies>
           </ipxact:field>
         </ipxact:register>
       </ipxact:addressBlock>
@@ -3736,7 +3594,7 @@ fn evaluates_parameterized_ipxact_boolean_metadata() {
     assert_eq!(register.fields[0].testable.as_deref(), Some("false"));
     assert_eq!(register.fields[1].reserved.as_deref(), Some("true"));
 
-    let sv = ipxact_to_uvm_reg(xml).unwrap();
+    let sv = parse_and_serialize_uvm_reg(xml).unwrap();
     assert!(sv.contains(&field_configure_call(
         "ready",
         "1",
@@ -3753,156 +3611,6 @@ fn evaluates_parameterized_ipxact_boolean_metadata() {
         field_args("1", "1'h0", "0", "1")
     )));
     assert!(sv.contains("reserved_bit.set_compare(UVM_NO_CHECK);"));
-}
-
-#[test]
-fn reports_invalid_or_unsupported_ipxact_boolean_metadata() {
-    let invalid = r#"
-<ipxact:component xmlns:ipxact="http://www.accellera.org/XMLSchema/IPXACT/1685-2022">
-  <ipxact:vendor>acme</ipxact:vendor>
-  <ipxact:library>ip</ipxact:library>
-  <ipxact:name>invalid_bool</ipxact:name>
-  <ipxact:version>1.0</ipxact:version>
-  <ipxact:memoryMaps>
-    <ipxact:memoryMap>
-      <ipxact:name>regs</ipxact:name>
-      <ipxact:addressBlock>
-        <ipxact:name>cfg</ipxact:name>
-        <ipxact:baseAddress>0</ipxact:baseAddress>
-        <ipxact:range>4</ipxact:range>
-        <ipxact:width>32</ipxact:width>
-        <ipxact:register>
-          <ipxact:name>status</ipxact:name>
-          <ipxact:addressOffset>0</ipxact:addressOffset>
-          <ipxact:size>32</ipxact:size>
-          <ipxact:field>
-            <ipxact:name>ready</ipxact:name>
-            <ipxact:bitOffset>0</ipxact:bitOffset>
-            <ipxact:bitWidth>1</ipxact:bitWidth>
-            <ipxact:reserved>maybe</ipxact:reserved>
-          </ipxact:field>
-        </ipxact:register>
-      </ipxact:addressBlock>
-    </ipxact:memoryMap>
-  </ipxact:memoryMaps>
-</ipxact:component>"#;
-    let error = parse_ipxact(invalid).unwrap_err();
-    assert_eq!(
-        error.to_string(),
-        "invalid IP-XACT boolean for field reserved: `maybe`"
-    );
-
-    let unsupported = r#"
-<ipxact:component xmlns:ipxact="http://www.accellera.org/XMLSchema/IPXACT/1685-2022">
-  <ipxact:vendor>acme</ipxact:vendor>
-  <ipxact:library>ip</ipxact:library>
-  <ipxact:name>unsupported_bool</ipxact:name>
-  <ipxact:version>1.0</ipxact:version>
-  <ipxact:parameters>
-    <ipxact:parameter parameterId="BAD_BOOL">
-      <ipxact:name>BAD_BOOL</ipxact:name>
-      <ipxact:value>UNSUPPORTED_FUNC(1)</ipxact:value>
-    </ipxact:parameter>
-  </ipxact:parameters>
-  <ipxact:memoryMaps>
-    <ipxact:memoryMap>
-      <ipxact:name>regs</ipxact:name>
-      <ipxact:addressBlock>
-        <ipxact:name>cfg</ipxact:name>
-        <ipxact:baseAddress>0</ipxact:baseAddress>
-        <ipxact:range>4</ipxact:range>
-        <ipxact:width>32</ipxact:width>
-        <ipxact:register>
-          <ipxact:name>status</ipxact:name>
-          <ipxact:addressOffset>0</ipxact:addressOffset>
-          <ipxact:size>32</ipxact:size>
-          <ipxact:field>
-            <ipxact:name>ready</ipxact:name>
-            <ipxact:bitOffset>0</ipxact:bitOffset>
-            <ipxact:bitWidth>1</ipxact:bitWidth>
-            <ipxact:volatile>BAD_BOOL != 0</ipxact:volatile>
-          </ipxact:field>
-        </ipxact:register>
-      </ipxact:addressBlock>
-    </ipxact:memoryMap>
-  </ipxact:memoryMaps>
-</ipxact:component>"#;
-    let error = parse_ipxact(unsupported).unwrap_err();
-    assert_eq!(
-        error.to_string(),
-        "unsupported IP-XACT parameter expression `BAD_BOOL` used in field volatile: `UNSUPPORTED_FUNC(1)`"
-    );
-}
-
-#[test]
-fn reports_unsupported_parameter_expressions_when_used_by_numeric_fields() {
-    let unused = r#"
-<ipxact:component xmlns:ipxact="http://www.accellera.org/XMLSchema/IPXACT/1685-2022">
-  <ipxact:vendor>acme</ipxact:vendor>
-  <ipxact:library>ip</ipxact:library>
-  <ipxact:name>unused_bad_param</ipxact:name>
-  <ipxact:version>1.0</ipxact:version>
-  <ipxact:parameters>
-    <ipxact:parameter parameterId="BAD_EXPR">
-      <ipxact:name>BAD_EXPR</ipxact:name>
-      <ipxact:value>UNSUPPORTED_FUNC(4)</ipxact:value>
-    </ipxact:parameter>
-  </ipxact:parameters>
-  <ipxact:memoryMaps>
-    <ipxact:memoryMap>
-      <ipxact:name>regs</ipxact:name>
-      <ipxact:addressBlock>
-        <ipxact:name>cfg</ipxact:name>
-        <ipxact:baseAddress>0</ipxact:baseAddress>
-        <ipxact:range>4</ipxact:range>
-        <ipxact:width>32</ipxact:width>
-      </ipxact:addressBlock>
-    </ipxact:memoryMap>
-  </ipxact:memoryMaps>
-</ipxact:component>"#;
-    assert!(parse_ipxact(unused).is_ok());
-
-    let used_parameter = unused
-        .replace(
-            "<ipxact:name>unused_bad_param</ipxact:name>",
-            "<ipxact:name>used_bad_param</ipxact:name>",
-        )
-        .replace(
-            "<ipxact:baseAddress>0</ipxact:baseAddress>",
-            "<ipxact:baseAddress>BAD_EXPR + 4</ipxact:baseAddress>",
-        );
-    let error = parse_ipxact(&used_parameter).unwrap_err();
-    assert_eq!(
-        error.to_string(),
-        "unsupported IP-XACT parameter expression `BAD_EXPR` used in addressBlock baseAddress: `UNSUPPORTED_FUNC(4)`"
-    );
-
-    let used_configurable = r#"
-<ipxact:component xmlns:ipxact="http://www.accellera.org/XMLSchema/IPXACT/1685-2022">
-  <ipxact:vendor>acme</ipxact:vendor>
-  <ipxact:library>ip</ipxact:library>
-  <ipxact:name>bad_configurable</ipxact:name>
-  <ipxact:version>1.0</ipxact:version>
-  <ipxact:configurableElementValues>
-    <ipxact:configurableElementValue referenceId="BAD_BASE">UNSUPPORTED_FUNC(8)</ipxact:configurableElementValue>
-  </ipxact:configurableElementValues>
-  <ipxact:memoryMaps>
-    <ipxact:memoryMap>
-      <ipxact:name>regs</ipxact:name>
-      <ipxact:addressBlock>
-        <ipxact:name>cfg</ipxact:name>
-        <ipxact:baseAddress>BAD_BASE + 4</ipxact:baseAddress>
-        <ipxact:range>4</ipxact:range>
-        <ipxact:width>32</ipxact:width>
-      </ipxact:addressBlock>
-    </ipxact:memoryMap>
-  </ipxact:memoryMaps>
-</ipxact:component>"#;
-    let error = parse_ipxact(used_configurable).unwrap_err();
-    assert_eq!(
-        error.to_string(),
-        "unsupported IP-XACT parameter expression `BAD_BASE` used in addressBlock baseAddress: `UNSUPPORTED_FUNC(8)`"
-    );
 }
 
 #[test]
@@ -3954,7 +3662,11 @@ fn applies_ipxact_definition_instance_parameter_overrides() {
                 <ipxact:value>RESET_VALUE</ipxact:value>
               </ipxact:reset>
             </ipxact:resets>
-            <ipxact:access>read-write</ipxact:access>
+            <ipxact:fieldAccessPolicies>
+              <ipxact:fieldAccessPolicy>
+                <ipxact:access>read-write</ipxact:access>
+              </ipxact:fieldAccessPolicy>
+            </ipxact:fieldAccessPolicies>
           </ipxact:field>
         </ipxact:register>
       </ipxact:addressBlockDefinition>
@@ -3993,7 +3705,7 @@ fn applies_ipxact_definition_instance_parameter_overrides() {
     assert_eq!(field.bit_width, "4");
     assert_eq!(field.reset.as_deref(), Some("10"));
 
-    let sv = ipxact_to_uvm_reg(xml).unwrap();
+    let sv = parse_and_serialize_uvm_reg(xml).unwrap();
     assert_create_map(&sv, "default_map", "\"default_map\"", "8", "1");
     assert_super_new(
         &sv,
@@ -4026,297 +3738,6 @@ fn applies_ipxact_definition_instance_parameter_overrides() {
 }
 
 #[test]
-fn evaluates_static_ipxact_is_present_flags() {
-    let xml = r#"
-<ipxact:component xmlns:ipxact="http://www.accellera.org/XMLSchema/IPXACT/1685-2022">
-  <ipxact:vendor>acme</ipxact:vendor>
-  <ipxact:library>lib</ipxact:library>
-  <ipxact:name>present_flags</ipxact:name>
-  <ipxact:version>1.0</ipxact:version>
-  <ipxact:parameters>
-    <ipxact:parameter parameterId="ENABLE_STATUS">
-      <ipxact:name>ENABLE_STATUS</ipxact:name>
-      <ipxact:value>1</ipxact:value>
-    </ipxact:parameter>
-    <ipxact:parameter parameterId="DISABLE_EXTRA">
-      <ipxact:name>DISABLE_EXTRA</ipxact:name>
-      <ipxact:value>0</ipxact:value>
-    </ipxact:parameter>
-  </ipxact:parameters>
-  <ipxact:memoryMaps>
-    <ipxact:memoryMap>
-      <ipxact:name>regs</ipxact:name>
-      <ipxact:addressBlock>
-        <ipxact:name>cfg</ipxact:name>
-        <ipxact:baseAddress>0</ipxact:baseAddress>
-        <ipxact:range>0x20</ipxact:range>
-        <ipxact:width>32</ipxact:width>
-        <ipxact:register>
-          <ipxact:name>status</ipxact:name>
-          <ipxact:isPresent>ENABLE_STATUS</ipxact:isPresent>
-          <ipxact:addressOffset>0</ipxact:addressOffset>
-          <ipxact:size>32</ipxact:size>
-          <ipxact:field>
-            <ipxact:name>enable</ipxact:name>
-            <ipxact:isPresent>true</ipxact:isPresent>
-            <ipxact:bitOffset>0</ipxact:bitOffset>
-            <ipxact:bitWidth>1</ipxact:bitWidth>
-            <ipxact:access>read-write</ipxact:access>
-            <ipxact:enumeratedValues>
-              <ipxact:enumeratedValue>
-                <ipxact:name>on</ipxact:name>
-                <ipxact:isPresent>1</ipxact:isPresent>
-                <ipxact:value>1</ipxact:value>
-              </ipxact:enumeratedValue>
-              <ipxact:enumeratedValue>
-                <ipxact:name>off</ipxact:name>
-                <ipxact:isPresent>false</ipxact:isPresent>
-                <ipxact:value>0</ipxact:value>
-              </ipxact:enumeratedValue>
-            </ipxact:enumeratedValues>
-          </ipxact:field>
-          <ipxact:field>
-            <ipxact:name>hidden_field</ipxact:name>
-            <ipxact:isPresent>DISABLE_EXTRA</ipxact:isPresent>
-            <ipxact:bitOffset>1</ipxact:bitOffset>
-            <ipxact:bitWidth>1</ipxact:bitWidth>
-            <ipxact:access>read-write</ipxact:access>
-          </ipxact:field>
-        </ipxact:register>
-        <ipxact:register>
-          <ipxact:name>hidden_reg</ipxact:name>
-          <ipxact:isPresent>0</ipxact:isPresent>
-          <ipxact:addressOffset>4</ipxact:addressOffset>
-          <ipxact:size>32</ipxact:size>
-          <ipxact:field>
-            <ipxact:name>value</ipxact:name>
-            <ipxact:bitOffset>0</ipxact:bitOffset>
-            <ipxact:bitWidth>32</ipxact:bitWidth>
-          </ipxact:field>
-        </ipxact:register>
-        <ipxact:registerFile>
-          <ipxact:name>hidden_file</ipxact:name>
-          <ipxact:isPresent>false</ipxact:isPresent>
-          <ipxact:addressOffset>8</ipxact:addressOffset>
-          <ipxact:range>4</ipxact:range>
-        </ipxact:registerFile>
-      </ipxact:addressBlock>
-    </ipxact:memoryMap>
-  </ipxact:memoryMaps>
-</ipxact:component>"#;
-
-    let component = parse_ipxact(xml).unwrap();
-
-    assert_eq!(component.blocks[0].registers.len(), 1);
-    assert!(component.blocks[0].register_files.is_empty());
-    assert_eq!(component.blocks[0].registers[0].fields.len(), 1);
-    assert_eq!(
-        component.blocks[0].registers[0].fields[0]
-            .enumerated_values
-            .len(),
-        1
-    );
-
-    let sv = ipxact_to_uvm_reg(xml).unwrap();
-    assert!(sv.contains("class ral_reg_cfg_status extends uvm_reg;"));
-    assert!(sv.contains("ENABLE_ON = 1'h1"));
-    assert!(!sv.contains("hidden_reg"));
-    assert!(!sv.contains("hidden_field"));
-    assert!(!sv.contains("hidden_file"));
-    assert!(!sv.contains("ENABLE_OFF"));
-}
-
-#[test]
-fn evaluates_static_ipxact_is_present_boolean_expressions() {
-    let xml = r#"
-<ipxact:component xmlns:ipxact="http://www.accellera.org/XMLSchema/IPXACT/1685-2022">
-  <ipxact:vendor>acme</ipxact:vendor>
-  <ipxact:library>lib</ipxact:library>
-  <ipxact:name>present_exprs</ipxact:name>
-  <ipxact:version>1.0</ipxact:version>
-  <ipxact:parameters>
-    <ipxact:parameter parameterId="REV">
-      <ipxact:name>REV</ipxact:name>
-      <ipxact:value>3</ipxact:value>
-    </ipxact:parameter>
-    <ipxact:parameter parameterId="FEATURE_A">
-      <ipxact:name>FEATURE_A</ipxact:name>
-      <ipxact:value>1</ipxact:value>
-    </ipxact:parameter>
-    <ipxact:parameter parameterId="FEATURE_B">
-      <ipxact:name>FEATURE_B</ipxact:name>
-      <ipxact:value>0</ipxact:value>
-    </ipxact:parameter>
-    <ipxact:parameter parameterId="FEATURE_MASK">
-      <ipxact:name>FEATURE_MASK</ipxact:name>
-      <ipxact:value>1 &lt;&lt; 2</ipxact:value>
-    </ipxact:parameter>
-  </ipxact:parameters>
-  <ipxact:memoryMaps>
-    <ipxact:memoryMap>
-      <ipxact:name>regs</ipxact:name>
-      <ipxact:addressBlock>
-        <ipxact:name>cfg</ipxact:name>
-        <ipxact:baseAddress>0</ipxact:baseAddress>
-        <ipxact:range>0x20</ipxact:range>
-        <ipxact:width>32</ipxact:width>
-        <ipxact:register>
-          <ipxact:name>visible</ipxact:name>
-          <ipxact:isPresent>(REV + 1) &gt;= 4 &amp;&amp; (FEATURE_A == 1 || FEATURE_B == 1)</ipxact:isPresent>
-          <ipxact:addressOffset>0</ipxact:addressOffset>
-          <ipxact:size>32</ipxact:size>
-          <ipxact:field>
-            <ipxact:name>enabled</ipxact:name>
-            <ipxact:isPresent>FEATURE_A != 0 &amp;&amp; !FEATURE_B</ipxact:isPresent>
-            <ipxact:bitOffset>0</ipxact:bitOffset>
-            <ipxact:bitWidth>1</ipxact:bitWidth>
-            <ipxact:enumeratedValues>
-              <ipxact:enumeratedValue>
-                <ipxact:name>supported</ipxact:name>
-                <ipxact:isPresent>REV &lt; 4</ipxact:isPresent>
-                <ipxact:value>1</ipxact:value>
-              </ipxact:enumeratedValue>
-              <ipxact:enumeratedValue>
-                <ipxact:name>future</ipxact:name>
-                <ipxact:isPresent>REV &gt; 4 || FEATURE_B</ipxact:isPresent>
-                <ipxact:value>0</ipxact:value>
-              </ipxact:enumeratedValue>
-            </ipxact:enumeratedValues>
-          </ipxact:field>
-          <ipxact:field>
-            <ipxact:name>disabled</ipxact:name>
-            <ipxact:isPresent>FEATURE_B || REV == 0</ipxact:isPresent>
-            <ipxact:bitOffset>1</ipxact:bitOffset>
-            <ipxact:bitWidth>1</ipxact:bitWidth>
-          </ipxact:field>
-          <ipxact:field>
-            <ipxact:name>masked</ipxact:name>
-            <ipxact:isPresent>(FEATURE_MASK &amp; 4) != 0</ipxact:isPresent>
-            <ipxact:bitOffset>2</ipxact:bitOffset>
-            <ipxact:bitWidth>1</ipxact:bitWidth>
-          </ipxact:field>
-        </ipxact:register>
-        <ipxact:register>
-          <ipxact:name>hidden</ipxact:name>
-          <ipxact:isPresent>REV &lt; 2 || FEATURE_B</ipxact:isPresent>
-          <ipxact:addressOffset>4</ipxact:addressOffset>
-          <ipxact:size>32</ipxact:size>
-          <ipxact:field>
-            <ipxact:name>value</ipxact:name>
-            <ipxact:bitOffset>0</ipxact:bitOffset>
-            <ipxact:bitWidth>32</ipxact:bitWidth>
-          </ipxact:field>
-        </ipxact:register>
-      </ipxact:addressBlock>
-    </ipxact:memoryMap>
-  </ipxact:memoryMaps>
-</ipxact:component>"#;
-
-    let component = parse_ipxact(xml).unwrap();
-    let register = &component.blocks[0].registers[0];
-
-    assert_eq!(component.blocks[0].registers.len(), 1);
-    assert_eq!(register.name, "visible");
-    assert_eq!(register.fields.len(), 2);
-    assert_eq!(register.fields[0].name, "enabled");
-    assert_eq!(register.fields[0].enumerated_values.len(), 1);
-    assert_eq!(register.fields[0].enumerated_values[0].name, "supported");
-    assert_eq!(register.fields[1].name, "masked");
-
-    let sv = ipxact_to_uvm_reg(xml).unwrap();
-    assert!(sv.contains("class ral_reg_cfg_visible extends uvm_reg;"));
-    assert!(sv.contains("ENABLED_SUPPORTED = 1'h1"));
-    assert!(sv.contains(&field_configure_access("masked", "1", "2", "RW")));
-    assert!(!sv.contains("hidden"));
-    assert!(!sv.contains("disabled"));
-    assert!(!sv.contains("future"));
-}
-
-#[test]
-fn reports_unsupported_parameter_expressions_when_used_by_is_present() {
-    let xml = r#"
-<ipxact:component xmlns:ipxact="http://www.accellera.org/XMLSchema/IPXACT/1685-2022">
-  <ipxact:vendor>acme</ipxact:vendor>
-  <ipxact:library>lib</ipxact:library>
-  <ipxact:name>bad_present_expr</ipxact:name>
-  <ipxact:version>1.0</ipxact:version>
-  <ipxact:parameters>
-    <ipxact:parameter parameterId="BAD_PRESENT">
-      <ipxact:name>BAD_PRESENT</ipxact:name>
-      <ipxact:value>UNSUPPORTED_FUNC(1)</ipxact:value>
-    </ipxact:parameter>
-  </ipxact:parameters>
-  <ipxact:memoryMaps>
-    <ipxact:memoryMap>
-      <ipxact:name>regs</ipxact:name>
-      <ipxact:addressBlock>
-        <ipxact:name>cfg</ipxact:name>
-        <ipxact:baseAddress>0</ipxact:baseAddress>
-        <ipxact:range>4</ipxact:range>
-        <ipxact:width>32</ipxact:width>
-        <ipxact:register>
-          <ipxact:name>conditional</ipxact:name>
-          <ipxact:isPresent>BAD_PRESENT != 0</ipxact:isPresent>
-          <ipxact:addressOffset>0</ipxact:addressOffset>
-          <ipxact:size>32</ipxact:size>
-          <ipxact:field>
-            <ipxact:name>bit0</ipxact:name>
-            <ipxact:bitOffset>0</ipxact:bitOffset>
-            <ipxact:bitWidth>1</ipxact:bitWidth>
-          </ipxact:field>
-        </ipxact:register>
-      </ipxact:addressBlock>
-    </ipxact:memoryMap>
-  </ipxact:memoryMaps>
-</ipxact:component>"#;
-
-    let error = parse_ipxact(xml).unwrap_err();
-    assert_eq!(
-        error.to_string(),
-        "unsupported IP-XACT parameter expression `BAD_PRESENT` used in register isPresent: `UNSUPPORTED_FUNC(1)`"
-    );
-}
-
-#[test]
-fn reports_invalid_or_unsupported_is_present_expressions() {
-    let xml = r#"
-<ipxact:component xmlns:ipxact="http://www.accellera.org/XMLSchema/IPXACT/1685-2022">
-  <ipxact:vendor>acme</ipxact:vendor>
-  <ipxact:library>lib</ipxact:library>
-  <ipxact:name>bad_present</ipxact:name>
-  <ipxact:version>1.0</ipxact:version>
-  <ipxact:memoryMaps>
-    <ipxact:memoryMap>
-      <ipxact:name>regs</ipxact:name>
-      <ipxact:addressBlock>
-        <ipxact:name>cfg</ipxact:name>
-        <ipxact:baseAddress>0</ipxact:baseAddress>
-        <ipxact:range>4</ipxact:range>
-        <ipxact:width>32</ipxact:width>
-        <ipxact:register>
-          <ipxact:name>conditional</ipxact:name>
-          <ipxact:isPresent>runtime_mode == "debug"</ipxact:isPresent>
-          <ipxact:addressOffset>0</ipxact:addressOffset>
-          <ipxact:size>32</ipxact:size>
-          <ipxact:field>
-            <ipxact:name>bit0</ipxact:name>
-            <ipxact:bitOffset>0</ipxact:bitOffset>
-            <ipxact:bitWidth>1</ipxact:bitWidth>
-          </ipxact:field>
-        </ipxact:register>
-      </ipxact:addressBlock>
-    </ipxact:memoryMap>
-  </ipxact:memoryMaps>
-</ipxact:component>"#;
-
-    let error = parse_ipxact(xml).unwrap_err();
-    assert_eq!(
-        error.to_string(),
-        "invalid IP-XACT boolean for register isPresent: `runtime_mode == \"debug\"`"
-    );
-}
-
-#[test]
 fn renders_multiple_memory_maps() {
     let xml = r#"
 <ipxact:component xmlns:ipxact="http://www.accellera.org/XMLSchema/IPXACT/1685-2022">
@@ -4340,7 +3761,11 @@ fn renders_multiple_memory_maps() {
             <ipxact:name>bit0</ipxact:name>
             <ipxact:bitOffset>0</ipxact:bitOffset>
             <ipxact:bitWidth>1</ipxact:bitWidth>
-            <ipxact:access>read-write</ipxact:access>
+            <ipxact:fieldAccessPolicies>
+              <ipxact:fieldAccessPolicy>
+                <ipxact:access>read-write</ipxact:access>
+              </ipxact:fieldAccessPolicy>
+            </ipxact:fieldAccessPolicies>
           </ipxact:field>
         </ipxact:register>
       </ipxact:addressBlock>
@@ -4361,7 +3786,11 @@ fn renders_multiple_memory_maps() {
             <ipxact:name>value</ipxact:name>
             <ipxact:bitOffset>0</ipxact:bitOffset>
             <ipxact:bitWidth>32</ipxact:bitWidth>
-            <ipxact:access>read-only</ipxact:access>
+            <ipxact:fieldAccessPolicies>
+              <ipxact:fieldAccessPolicy>
+                <ipxact:access>read-only</ipxact:access>
+              </ipxact:fieldAccessPolicy>
+            </ipxact:fieldAccessPolicies>
           </ipxact:field>
         </ipxact:register>
       </ipxact:addressBlock>
@@ -4374,7 +3803,7 @@ fn renders_multiple_memory_maps() {
     assert_eq!(component.blocks[0].map_name, "cfg");
     assert_eq!(component.blocks[1].map_name, "status");
 
-    let sv = ipxact_to_uvm_reg(xml).unwrap();
+    let sv = parse_and_serialize_uvm_reg(xml).unwrap();
     assert!(sv.contains("uvm_reg_map status_map;"));
     assert_create_map(&sv, "default_map", "\"default_map\"", "4", "1");
     assert_create_map(&sv, "status_map", "\"status\"", "4", "0");
@@ -4408,202 +3837,6 @@ fn renders_multiple_memory_maps() {
 }
 
 #[test]
-fn reports_duplicate_memory_map_names() {
-    let xml = r#"
-<ipxact:component xmlns:ipxact="http://www.accellera.org/XMLSchema/IPXACT/1685-2022">
-  <ipxact:vendor>acme</ipxact:vendor>
-  <ipxact:library>lib</ipxact:library>
-  <ipxact:name>duplicate_maps</ipxact:name>
-  <ipxact:version>1.0</ipxact:version>
-  <ipxact:memoryMaps>
-    <ipxact:memoryMap>
-      <ipxact:name>cfg</ipxact:name>
-      <ipxact:addressBlock>
-        <ipxact:name>ctrls</ipxact:name>
-        <ipxact:baseAddress>0</ipxact:baseAddress>
-        <ipxact:range>4</ipxact:range>
-        <ipxact:width>32</ipxact:width>
-      </ipxact:addressBlock>
-    </ipxact:memoryMap>
-    <ipxact:memoryMap>
-      <ipxact:name>cfg</ipxact:name>
-      <ipxact:addressBlock>
-        <ipxact:name>stats</ipxact:name>
-        <ipxact:baseAddress>4</ipxact:baseAddress>
-        <ipxact:range>4</ipxact:range>
-        <ipxact:width>32</ipxact:width>
-      </ipxact:addressBlock>
-    </ipxact:memoryMap>
-  </ipxact:memoryMaps>
-</ipxact:component>"#;
-
-    let error = parse_ipxact(xml).unwrap_err().to_string();
-
-    assert!(
-        error.contains("duplicate IP-XACT memoryMap name `cfg`"),
-        "{error}"
-    );
-}
-
-#[test]
-fn reports_duplicate_address_block_names() {
-    let xml = r#"
-<ipxact:component xmlns:ipxact="http://www.accellera.org/XMLSchema/IPXACT/1685-2022">
-  <ipxact:vendor>acme</ipxact:vendor>
-  <ipxact:library>lib</ipxact:library>
-  <ipxact:name>duplicate_blocks</ipxact:name>
-  <ipxact:version>1.0</ipxact:version>
-  <ipxact:memoryMaps>
-    <ipxact:memoryMap>
-      <ipxact:name>cfg</ipxact:name>
-      <ipxact:addressBlock>
-        <ipxact:name>regs</ipxact:name>
-        <ipxact:baseAddress>0</ipxact:baseAddress>
-        <ipxact:range>4</ipxact:range>
-        <ipxact:width>32</ipxact:width>
-      </ipxact:addressBlock>
-      <ipxact:addressBlock>
-        <ipxact:name>regs</ipxact:name>
-        <ipxact:baseAddress>4</ipxact:baseAddress>
-        <ipxact:range>4</ipxact:range>
-        <ipxact:width>32</ipxact:width>
-      </ipxact:addressBlock>
-    </ipxact:memoryMap>
-  </ipxact:memoryMaps>
-</ipxact:component>"#;
-
-    let error = parse_ipxact(xml).unwrap_err().to_string();
-
-    assert!(
-        error.contains("duplicate IP-XACT addressBlock name `regs` under memoryMap `cfg`"),
-        "{error}"
-    );
-}
-
-#[test]
-fn reports_missing_internal_type_definition_refs() {
-    let xml = r#"
-<ipxact:component xmlns:ipxact="http://www.accellera.org/XMLSchema/IPXACT/1685-2022">
-  <ipxact:vendor>acme</ipxact:vendor>
-  <ipxact:library>lib</ipxact:library>
-  <ipxact:name>missing_refs</ipxact:name>
-  <ipxact:version>1.0</ipxact:version>
-  <ipxact:typeDefinitions>
-    <ipxact:name>defs</ipxact:name>
-  </ipxact:typeDefinitions>
-  <ipxact:memoryMaps>
-    <ipxact:memoryMap>
-      <ipxact:name>cfg</ipxact:name>
-      <ipxact:addressBlock>
-        <ipxact:name>regs</ipxact:name>
-        <ipxact:addressBlockDefinitionRef typeDefinitions="defs">missing_block</ipxact:addressBlockDefinitionRef>
-        <ipxact:baseAddress>0</ipxact:baseAddress>
-      </ipxact:addressBlock>
-    </ipxact:memoryMap>
-  </ipxact:memoryMaps>
-</ipxact:component>"#;
-
-    let error = parse_ipxact(xml).unwrap_err().to_string();
-
-    assert!(
-        error.contains("IP-XACT addressBlockDefinition not found: `defs::missing_block`"),
-        "{error}"
-    );
-}
-
-#[test]
-fn reports_missing_field_access_policy_definition_refs() {
-    let xml = r#"
-<ipxact:component xmlns:ipxact="http://www.accellera.org/XMLSchema/IPXACT/1685-2022">
-  <ipxact:vendor>acme</ipxact:vendor>
-  <ipxact:library>lib</ipxact:library>
-  <ipxact:name>missing_policy</ipxact:name>
-  <ipxact:version>1.0</ipxact:version>
-  <ipxact:typeDefinitions>
-    <ipxact:name>defs</ipxact:name>
-    <ipxact:fieldAccessPolicyDefinitions/>
-  </ipxact:typeDefinitions>
-  <ipxact:memoryMaps>
-    <ipxact:memoryMap>
-      <ipxact:name>cfg</ipxact:name>
-      <ipxact:addressBlock>
-        <ipxact:name>regs</ipxact:name>
-        <ipxact:baseAddress>0</ipxact:baseAddress>
-        <ipxact:range>4</ipxact:range>
-        <ipxact:width>32</ipxact:width>
-        <ipxact:register>
-          <ipxact:name>status</ipxact:name>
-          <ipxact:addressOffset>0</ipxact:addressOffset>
-          <ipxact:size>32</ipxact:size>
-          <ipxact:field>
-            <ipxact:name>ready</ipxact:name>
-            <ipxact:bitOffset>0</ipxact:bitOffset>
-            <ipxact:bitWidth>1</ipxact:bitWidth>
-            <ipxact:fieldAccessPolicies>
-              <ipxact:fieldAccessPolicy>
-                <ipxact:fieldAccessPolicyDefinitionRef typeDefinitions="defs">missing_policy</ipxact:fieldAccessPolicyDefinitionRef>
-              </ipxact:fieldAccessPolicy>
-            </ipxact:fieldAccessPolicies>
-          </ipxact:field>
-        </ipxact:register>
-      </ipxact:addressBlock>
-    </ipxact:memoryMap>
-  </ipxact:memoryMaps>
-</ipxact:component>"#;
-
-    let error = parse_ipxact(xml).unwrap_err().to_string();
-
-    assert!(
-        error.contains("IP-XACT fieldAccessPolicyDefinition not found: `defs::missing_policy`"),
-        "{error}"
-    );
-}
-
-#[test]
-fn reports_duplicate_field_names() {
-    let xml = r#"
-<ipxact:component xmlns:ipxact="http://www.accellera.org/XMLSchema/IPXACT/1685-2022">
-  <ipxact:vendor>acme</ipxact:vendor>
-  <ipxact:library>lib</ipxact:library>
-  <ipxact:name>duplicate_fields</ipxact:name>
-  <ipxact:version>1.0</ipxact:version>
-  <ipxact:memoryMaps>
-    <ipxact:memoryMap>
-      <ipxact:name>cfg</ipxact:name>
-      <ipxact:addressBlock>
-        <ipxact:name>regs</ipxact:name>
-        <ipxact:baseAddress>0</ipxact:baseAddress>
-        <ipxact:range>4</ipxact:range>
-        <ipxact:width>32</ipxact:width>
-        <ipxact:register>
-          <ipxact:name>status</ipxact:name>
-          <ipxact:addressOffset>0</ipxact:addressOffset>
-          <ipxact:size>32</ipxact:size>
-          <ipxact:field>
-            <ipxact:name>ready</ipxact:name>
-            <ipxact:bitOffset>0</ipxact:bitOffset>
-            <ipxact:bitWidth>1</ipxact:bitWidth>
-          </ipxact:field>
-          <ipxact:field>
-            <ipxact:name>ready</ipxact:name>
-            <ipxact:bitOffset>1</ipxact:bitOffset>
-            <ipxact:bitWidth>1</ipxact:bitWidth>
-          </ipxact:field>
-        </ipxact:register>
-      </ipxact:addressBlock>
-    </ipxact:memoryMap>
-  </ipxact:memoryMaps>
-</ipxact:component>"#;
-
-    let error = parse_ipxact(xml).unwrap_err().to_string();
-
-    assert!(
-        error.contains("duplicate IP-XACT field name `ready` under register `status`"),
-        "{error}"
-    );
-}
-
-#[test]
 fn reports_field_ranges_that_exceed_register_size() {
     let xml = r#"
 <ipxact:component xmlns:ipxact="http://www.accellera.org/XMLSchema/IPXACT/1685-2022">
@@ -4634,7 +3867,7 @@ fn reports_field_ranges_that_exceed_register_size() {
   </ipxact:memoryMaps>
 </ipxact:component>"#;
 
-    let error = ipxact_to_uvm_reg(xml).unwrap_err().to_string();
+    let error = parse_and_serialize_uvm_reg(xml).unwrap_err().to_string();
 
     assert!(
         error.contains(
@@ -4670,7 +3903,7 @@ fn reports_zero_register_size_before_generating_uvm_reg() {
   </ipxact:memoryMaps>
 </ipxact:component>"#;
 
-    let error = ipxact_to_uvm_reg(xml).unwrap_err().to_string();
+    let error = parse_and_serialize_uvm_reg(xml).unwrap_err().to_string();
 
     assert!(
         error.contains("invalid IP-XACT number for register size: `0`"),
@@ -4709,7 +3942,7 @@ fn reports_zero_field_bit_width_before_generating_uvm_field() {
   </ipxact:memoryMaps>
 </ipxact:component>"#;
 
-    let error = ipxact_to_uvm_reg(xml).unwrap_err().to_string();
+    let error = parse_and_serialize_uvm_reg(xml).unwrap_err().to_string();
 
     assert!(
         error.contains("invalid IP-XACT number for field bitWidth: `0`"),
@@ -4753,7 +3986,7 @@ fn reports_overlapping_field_ranges() {
   </ipxact:memoryMaps>
 </ipxact:component>"#;
 
-    let error = ipxact_to_uvm_reg(xml).unwrap_err().to_string();
+    let error = parse_and_serialize_uvm_reg(xml).unwrap_err().to_string();
 
     assert!(
         error.contains(
@@ -4804,7 +4037,7 @@ fn reports_overlapping_register_address_ranges() {
   </ipxact:memoryMaps>
 </ipxact:component>"#;
 
-    let error = ipxact_to_uvm_reg(xml).unwrap_err().to_string();
+    let error = parse_and_serialize_uvm_reg(xml).unwrap_err().to_string();
 
     assert!(
         error.contains(
@@ -4849,7 +4082,7 @@ fn reports_self_overlapping_register_array_ranges() {
   </ipxact:memoryMaps>
 </ipxact:component>"#;
 
-    let error = ipxact_to_uvm_reg(xml).unwrap_err().to_string();
+    let error = parse_and_serialize_uvm_reg(xml).unwrap_err().to_string();
 
     assert!(
         error.contains(
@@ -4886,7 +4119,7 @@ fn reports_overlapping_top_level_address_block_ranges() {
   </ipxact:memoryMaps>
 </ipxact:component>"#;
 
-    let error = ipxact_to_uvm_reg(xml).unwrap_err().to_string();
+    let error = parse_and_serialize_uvm_reg(xml).unwrap_err().to_string();
 
     assert!(
         error.contains(
@@ -4932,7 +4165,7 @@ fn reports_overlapping_memory_remap_address_block_ranges() {
   </ipxact:memoryMaps>
 </ipxact:component>"#;
 
-    let error = ipxact_to_uvm_reg(xml).unwrap_err().to_string();
+    let error = parse_and_serialize_uvm_reg(xml).unwrap_err().to_string();
 
     assert!(
         error.contains(
@@ -5000,61 +4233,12 @@ fn reports_overlapping_subspace_map_ranges() {
   </ipxact:memoryMaps>
 </ipxact:component>"#;
 
-    let error = ipxact_to_uvm_reg(xml).unwrap_err().to_string();
+    let error = parse_and_serialize_uvm_reg(xml).unwrap_err().to_string();
 
     assert!(
         error.contains(
             "IP-XACT address ranges `dma_window` and `regs` overlap in memoryMap `cfg` at offsets 8..15"
         ),
-        "{error}"
-    );
-}
-
-#[test]
-fn reports_duplicate_enumerated_value_names() {
-    let xml = r#"
-<ipxact:component xmlns:ipxact="http://www.accellera.org/XMLSchema/IPXACT/1685-2022">
-  <ipxact:vendor>acme</ipxact:vendor>
-  <ipxact:library>lib</ipxact:library>
-  <ipxact:name>duplicate_enums</ipxact:name>
-  <ipxact:version>1.0</ipxact:version>
-  <ipxact:memoryMaps>
-    <ipxact:memoryMap>
-      <ipxact:name>cfg</ipxact:name>
-      <ipxact:addressBlock>
-        <ipxact:name>regs</ipxact:name>
-        <ipxact:baseAddress>0</ipxact:baseAddress>
-        <ipxact:range>4</ipxact:range>
-        <ipxact:width>32</ipxact:width>
-        <ipxact:register>
-          <ipxact:name>ctrl</ipxact:name>
-          <ipxact:addressOffset>0</ipxact:addressOffset>
-          <ipxact:size>32</ipxact:size>
-          <ipxact:field>
-            <ipxact:name>mode</ipxact:name>
-            <ipxact:bitOffset>0</ipxact:bitOffset>
-            <ipxact:bitWidth>2</ipxact:bitWidth>
-            <ipxact:enumeratedValues>
-              <ipxact:enumeratedValue>
-                <ipxact:name>idle</ipxact:name>
-                <ipxact:value>0</ipxact:value>
-              </ipxact:enumeratedValue>
-              <ipxact:enumeratedValue>
-                <ipxact:name>idle</ipxact:name>
-                <ipxact:value>1</ipxact:value>
-              </ipxact:enumeratedValue>
-            </ipxact:enumeratedValues>
-          </ipxact:field>
-        </ipxact:register>
-      </ipxact:addressBlock>
-    </ipxact:memoryMap>
-  </ipxact:memoryMaps>
-</ipxact:component>"#;
-
-    let error = parse_ipxact(xml).unwrap_err().to_string();
-
-    assert!(
-        error.contains("duplicate IP-XACT enumeratedValue name `idle` under field `mode`"),
         "{error}"
     );
 }
@@ -5087,7 +4271,11 @@ fn renders_scalar_register_files_without_array_loop() {
               <ipxact:name>ready</ipxact:name>
               <ipxact:bitOffset>0</ipxact:bitOffset>
               <ipxact:bitWidth>1</ipxact:bitWidth>
-              <ipxact:access>read-only</ipxact:access>
+              <ipxact:fieldAccessPolicies>
+                <ipxact:fieldAccessPolicy>
+                  <ipxact:access>read-only</ipxact:access>
+                </ipxact:fieldAccessPolicy>
+              </ipxact:fieldAccessPolicies>
             </ipxact:field>
             <ipxact:alternateRegisters>
               <ipxact:alternateRegister>
@@ -5096,7 +4284,11 @@ fn renders_scalar_register_files_without_array_loop() {
                   <ipxact:name>raw</ipxact:name>
                   <ipxact:bitOffset>0</ipxact:bitOffset>
                   <ipxact:bitWidth>8</ipxact:bitWidth>
-                  <ipxact:access>read-write</ipxact:access>
+                  <ipxact:fieldAccessPolicies>
+                    <ipxact:fieldAccessPolicy>
+                      <ipxact:access>read-write</ipxact:access>
+                    </ipxact:fieldAccessPolicy>
+                  </ipxact:fieldAccessPolicies>
                 </ipxact:field>
               </ipxact:alternateRegister>
             </ipxact:alternateRegisters>
@@ -5111,7 +4303,7 @@ fn renders_scalar_register_files_without_array_loop() {
 
     assert_eq!(component.blocks[0].register_files[0].dim, "1");
 
-    let sv = ipxact_to_uvm_reg(xml).unwrap();
+    let sv = parse_and_serialize_uvm_reg(xml).unwrap();
     assert!(sv.contains("class ral_regfile_cfg_local extends uvm_reg_file;"));
     assert!(sv.contains("ral_regfile_cfg_local local;"));
     assert!(sv.contains("local = ral_regfile_cfg_local::type_id::create(\"local\");"));
@@ -5182,7 +4374,11 @@ fn renders_register_arrays_inside_register_files() {
               <ipxact:name>value</ipxact:name>
               <ipxact:bitOffset>0</ipxact:bitOffset>
               <ipxact:bitWidth>32</ipxact:bitWidth>
-              <ipxact:access>read-write</ipxact:access>
+              <ipxact:fieldAccessPolicies>
+                <ipxact:fieldAccessPolicy>
+                  <ipxact:access>read-write</ipxact:access>
+                </ipxact:fieldAccessPolicy>
+              </ipxact:fieldAccessPolicies>
             </ipxact:field>
           </ipxact:register>
         </ipxact:registerFile>
@@ -5206,7 +4402,11 @@ fn renders_register_arrays_inside_register_files() {
               <ipxact:name>value</ipxact:name>
               <ipxact:bitOffset>0</ipxact:bitOffset>
               <ipxact:bitWidth>32</ipxact:bitWidth>
-              <ipxact:access>read-write</ipxact:access>
+              <ipxact:fieldAccessPolicies>
+                <ipxact:fieldAccessPolicy>
+                  <ipxact:access>read-write</ipxact:access>
+                </ipxact:fieldAccessPolicy>
+              </ipxact:fieldAccessPolicies>
             </ipxact:field>
           </ipxact:register>
         </ipxact:registerFile>
@@ -5215,7 +4415,7 @@ fn renders_register_arrays_inside_register_files() {
   </ipxact:memoryMaps>
 </ipxact:component>"#;
 
-    let sv = ipxact_to_uvm_reg(xml).unwrap();
+    let sv = parse_and_serialize_uvm_reg(xml).unwrap();
 
     assert!(sv.contains("class ral_regfile_cfg_local extends uvm_reg_file;"));
     assert!(sv.contains("rand ral_reg_cfg_local_counter counter[2];"));
@@ -5293,7 +4493,11 @@ fn reports_overlapping_register_file_member_address_ranges() {
               <ipxact:name>value</ipxact:name>
               <ipxact:bitOffset>0</ipxact:bitOffset>
               <ipxact:bitWidth>32</ipxact:bitWidth>
-              <ipxact:access>read-write</ipxact:access>
+              <ipxact:fieldAccessPolicies>
+                <ipxact:fieldAccessPolicy>
+                  <ipxact:access>read-write</ipxact:access>
+                </ipxact:fieldAccessPolicy>
+              </ipxact:fieldAccessPolicies>
             </ipxact:field>
           </ipxact:register>
           <ipxact:register>
@@ -5304,7 +4508,11 @@ fn reports_overlapping_register_file_member_address_ranges() {
               <ipxact:name>enable</ipxact:name>
               <ipxact:bitOffset>0</ipxact:bitOffset>
               <ipxact:bitWidth>1</ipxact:bitWidth>
-              <ipxact:access>read-write</ipxact:access>
+              <ipxact:fieldAccessPolicies>
+                <ipxact:fieldAccessPolicy>
+                  <ipxact:access>read-write</ipxact:access>
+                </ipxact:fieldAccessPolicy>
+              </ipxact:fieldAccessPolicies>
             </ipxact:field>
           </ipxact:register>
         </ipxact:registerFile>
@@ -5313,7 +4521,7 @@ fn reports_overlapping_register_file_member_address_ranges() {
   </ipxact:memoryMaps>
 </ipxact:component>"#;
 
-    let error = ipxact_to_uvm_reg(xml).unwrap_err().to_string();
+    let error = parse_and_serialize_uvm_reg(xml).unwrap_err().to_string();
 
     assert!(
         error.contains(
@@ -5355,7 +4563,11 @@ fn reports_self_overlapping_register_file_member_arrays() {
               <ipxact:name>value</ipxact:name>
               <ipxact:bitOffset>0</ipxact:bitOffset>
               <ipxact:bitWidth>32</ipxact:bitWidth>
-              <ipxact:access>read-write</ipxact:access>
+              <ipxact:fieldAccessPolicies>
+                <ipxact:fieldAccessPolicy>
+                  <ipxact:access>read-write</ipxact:access>
+                </ipxact:fieldAccessPolicy>
+              </ipxact:fieldAccessPolicies>
             </ipxact:field>
           </ipxact:register>
         </ipxact:registerFile>
@@ -5364,7 +4576,7 @@ fn reports_self_overlapping_register_file_member_arrays() {
   </ipxact:memoryMaps>
 </ipxact:component>"#;
 
-    let error = ipxact_to_uvm_reg(xml).unwrap_err().to_string();
+    let error = parse_and_serialize_uvm_reg(xml).unwrap_err().to_string();
 
     assert!(
         error.contains(
@@ -5402,7 +4614,11 @@ fn reports_register_file_members_that_exceed_register_file_range() {
               <ipxact:name>enable</ipxact:name>
               <ipxact:bitOffset>0</ipxact:bitOffset>
               <ipxact:bitWidth>1</ipxact:bitWidth>
-              <ipxact:access>read-write</ipxact:access>
+              <ipxact:fieldAccessPolicies>
+                <ipxact:fieldAccessPolicy>
+                  <ipxact:access>read-write</ipxact:access>
+                </ipxact:fieldAccessPolicy>
+              </ipxact:fieldAccessPolicies>
             </ipxact:field>
           </ipxact:register>
         </ipxact:registerFile>
@@ -5411,7 +4627,7 @@ fn reports_register_file_members_that_exceed_register_file_range() {
   </ipxact:memoryMaps>
 </ipxact:component>"#;
 
-    let error = ipxact_to_uvm_reg(xml).unwrap_err().to_string();
+    let error = parse_and_serialize_uvm_reg(xml).unwrap_err().to_string();
 
     assert!(
         error.contains(
@@ -5447,7 +4663,7 @@ fn reports_zero_register_file_range_before_generating_uvm_reg_file() {
   </ipxact:memoryMaps>
 </ipxact:component>"#;
 
-    let error = ipxact_to_uvm_reg(xml).unwrap_err().to_string();
+    let error = parse_and_serialize_uvm_reg(xml).unwrap_err().to_string();
 
     assert!(
         error.contains("invalid IP-XACT number for registerFile range: `0`"),
@@ -5470,7 +4686,11 @@ fn ignores_retained_descriptions_while_generating_ral() {
         <ipxact:name>ready_field_def</ipxact:name>
         <ipxact:description>Definition field description</ipxact:description>
         <ipxact:bitWidth>1</ipxact:bitWidth>
-        <ipxact:access>read-only</ipxact:access>
+        <ipxact:fieldAccessPolicies>
+          <ipxact:fieldAccessPolicy>
+            <ipxact:access>read-only</ipxact:access>
+          </ipxact:fieldAccessPolicy>
+        </ipxact:fieldAccessPolicies>
       </ipxact:fieldDefinition>
     </ipxact:fieldDefinitions>
     <ipxact:registerDefinitions>
@@ -5518,7 +4738,11 @@ with "quotes"</ipxact:description>
                 <ipxact:description>Alternate field description</ipxact:description>
                 <ipxact:bitOffset>0</ipxact:bitOffset>
                 <ipxact:bitWidth>8</ipxact:bitWidth>
-                <ipxact:access>read-write</ipxact:access>
+                <ipxact:fieldAccessPolicies>
+                  <ipxact:fieldAccessPolicy>
+                    <ipxact:access>read-write</ipxact:access>
+                  </ipxact:fieldAccessPolicy>
+                </ipxact:fieldAccessPolicies>
               </ipxact:field>
             </ipxact:alternateRegister>
           </ipxact:alternateRegisters>
@@ -5555,7 +4779,7 @@ with "quotes"</ipxact:description>
         "debug_status"
     );
 
-    let sv = ipxact_to_uvm_reg(xml).unwrap();
+    let sv = parse_and_serialize_uvm_reg(xml).unwrap();
     assert!(!sv.contains("localparam"));
     assert!(sv.contains(&field_configure_call(
         "ready",
@@ -5604,7 +4828,11 @@ fn resolves_definition_refs_by_type_definitions_scope() {
         <ipxact:name>shared_field</ipxact:name>
         <ipxact:bitWidth>1</ipxact:bitWidth>
         <ipxact:description>A field</ipxact:description>
-        <ipxact:access>read-only</ipxact:access>
+        <ipxact:fieldAccessPolicies>
+          <ipxact:fieldAccessPolicy>
+            <ipxact:access>read-only</ipxact:access>
+          </ipxact:fieldAccessPolicy>
+        </ipxact:fieldAccessPolicies>
       </ipxact:fieldDefinition>
     </ipxact:fieldDefinitions>
     <ipxact:registerDefinitions>
@@ -5712,7 +4940,7 @@ fn resolves_definition_refs_by_type_definitions_scope() {
     assert_eq!(field.enumerated_values[0].name, "b_value");
     assert_eq!(field.enumerated_values[0].value, "3");
 
-    let sv = ipxact_to_uvm_reg(xml).unwrap();
+    let sv = parse_and_serialize_uvm_reg(xml).unwrap();
     assert!(sv.contains("STATE_B_VALUE = 2'h3"));
     assert!(sv.contains(&field_configure_call(
         "state",
@@ -5775,7 +5003,11 @@ fn resolves_external_type_definitions_with_resolver() {
           <ipxact:description>External field description</ipxact:description>
           <ipxact:bitOffset>0</ipxact:bitOffset>
           <ipxact:bitWidth>1</ipxact:bitWidth>
-          <ipxact:access>read-only</ipxact:access>
+          <ipxact:fieldAccessPolicies>
+            <ipxact:fieldAccessPolicy>
+              <ipxact:access>read-only</ipxact:access>
+            </ipxact:fieldAccessPolicy>
+          </ipxact:fieldAccessPolicies>
         </ipxact:field>
       </ipxact:register>
     </ipxact:addressBlockDefinition>
@@ -5862,7 +5094,11 @@ fn renders_address_space_local_memory_map_as_uvm_submap() {
               <ipxact:name>kick</ipxact:name>
               <ipxact:bitOffset>0</ipxact:bitOffset>
               <ipxact:bitWidth>1</ipxact:bitWidth>
-              <ipxact:access>write-only</ipxact:access>
+              <ipxact:fieldAccessPolicies>
+                <ipxact:fieldAccessPolicy>
+                  <ipxact:access>write-only</ipxact:access>
+                </ipxact:fieldAccessPolicy>
+              </ipxact:fieldAccessPolicies>
             </ipxact:field>
           </ipxact:register>
         </ipxact:addressBlock>
@@ -5885,7 +5121,11 @@ fn renders_address_space_local_memory_map_as_uvm_submap() {
             <ipxact:name>ready</ipxact:name>
             <ipxact:bitOffset>0</ipxact:bitOffset>
             <ipxact:bitWidth>1</ipxact:bitWidth>
-            <ipxact:access>read-only</ipxact:access>
+            <ipxact:fieldAccessPolicies>
+              <ipxact:fieldAccessPolicy>
+                <ipxact:access>read-only</ipxact:access>
+              </ipxact:fieldAccessPolicy>
+            </ipxact:fieldAccessPolicies>
           </ipxact:field>
         </ipxact:register>
       </ipxact:addressBlock>
@@ -5912,7 +5152,7 @@ fn renders_address_space_local_memory_map_as_uvm_submap() {
         Some("dma_space")
     );
 
-    let sv = ipxact_to_uvm_reg(xml).unwrap();
+    let sv = parse_and_serialize_uvm_reg(xml).unwrap();
     assert!(sv.contains("class ral_block_bridge_dma_space_dma_regs extends uvm_reg_block;"));
     assert!(sv.contains("class ral_sys_bridge_dma_space extends uvm_reg_block;"));
     assert!(sv.contains("class ral_sys_bridge extends uvm_reg_block;"));
@@ -6038,7 +5278,7 @@ fn reports_unresolved_subspace_map_address_spaces() {
   </ipxact:memoryMaps>
 </ipxact:component>"#;
 
-    let error = ipxact_to_uvm_reg(xml).unwrap_err().to_string();
+    let error = parse_and_serialize_uvm_reg(xml).unwrap_err().to_string();
 
     assert!(
         error.contains(
@@ -6093,7 +5333,7 @@ fn reports_missing_subspace_map_segment_refs() {
   </ipxact:memoryMaps>
 </ipxact:component>"#;
 
-    let error = ipxact_to_uvm_reg(xml).unwrap_err().to_string();
+    let error = parse_and_serialize_uvm_reg(xml).unwrap_err().to_string();
 
     assert!(
         error.contains(
@@ -6145,7 +5385,11 @@ fn expands_scoped_memory_map_definitions() {
               <ipxact:name>ready</ipxact:name>
               <ipxact:bitOffset>0</ipxact:bitOffset>
               <ipxact:bitWidth>1</ipxact:bitWidth>
-              <ipxact:access>read-only</ipxact:access>
+              <ipxact:fieldAccessPolicies>
+                <ipxact:fieldAccessPolicy>
+                  <ipxact:access>read-only</ipxact:access>
+                </ipxact:fieldAccessPolicy>
+              </ipxact:fieldAccessPolicies>
             </ipxact:field>
           </ipxact:register>
         </ipxact:addressBlock>
@@ -6165,7 +5409,11 @@ fn expands_scoped_memory_map_definitions() {
                 <ipxact:name>enable</ipxact:name>
                 <ipxact:bitOffset>0</ipxact:bitOffset>
                 <ipxact:bitWidth>1</ipxact:bitWidth>
-                <ipxact:access>read-write</ipxact:access>
+                <ipxact:fieldAccessPolicies>
+                  <ipxact:fieldAccessPolicy>
+                    <ipxact:access>read-write</ipxact:access>
+                  </ipxact:fieldAccessPolicy>
+                </ipxact:fieldAccessPolicies>
               </ipxact:field>
             </ipxact:register>
           </ipxact:addressBlock>
@@ -6192,7 +5440,7 @@ fn expands_scoped_memory_map_definitions() {
     assert_eq!(component.memory_remaps[0].blocks[0].map_name, "cfg");
     assert_eq!(component.memory_remaps[0].blocks[0].address_unit_bits, "32");
 
-    let sv = ipxact_to_uvm_reg(xml).unwrap();
+    let sv = parse_and_serialize_uvm_reg(xml).unwrap();
     assert_create_map(&sv, "default_map", "\"default_map\"", "4", "0");
     assert_add_reg(
         &sv,
@@ -6271,7 +5519,11 @@ fn expands_scoped_bank_and_memory_remap_definitions() {
               <ipxact:name>ready</ipxact:name>
               <ipxact:bitOffset>0</ipxact:bitOffset>
               <ipxact:bitWidth>1</ipxact:bitWidth>
-              <ipxact:access>read-only</ipxact:access>
+              <ipxact:fieldAccessPolicies>
+                <ipxact:fieldAccessPolicy>
+                  <ipxact:access>read-only</ipxact:access>
+                </ipxact:fieldAccessPolicy>
+              </ipxact:fieldAccessPolicies>
             </ipxact:field>
           </ipxact:register>
         </ipxact:addressBlock>
@@ -6294,7 +5546,11 @@ fn expands_scoped_bank_and_memory_remap_definitions() {
               <ipxact:name>enable</ipxact:name>
               <ipxact:bitOffset>0</ipxact:bitOffset>
               <ipxact:bitWidth>1</ipxact:bitWidth>
-              <ipxact:access>read-write</ipxact:access>
+              <ipxact:fieldAccessPolicies>
+                <ipxact:fieldAccessPolicy>
+                  <ipxact:access>read-write</ipxact:access>
+                </ipxact:fieldAccessPolicy>
+              </ipxact:fieldAccessPolicies>
             </ipxact:field>
           </ipxact:register>
         </ipxact:addressBlock>
@@ -6329,7 +5585,7 @@ fn expands_scoped_bank_and_memory_remap_definitions() {
     );
     assert_eq!(component.memory_remaps[0].blocks[0].base_address, "0x200");
 
-    let sv = ipxact_to_uvm_reg(xml).unwrap();
+    let sv = parse_and_serialize_uvm_reg(xml).unwrap();
     assert_add_reg(
         &sv,
         "default_map",

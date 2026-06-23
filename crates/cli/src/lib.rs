@@ -232,8 +232,14 @@ fn run_ipxact(args: IpxactArgs) -> Result<Option<PathBuf>, CliError> {
             }
         },
         IpxactOutputFormat::Html => {
-            let docs_component = irgen_docs::parse_ipxact(&xml)
-                .map_err(|error| CliError::Runtime(error.to_string()))?;
+            let component = parse_ipxact_with_directory_resolver(
+                &args.input,
+                &xml,
+                args.view.clone(),
+                args.mode.clone(),
+                &args.library_paths,
+            )?;
+            let docs_component = irgen_docs::component_from_ipxact_model(&component);
             let output_path = args
                 .output
                 .unwrap_or_else(|| default_ipxact_html_output_path(docs_component.name()));
@@ -249,15 +255,15 @@ fn parse_ipxact_with_directory_resolver(
     preferred_view: Option<String>,
     preferred_mode: Option<String>,
     library_paths: &[PathBuf],
-) -> Result<irgen_uvmreg::Component, CliError> {
+) -> Result<irgen_ipxact_model::Component, CliError> {
     let base_dir = input.parent().unwrap_or_else(|| Path::new("."));
     let mut search_paths = vec![base_dir.to_path_buf()];
     search_paths.extend(library_paths.iter().cloned());
-    let mut cache = Vec::<(irgen_uvmreg::LibraryRef, String)>::new();
+    let mut cache = Vec::<(irgen_ipxact_parser::LibraryRef, String)>::new();
 
-    irgen_uvmreg::parse_ipxact_with_options_and_resolver(
+    irgen_ipxact_parser::parse_ipxact_with_options_and_resolver(
         xml,
-        irgen_uvmreg::ParseOptions {
+        irgen_ipxact_parser::ParseOptions {
             preferred_view,
             preferred_mode,
         },
@@ -268,9 +274,9 @@ fn parse_ipxact_with_directory_resolver(
 
 fn find_ipxact_by_vlnv(
     search_paths: &[PathBuf],
-    reference: &irgen_uvmreg::LibraryRef,
-    cache: &mut Vec<(irgen_uvmreg::LibraryRef, String)>,
-) -> irgen_uvmreg::Result<Option<String>> {
+    reference: &irgen_ipxact_parser::LibraryRef,
+    cache: &mut Vec<(irgen_ipxact_parser::LibraryRef, String)>,
+) -> irgen_ipxact_parser::Result<Option<String>> {
     if let Some((_, xml)) = cache
         .iter()
         .find(|(library_ref, _)| library_ref == reference)
@@ -284,25 +290,29 @@ fn find_ipxact_by_vlnv(
     }
 
     match matches.len() {
-        0 => Err(irgen_uvmreg::Error::ExternalTypeDefinitionsNotFoundIn {
-            reference: reference.key(),
-            searched: search_paths
-                .iter()
-                .map(|path| path.display().to_string())
-                .collect(),
-        }),
+        0 => Err(
+            irgen_ipxact_parser::Error::ExternalTypeDefinitionsNotFoundIn {
+                reference: reference.key(),
+                searched: search_paths
+                    .iter()
+                    .map(|path| path.display().to_string())
+                    .collect(),
+            },
+        ),
         1 => {
             let resolved = matches.remove(0);
             cache.push((reference.clone(), resolved.xml.clone()));
             Ok(Some(resolved.xml))
         }
-        _ => Err(irgen_uvmreg::Error::ExternalTypeDefinitionsAmbiguous {
-            reference: reference.key(),
-            matches: matches
-                .into_iter()
-                .map(|resolved| resolved.path.display().to_string())
-                .collect(),
-        }),
+        _ => Err(
+            irgen_ipxact_parser::Error::ExternalTypeDefinitionsAmbiguous {
+                reference: reference.key(),
+                matches: matches
+                    .into_iter()
+                    .map(|resolved| resolved.path.display().to_string())
+                    .collect(),
+            },
+        ),
     }
 }
 
@@ -313,7 +323,7 @@ struct ResolvedIpxact {
 
 fn collect_ipxact_matches_in_path(
     base_dir: &Path,
-    reference: &irgen_uvmreg::LibraryRef,
+    reference: &irgen_ipxact_parser::LibraryRef,
     matches: &mut Vec<ResolvedIpxact>,
 ) {
     let Ok(entries) = fs::read_dir(base_dir) else {
@@ -331,13 +341,13 @@ fn collect_ipxact_matches_in_path(
 fn collect_ipxact_matches_in_file(
     base_dir: &Path,
     path: &Path,
-    reference: &irgen_uvmreg::LibraryRef,
+    reference: &irgen_ipxact_parser::LibraryRef,
     matches: &mut Vec<ResolvedIpxact>,
 ) {
     let Ok(xml) = fs::read_to_string(path) else {
         return;
     };
-    if let Ok(catalog_files) = irgen_uvmreg::catalog_file_refs(&xml) {
+    if let Ok(catalog_files) = irgen_ipxact_parser::catalog_file_refs(&xml) {
         let catalog_dir = path.parent().unwrap_or(base_dir);
         for catalog_file in catalog_files {
             let referenced_path = catalog_dir.join(&catalog_file.name);
@@ -356,7 +366,7 @@ fn collect_ipxact_matches_in_file(
         return;
     }
 
-    if let Ok(library_ref) = irgen_uvmreg::document_library_ref(&xml)
+    if let Ok(library_ref) = irgen_ipxact_parser::document_library_ref(&xml)
         && &library_ref == reference
     {
         matches.push(ResolvedIpxact {

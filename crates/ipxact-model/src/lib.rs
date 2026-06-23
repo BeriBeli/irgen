@@ -1,3 +1,10 @@
+mod expression;
+
+pub use expression::{
+    ExpressionError, ExpressionResult, parse_bool_expr_with_symbols, parse_u64_expr,
+    parse_u64_expr_with_symbols,
+};
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Component {
     pub vendor: String,
@@ -51,6 +58,7 @@ pub struct AddressBlock {
     pub base_address: String,
     pub range: String,
     pub width: String,
+    pub description: String,
     pub address_unit_bits: String,
     pub usage: Option<String>,
     pub volatile: Option<String>,
@@ -65,6 +73,7 @@ pub struct RegisterFile {
     pub name: String,
     pub address_offset: String,
     pub range: String,
+    pub description: String,
     pub dim: String,
     pub dims: Vec<String>,
     pub stride: Option<String>,
@@ -77,6 +86,7 @@ pub struct Register {
     pub name: String,
     pub address_offset: String,
     pub size: String,
+    pub description: String,
     pub dim: String,
     pub dims: Vec<String>,
     pub stride: Option<String>,
@@ -105,6 +115,7 @@ pub struct HdlPathSlice {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AlternateRegister {
     pub name: String,
+    pub description: String,
     pub volatile: Option<String>,
     pub access: Option<String>,
     pub hdl_path: Option<String>,
@@ -116,6 +127,7 @@ pub struct Field {
     pub name: String,
     pub bit_offset: String,
     pub bit_width: String,
+    pub description: String,
     pub access: Option<String>,
     pub modified_write_value: Option<String>,
     pub read_action: Option<String>,

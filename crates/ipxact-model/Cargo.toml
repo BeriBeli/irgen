@@ -1,0 +1,6 @@
+[package]
+name = "irgen-ipxact-model"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
