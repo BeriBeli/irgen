@@ -470,7 +470,7 @@ dependencies = [
 
 [[package]]
 name = "ipxact-codegen"
-version = "0.3.2"
+version = "0.3.3"
 dependencies = [
  "anyhow",
  "prettyplease",
@@ -482,7 +482,7 @@ dependencies = [
 
 [[package]]
 name = "irgen-cli"
-version = "0.3.2"
+version = "0.3.3"
 dependencies = [
  "clap",
  "irgen-docs",
@@ -497,7 +497,7 @@ dependencies = [
 
 [[package]]
 name = "irgen-docs"
-version = "0.3.2"
+version = "0.3.3"
 dependencies = [
  "askama",
  "irgen-ipxact-model",
@@ -509,7 +509,7 @@ dependencies = [
 
 [[package]]
 name = "irgen-ip-xact"
-version = "0.3.2"
+version = "0.3.3"
 dependencies = [
  "irgen-snapsheet",
  "quick-xml 0.39.0",
@@ -519,11 +519,11 @@ dependencies = [
 
 [[package]]
 name = "irgen-ipxact-model"
-version = "0.3.2"
+version = "0.3.3"
 
 [[package]]
 name = "irgen-ipxact-parser"
-version = "0.3.2"
+version = "0.3.3"
 dependencies = [
  "irgen-ipxact-model",
  "quick-xml 0.39.0",
@@ -532,7 +532,7 @@ dependencies = [
 
 [[package]]
 name = "irgen-ralf"
-version = "0.3.2"
+version = "0.3.3"
 dependencies = [
  "irgen-snapsheet",
  "thiserror",
@@ -540,7 +540,7 @@ dependencies = [
 
 [[package]]
 name = "irgen-snapsheet"
-version = "0.3.2"
+version = "0.3.3"
 dependencies = [
  "calamine",
  "serde",
@@ -550,7 +550,7 @@ dependencies = [
 
 [[package]]
 name = "irgen-systemrdl"
-version = "0.3.2"
+version = "0.3.3"
 dependencies = [
  "irgen-snapsheet",
  "thiserror",
@@ -558,7 +558,7 @@ dependencies = [
 
 [[package]]
 name = "irgen-uvmreg"
-version = "0.3.2"
+version = "0.3.3"
 dependencies = [
  "askama",
  "irgen-ipxact-model",
